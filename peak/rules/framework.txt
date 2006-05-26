@@ -1,0 +1,64 @@
+=============================
+The PEAK Rules Core Framework
+=============================
+
+This document is for people who are extending the core framework in some
+way, e.g. adding custom action types to specialize method combination, or
+creating new kinds of engines or conditions.  It isn't intended to be user
+documentation for the built-in rule facility.
+
+    >>> from peak.rules.framework import *
+
+
+NOTE: Everything from this point down is just an outline of what will be here
+eventually.
+
+
+------------------
+Method Combination
+------------------
+
+
+Action Types
+============
+
+MethodList, MethodChain, Around, Before, After
+
+decorators and how to create them: when, around, before, after
+
+custom combination demo from RuleDispatch (compute upcharges+tax)
+
+
+Core Algorithm
+==============
+
+combine_actions(a1, a2)
+
+compile_action(engine, action)
+
+
+
+----------------
+Rules Management
+----------------
+
+RuleSet
+=======
+
+creation, add/remove, subscription & notifications
+
+
+Signature Implication
+=====================
+
+implies(s1, s2)
+
+
+-------------
+Miscellaneous
+-------------
+
+Subscription Management
+=======================
+
+
