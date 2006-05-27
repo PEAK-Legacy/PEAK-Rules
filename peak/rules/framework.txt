@@ -22,6 +22,9 @@ Method Combination
 Action Types
 ============
 
+The current ``Action`` type is just a placeholder until we get method
+combination bootstrapped.  But here are some tests of it anyway::
+
 MethodList, MethodChain, Around, Before, After
 
 decorators and how to create them: when, around, before, after
@@ -42,16 +45,128 @@ compile_action(engine, action)
 Rules Management
 ----------------
 
+Rule Objects
+============
+
+Rule objects are essentially pure data objects, pairing a predicate, a body,
+and an action type that will be used as a factory to create the actions for the
+rule.  At minimum, all a rule needs is a body.  The predicate and action type
+both default to ``None`` if not specified::
+
+    >>> from peak.rules.framework import Rule
+    >>> def dummy(): pass
+    >>> r = Rule(dummy)
+    >>> r
+    Rule(<function dummy ...>, (), None)
+
+An action type of ``None`` (or any false value) means that the ruleset should
+decide what action type to use.  Actually, it can decide anyway, since the
+rule set is always responsible for creating action objects; the rule's action
+type is really just advisory to begin with.
+
+
 RuleSet
 =======
 
-creation, add/remove, subscription & notifications
+``RuleSet`` objects hold the rules and policy information for a generic
+function, including the default action type and optional optimziation hints.
+
+Iterating over a ruleset yields its actions::
+
+    >>> from peak.rules.framework import RuleSet
+    >>> rs = RuleSet()
+    >>> list(rs)
+    []
+
+And rules can be added and removed with the ``add()`` and ``remove()``
+methods::
+
+    >>> r = Rule(dummy)
+    >>> rs.add(r)
+    >>> list(rs)
+    [(<...Action...>, <function dummy ...>, (), 0)]
+
+    >>> rs.remove(r)
+    >>> list(rs)
+    []
+
+Observers can be added with the ``subscribe()`` and ``unsubscribe()`` methods.
+Observers have their ``actions_changed`` method called with an "added" set
+and a "removed" set of action definitions.  (An action definition is a
+tuple of the form ``(actiontype, body, signature, precedence)``, and can thus
+be used to create action objects.)
+
+::
+
+    >>> class DummyObserver:
+    ...     def actions_changed(self, added, removed):
+    ...         for a in added: print "Add:", a
+    ...         for a in removed: print "Remove:", a
+    >>> do = DummyObserver()
+
+    >>> rs.subscribe(do)
+
+    >>> rs.add(r)
+    Add: (<...Action...>, <function dummy ...>, (), 1)
+
+    >>> rs.remove(r)
+    Remove: (<...Action...>, <function dummy ...>, (), 1)
+
+    >>> rs.unsubscribe(do)
+
+When an observer is first added, it's notified of the current contents of the
+``RuleSet``, if any.  As a result, observers don't need to do any special case
+handling for their initial setup.  Everything can be handled via the normal
+operation of the ``actions_changed()`` method::
+
+    >>> rs.add(r)
+    >>> rs.subscribe(do)
+    Add: (<...Action...>, <function dummy ...>, (), 2)
+
+Unsubscribing, however, does not send any removal messages::
+
+    >>> rs.unsubscribe(do)
+
 
 
 Signature Implication
 =====================
 
-implies(s1, s2)
+The ``implies()`` function is used to determine the logical implication
+relationship between two signatures.  A signature ``s1`` implies signature
+``s2`` if ``s2`` will always match an invocation matched by ``s1``.
+
+For the simplest signatures (tuples of types), this corresponds to a subclass
+relationship between the elements of the tuples::
+
+    >>> from peak.rules.framework import implies
+
+    >>> implies(int, object)
+    True
+    >>> implies(object, int)
+    False
+
+    >>> implies(int, str)
+    False
+
+    >>> implies(int, int)
+    True
+
+    >>> implies( (int,str), (object,object) )
+    True
+
+    >>> implies( (object,int), (object,str) )
+    False
+
+It's possible for a longer tuple to imply a shorter one::
+
+    >>> implies( (int,int), (object,) )
+    True
+
+But not the other way around::
+
+    >>> implies( (int,), (object,object) )
+    False
 
 
 -------------

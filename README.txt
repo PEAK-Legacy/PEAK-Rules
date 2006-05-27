@@ -88,12 +88,22 @@ anticipate that at least the first one will be finished in June.
 Design Concepts
 ===============
 
+Criterion
+    A criterion is a test that returns a boolean for a given value, for example
+    by testing its type.  The simplest criterion is just a class or type object,
+    meaning that the value should be of that type.
+
 Signature
     A condition expressed purely in terms of simple tests "and"ed together,
-    using no "or" operations of any kind.
+    using no "or" operations of any kind.  A signature specifies what argument
+    expressions are tested, and which criteria should be applied to them.
+    The simplest possible signature is a tuple of criteria, with each criterion
+    applied to the corresponding argument in an argument tuple.  An empty tuple
+    matches any possible input.
 
 Predicate
-    One or more signatures "or"ed together
+    One or more signatures "or"ed together.  (Note that this means that
+    signatures are predicates, but predicates are not necessarily signatures.)
 
 Rule
     A combination of a predicate, an action type, and a body (usually a
@@ -102,8 +112,8 @@ Rule
     that could match the predicate.
 
 Action Type
-    A factory that can produce an Action when supplied with a signature and
-    a body.  (Examples in ``peak.rules`` will include the ``MethodList``,
+    A factory that can produce an Action when supplied with a signature, body,
+    and sequence.  (Examples in ``peak.rules`` will include the ``MethodList``,
     ``MethodChain``, ``Around``, ``Before``, and ``After`` types.)
 
 Action
