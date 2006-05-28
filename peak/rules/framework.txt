@@ -7,9 +7,6 @@ way, e.g. adding custom action types to specialize method combination, or
 creating new kinds of engines or conditions.  It isn't intended to be user
 documentation for the built-in rule facility.
 
-    >>> from peak.rules.framework import *
-
-
 NOTE: Everything from this point down is just an outline of what will be here
 eventually.
 
@@ -18,14 +15,201 @@ eventually.
 Method Combination
 ------------------
 
+Method combination is performed using the ``combine_actions()`` API function::
+
+    >>> from peak.rules.framework import combine_actions
+
+``combine_actions()`` takes two arguments: a pair of actions.  They are
+compared using ``implies()`` to see if one is more specific than the other.
+If so, the more specific action's ``override()`` method is called, passing in
+the less-specific action.  If neither action can override the other, the first
+action's ``merge()`` method is called, passing in the other action.
+
+In either case, the result of calling the ``merge()`` or ``override()`` method
+is returned.
+
+So, to define a custom action type for method combination, it needs to support
+``implies()`` operations on its signature(s), and it needs to implement
+``merge()`` and ``override()`` methods.
+
+
+Signature Implication
+=====================
+
+The ``implies()`` function is used to determine the logical implication
+relationship between two signatures or methods.  A signature ``s1`` implies
+signature ``s2`` if ``s2`` will always match an invocation matched by ``s1``.
+(Action implication is based on signature implication; see the `Action Types`_
+section below for more details.)
+
+For the simplest signatures (tuples of types), this corresponds to a subclass
+relationship between the elements of the tuples::
+
+    >>> from peak.rules.framework import implies
+
+    >>> implies(int, object)
+    True
+    >>> implies(object, int)
+    False
+
+    >>> implies(int, str)
+    False
+
+    >>> implies(int, int)
+    True
+
+    >>> implies( (int,str), (object,object) )
+    True
+
+    >>> implies( (object,int), (object,str) )
+    False
+
+It's possible for a longer tuple to imply a shorter one::
+
+    >>> implies( (int,int), (object,) )
+    True
+
+But not the other way around::
+
+    >>> implies( (int,), (object,object) )
+    False
+
+And as a special case of type implication, any classic class implies both
+``object`` and ``InstanceType`` -- and nothing else::
+
+    >>> class X: pass
+    >>> implies(X, object)
+    True
+    >>> implies(X, type(X()))
+    True
+
+
+
 
 Action Types
 ============
 
-The current ``Action`` type is just a placeholder until we get method
-combination bootstrapped.  But here are some tests of it anyway::
 
-MethodList, MethodChain, Around, Before, After
+Method
+------
+
+The default action type (for rules with no specified action type) is
+``Method``.  A ``Method`` combines a body, signature, precedence, and an
+optional "chained" action that it can fall back to.  All of these values
+are optional, except for the body::
+
+    >>> from peak.rules.framework import Method
+
+    >>> def dummy(*args, **kw):
+    ...     print "called with", args, kw
+
+    >>> meth = Method(dummy, (object,), 1)
+    >>> meth
+    Method(<...dummy...>, (<type 'object'>,), 1, None)
+
+Calling a ``Method`` invokes the wrapped body::
+
+    >>> meth(1,2,x=3)
+    called with (1, 2) {'x': 3}
+
+One ``Method`` implies another if and only if its signature implies the
+other's::
+
+    >>> implies(Method(dummy,(int,int)), Method(dummy,(object,object)))
+    True
+
+    >>> implies(Method(dummy,(object,object)), Method(dummy,(int,int)))
+    False
+
+
+When a method overrides another, you get the overriding method::
+
+    >>> meth.override(Method(dummy))
+    Method(<...dummy...>, (<type 'object'>,), 1, None)
+
+Unless the overriding method's body is a function whose first parameter is
+named ``next_method``, in which case a chain of methods is created via the
+"tail" of a copy of the overriding method::
+
+    >>> def overriding_fn(next_method, etc):
+    ...     print "calling", next_method
+    ...     return next_method(etc)
+
+    >>> chain = Method(overriding_fn).override(Method(dummy))
+    >>> chain
+    Method(<...overriding_fn...>, (), 0, Method(<...dummy...>, (), 0, None))
+
+The resulting chain is a callable ``Method``, and the ``next_method`` is passed
+in to the first function of the chain::
+
+    >>> chain(42)
+    calling Method(<...dummy...>, (), 0, None)
+    called with (42,) {}
+
+
+Around
+------
+
+``Around`` methods are identical to normal ``Method`` objects, except that
+whenever an ``Around`` method and a regular ``Method`` are combined, the
+``Around`` method overrides the regular one.  This forces all the regular
+methods to be further down the chain than all of the "around" methods.
+
+    >>> from peak.rules.framework import Around
+
+    >>> combine_actions(Method(dummy), Around(overriding_fn))
+    Around(<...overriding_fn...>, (), 0, Method(<...dummy...>, (), 0, None))
+
+You will normally only want to use ``Around`` methods with functions that have
+a ``next_method`` parameter, since their purpose is to wrap "around" the
+calling of lower-precedence methods.  If you don't do this, then the method
+chain will always end at that ``Around`` instance::
+
+    >>> combine_actions(Method(overriding_fn), Around(dummy))
+    Around(<...dummy...>, (), 0, None)
+
+
+NoApplicableMethods
+-------------------
+
+The simplest possible action type is ``NoApplicableMethods``, meaning that
+there is no applicable action.  When it's overridden by another method, it
+will of course get chained to the other method's tail (if appropriate).
+
+    >>> from peak.rules.framework import NoApplicableMethods
+    >>> naf = NoApplicableMethods()
+    >>> meth = Method(overriding_fn)
+
+    >>> combine_actions(naf, meth)
+    Method(<...overriding_fn...>, (), 0, <...NoApplicableMethods...>)
+
+    >>> combine_actions(meth, naf)
+    Method(<...overriding_fn...>, (), 0, <...NoApplicableMethods...>)
+
+Calling a ``NoApplicableMethods`` raises it, displaying the arguments it was
+called with::
+
+    >>> naf(1,2,x="y")
+    Traceback (most recent call last):
+      ...
+    NoApplicableMethods: ((1, 2), {'x': 'y'})
+
+
+Before and After
+----------------
+
+The ``Before`` and ``After`` action types are used to call observers before
+or after invoking a chained action.
+
+
+MethodList, Before, After,
+
+
+
+AmbiguousMethods
+-----------------
+
+
 
 decorators and how to create them: when, around, before, after
 
@@ -84,7 +268,7 @@ methods::
     >>> r = Rule(dummy)
     >>> rs.add(r)
     >>> list(rs)
-    [(<...Action...>, <function dummy ...>, (), 0)]
+    [(<...Method...>, <function dummy ...>, (), 0)]
 
     >>> rs.remove(r)
     >>> list(rs)
@@ -107,10 +291,10 @@ be used to create action objects.)
     >>> rs.subscribe(do)
 
     >>> rs.add(r)
-    Add: (<...Action...>, <function dummy ...>, (), 1)
+    Add: (<...Method...>, <function dummy ...>, (), 1)
 
     >>> rs.remove(r)
-    Remove: (<...Action...>, <function dummy ...>, (), 1)
+    Remove: (<...Method...>, <function dummy ...>, (), 1)
 
     >>> rs.unsubscribe(do)
 
@@ -121,52 +305,13 @@ operation of the ``actions_changed()`` method::
 
     >>> rs.add(r)
     >>> rs.subscribe(do)
-    Add: (<...Action...>, <function dummy ...>, (), 2)
+    Add: (<...Method...>, <function dummy ...>, (), 2)
 
 Unsubscribing, however, does not send any removal messages::
 
     >>> rs.unsubscribe(do)
 
 
-
-Signature Implication
-=====================
-
-The ``implies()`` function is used to determine the logical implication
-relationship between two signatures.  A signature ``s1`` implies signature
-``s2`` if ``s2`` will always match an invocation matched by ``s1``.
-
-For the simplest signatures (tuples of types), this corresponds to a subclass
-relationship between the elements of the tuples::
-
-    >>> from peak.rules.framework import implies
-
-    >>> implies(int, object)
-    True
-    >>> implies(object, int)
-    False
-
-    >>> implies(int, str)
-    False
-
-    >>> implies(int, int)
-    True
-
-    >>> implies( (int,str), (object,object) )
-    True
-
-    >>> implies( (object,int), (object,str) )
-    False
-
-It's possible for a longer tuple to imply a shorter one::
-
-    >>> implies( (int,int), (object,) )
-    True
-
-But not the other way around::
-
-    >>> implies( (int,), (object,object) )
-    False
 
 
 -------------
