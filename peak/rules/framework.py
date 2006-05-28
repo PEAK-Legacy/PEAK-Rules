@@ -8,6 +8,7 @@ __all__ = [
 ]
 
 from peak.util.decorators import decorate_assignment, decorate
+from peak.util.assembler import Code, Const, Call
 import inspect, new
 
 try:
@@ -37,7 +38,6 @@ def predicate_signatures(predicate):
     yield predicate # XXX
 
 _core_rules = None      # the core rules aren't loaded yet
-
 
 class Method(object):
     """A simple method w/optional chaining"""
@@ -210,10 +210,9 @@ class TypeEngine(object):
         self.registry = {}
         self.cache = {}
         self.func = func
-        # XXX redefine func's code to call us, using BytecodeAssembler
+        self.generate_code()
         rules.subscribe(self)
         self.ruleset = rules
-
     def actions_changed(self, added, removed):
         registry = self.registry
         for r in removed:
@@ -244,6 +243,21 @@ class TypeEngine(object):
         return f(*args)
 
 
+
+    def generate_code(self):
+        c = Code.from_function(self.func, copy_lineno=True)
+        args, star, dstar, defaults = inspect.getargspec(self.func)
+        types = [
+            Call(
+                Const(getattr),
+                (name, Const('__class__'), Call(Const(type),(name,)))
+            ) for name in flatten(args)
+        ]
+        target = Call(Const(self.cache.get), (tuple(types), Const(self)))
+        c.Return(Call(target, map(tuplize,args), (), star, dstar))
+        self.func.func_code = c.code()
+
+
     def reset_cache(self):
 
         self.cache.clear()
@@ -271,18 +285,14 @@ class TypeEngine(object):
 
 
 
+def flatten(v):
+    if isinstance(v,basestring): yield v; return
+    for i in v:
+        for ii in flatten(i): yield ii
 
-
-
-
-
-
-
-
-
-
-
-
+def tuplize(v):
+    if isinstance(v,basestring): return v
+    if isinstance(v,list): return tuple(map(tuplize,v))
 
 
 def rules_for(f, abstract=True):
@@ -316,20 +326,10 @@ when = Method.make_decorator(
 
 
 
-
-
-
-
-
-
-
-
-
-
 abstract()
 def implies(s1,s2):
     """Is s2 always true if s1 is true?"""
-    return implies.__engine__(s1,s2)    # XXX until we get code generation
+
 
 when(implies, (tuple,tuple))
 def tuple_implies(s1,s2):

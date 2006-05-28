@@ -9,7 +9,7 @@ class TypeEngineTests(unittest.TestCase):
     def testIntraSignatureCombinationAndRemoval(self):
         abstract()
         def f(a):
-            return f.__engine__(a)
+            """blah"""
 
         rx2 = Rule(x2,(int,), Method)
         rx3 = Rule(x3,(int,), Around)
@@ -26,7 +26,7 @@ class TypeEngineTests(unittest.TestCase):
     def testAroundDecorator(self):
         abstract()
         def f(a):
-            return f.__engine__(a)
+            """blah"""
 
         when(f, (int,))(x2)
         self.assertEqual(f(1), 2)
