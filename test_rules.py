@@ -23,20 +23,20 @@ class TypeEngineTests(unittest.TestCase):
         f.__rules__.remove(rx3)
         self.assertEqual(f(1), 2)
 
-    def testAroundDecorator(self):
-        abstract()
+    def testAroundDecoratorAndRetroactiveCombining(self):
         def f(a):
-            """blah"""
+            return a
+
+        self.assertEqual(f(1), 1)
+        self.assertEqual(f('x'), 'x')
 
         when(f, (int,))(x2)
         self.assertEqual(f(1), 2)
+        self.assertEqual(f('x'), 'x')
 
         around(f, (int,))(lambda a:42)
         self.assertEqual(f(1), 42)
-
-
-
-
+        self.assertEqual(f('x'), 'x')
 
 
 def additional_tests():

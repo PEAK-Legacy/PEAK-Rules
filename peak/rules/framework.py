@@ -295,9 +295,15 @@ def tuplize(v):
     if isinstance(v,list): return tuple(map(tuplize,v))
 
 
-def rules_for(f, abstract=True):
+def rules_for(f, abstract=False):
     if not hasattr(f,'__rules__'):
         f.__rules__ = RuleSet()
+        if not abstract:
+            clone = new.function(
+                f.func_code, f.func_globals, f.func_name, f.func_defaults,
+                f.func_closure
+            )
+            f.__rules__.add(Rule(clone))
     if not hasattr(f, '__engine__'):
         f.__engine__ = TypeEngine(f, f.__rules__)
     return f.__rules__
@@ -306,7 +312,7 @@ def rules_for(f, abstract=True):
 def abstract():
     """Declare a function to be abstract"""
     def callback(frame, name, func, old_locals):
-        rules_for(func)
+        rules_for(func, True)
         return func
     return decorate_assignment(callback)
 
@@ -314,12 +320,6 @@ def abstract():
 when = Method.make_decorator(
     "when", "Extend a generic function with a new action"
 )
-
-
-
-
-
-
 
 
 
