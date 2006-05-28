@@ -23,6 +23,21 @@ class TypeEngineTests(unittest.TestCase):
         f.__rules__.remove(rx3)
         self.assertEqual(f(1), 2)
 
+    def testAroundDecorator(self):
+        abstract()
+        def f(a):
+            return f.__engine__(a)
+
+        when(f, (int,))(x2)
+        self.assertEqual(f(1), 2)
+
+        around(f, (int,))(lambda a:42)
+        self.assertEqual(f(1), 42)
+
+
+
+
+
 
 def additional_tests():
     import doctest
@@ -30,4 +45,38 @@ def additional_tests():
         'framework.txt', package='peak.rules',
         optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE,
     )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

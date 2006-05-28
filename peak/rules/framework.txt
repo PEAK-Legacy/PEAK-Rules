@@ -100,7 +100,7 @@ are optional, except for the body::
     >>> def dummy(*args, **kw):
     ...     print "called with", args, kw
 
-    >>> meth = Method(dummy, (object,), 1)
+    >>> meth = Method.make(dummy, (object,), 1)
     >>> meth
     Method(<...dummy...>, (<type 'object'>,), 1, None)
 
@@ -112,16 +112,16 @@ Calling a ``Method`` invokes the wrapped body::
 One ``Method`` implies another if and only if its signature implies the
 other's::
 
-    >>> implies(Method(dummy,(int,int)), Method(dummy,(object,object)))
+    >>> implies(Method.make(dummy,(int,int)), Method.make(dummy,(object,object)))
     True
 
-    >>> implies(Method(dummy,(object,object)), Method(dummy,(int,int)))
+    >>> implies(Method.make(dummy,(object,object)), Method.make(dummy,(int,int)))
     False
 
 
 When a method overrides another, you get the overriding method::
 
-    >>> meth.override(Method(dummy))
+    >>> meth.override(Method.make(dummy))
     Method(<...dummy...>, (<type 'object'>,), 1, None)
 
 Unless the overriding method's body is a function whose first parameter is
@@ -132,7 +132,7 @@ named ``next_method``, in which case a chain of methods is created via the
     ...     print "calling", next_method
     ...     return next_method(etc)
 
-    >>> chain = Method(overriding_fn).override(Method(dummy))
+    >>> chain = Method.make(overriding_fn).override(Method.make(dummy))
     >>> chain
     Method(<...overriding_fn...>, (), 0, Method(<...dummy...>, (), 0, None))
 
@@ -154,7 +154,7 @@ methods to be further down the chain than all of the "around" methods.
 
     >>> from peak.rules.framework import Around
 
-    >>> combine_actions(Method(dummy), Around(overriding_fn))
+    >>> combine_actions(Method.make(dummy), Around(overriding_fn))
     Around(<...overriding_fn...>, (), 0, Method(<...dummy...>, (), 0, None))
 
 You will normally only want to use ``Around`` methods with functions that have
@@ -162,7 +162,7 @@ a ``next_method`` parameter, since their purpose is to wrap "around" the
 calling of lower-precedence methods.  If you don't do this, then the method
 chain will always end at that ``Around`` instance::
 
-    >>> combine_actions(Method(overriding_fn), Around(dummy))
+    >>> combine_actions(Method.make(overriding_fn), Around(dummy))
     Around(<...dummy...>, (), 0, None)
 
 
@@ -175,7 +175,7 @@ will of course get chained to the other method's tail (if appropriate).
 
     >>> from peak.rules.framework import NoApplicableMethods
     >>> naf = NoApplicableMethods()
-    >>> meth = Method(overriding_fn)
+    >>> meth = Method.make(overriding_fn)
 
     >>> combine_actions(naf, meth)
     Method(<...overriding_fn...>, (), 0, <...NoApplicableMethods...>)
@@ -193,15 +193,101 @@ called with::
 
 
 
-Before and After
-----------------
+Before, After, and MethodList
+-----------------------------
 
-The ``Before`` and ``After`` action types are used to call observers before
-or after invoking a chained action.
+``MethodList`` actions differ from normal method chain actions in a number of
+ways:
 
+* In case of ambiguity, they are ordered according to the sequence they were
+  given in the underlying rule set.
 
-MethodList, Before, After,
+* They do not need to inspect or call a ``next_method()``; the next method is
+  always called automatically.
 
+The ``Before`` and ``After`` action types are both ``MethodList`` subclasses.
+``Before`` actions are invoked before their tail action, and ``After`` actions
+are invoked afterward::
+
+    >>> from peak.rules.framework import Before, After
+
+    >>> def primary(*args,**kw):
+    ...     print "primary method called"
+
+    >>> b = Before.make(dummy).override(Method.make(primary))
+    >>> a = After.make(dummy).override(Method.make(primary))
+
+    >>> b(23)
+    called with (23,) {}
+    primary method called
+
+    >>> a(42)
+    primary method called
+    called with (42,) {}
+
+Notice that to create a ``MethodList`` with only one method, you must use the
+``make()`` classmethod.  ``Method`` also has this classmethod, but it has the
+same signature as the main constructor.  The main constructor for
+``MethodList`` has a different signature for its internal use.
+
+The combination of before, after, primary, and around methods is as shown::
+
+    >>> b = Before.make(dummy)
+    >>> a = After.make(dummy)
+    >>> p = Method.make(primary)
+    >>> o = Around.make(overriding_fn)
+    >>> combine_actions(b, combine_actions(a, combine_actions(p, o)))(17)
+    calling Before(...dummy..., After(...dummy..., Method(...primary...)))
+    called with (17,) {}
+    primary method called
+    called with (17,) {}
+
+``Around`` methods take precedence over all other method types, so the around
+method's tail is a ``Before`` that wraps the ``After`` that wraps the primary
+method.
+
+Within a ``MethodList``, methods are ordered by signature implication first,
+and then by definition order within groups of ambiguous signatures::
+
+    >>> b1 = Before.make("b1", (), 1)
+    >>> b2 = Before.make("b2", (), 2)
+    >>> b3 = Before.make("b3", (int,), 3)
+
+    >>> combine_actions(b2, b3).sorted()
+    [((<type 'int'>,), 'b3'), ((), 'b2')]
+
+    >>> combine_actions(b2, b1).sorted()
+    [((), 'b1'), ((), 'b2')]
+
+    >>> combine_actions(b3, combine_actions(b1,b2)).sorted()
+    [((<type 'int'>,), 'b3'), ((), 'b1'), ((), 'b2')]
+
+``After`` methods sort the opposite way::
+
+    >>> a1 = After.make("a1", (), 1)
+    >>> a2 = After.make("a2", (), 2)
+    >>> a3 = After.make("a3", (int,), 3)
+
+    >>> combine_actions(a2, a3).sorted()
+    [((), 'a2'), ((<type 'int'>,), 'a3')]
+
+    >>> combine_actions(a2, a1).sorted()
+    [((), 'a2'), ((), 'a1')]
+
+    >>> combine_actions(a3, combine_actions(a1,a2)).sorted()
+    [((), 'a2'), ((), 'a1'), ((<type 'int'>,), 'a3')]
+
+And lower-precedence duplicate bodies are automatically eliminated from the
+results::
+
+    >>> combine_actions(a1,a1).sorted()
+    [((), 'a1')]
+
+    >>> combine_actions(b1,b1).sorted()
+    [((), 'b1')]
+
+    >>> combine_actions(b1, Before.make("b1", (int,), 1)).sorted()
+    [((<type 'int'>,), 'b1')]
 
 
 AmbiguousMethods
@@ -218,7 +304,7 @@ object containing the ambiguous methods::
 Ambiguous methods can be overridden by an action that would override all of
 the ambiguous actions::
 
-    >>> m1 = Method(dummy, (int,))
+    >>> m1 = Method.make(dummy, (int,))
     >>> combine_actions(am, m1) is m1
     True
     >>> combine_actions(m1, am) is m1
@@ -227,7 +313,7 @@ the ambiguous actions::
 And if appropriate, the ``AmbiguousMethods`` will end up chained to the
 overriding method::
 
-    >>> m2 = Method(overriding_fn, (str,))
+    >>> m2 = Method.make(overriding_fn, (str,))
     >>> combine_actions(am, m2)
     Method(<...overriding_fn...>, (<type 'str'>,), 0, AmbiguousMethods(...))
 
@@ -259,8 +345,14 @@ And invoking an ``AmbiguousMethods`` instance just outputs diagnostic info::
     AmbiguousMethods: ([Method(...), Method(...)], (1, 2), {'x': 'y'})
 
 
+Decorators
+==========
 
 XXX decorators and how to create them: when, around, before, after
+
+
+Creating Custom Combinations
+============================
 
 XXX custom combination demo from RuleDispatch (compute upcharges+tax)
 

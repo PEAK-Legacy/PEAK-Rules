@@ -1,11 +1,14 @@
 __all__ = [
-    'Rule', 'RuleSet', 'predicate_signatures', 'abstract', 'when', 'rules_for',
-    'implies', 'combine_actions', 'Method', 'Around', 'AmbiguousMethods',
-    'NoApplicableMethods',
+    'Rule', 'RuleSet', 'predicate_signatures', 'rules_for',
+    'Method', 'Around', 'Before', 'After', 'MethodList',
+    'DispatchError', 'AmbiguousMethods', 'NoApplicableMethods',
+    'abstract', 'when', 'before', 'after', 'around',
+    'implies', 'dominant_signatures', 'combine_actions',
+    'always_overrides', 'merge_by_default',
 ]
 
 from peak.util.decorators import decorate_assignment, decorate
-import inspect
+import inspect, new
 
 try:
     set, frozenset
@@ -33,14 +36,12 @@ class Rule(object):
 def predicate_signatures(predicate):
     yield predicate # XXX
 
-
 _core_rules = None      # the core rules aren't loaded yet
-
-
 
 
 class Method(object):
     """A simple method w/optional chaining"""
+
     def __init__(self, body, signature=(), precedence=0, tail=None):
         self.body = body
         self.signature = signature
@@ -79,7 +80,6 @@ class Method(object):
 
 
 
-
     def merge(self, other):
         #if self.__class__ is other.__class__ and self.body is other.body:
         #    XXX precedence should also match; need to merge signatures
@@ -88,37 +88,37 @@ class Method(object):
         #    )
         return AmbiguousMethods([self,other])
 
+    decorate(classmethod)
+    def make_decorator(cls, name, doc=None):
+        if doc is None:
+            doc = "Extend a generic function with a method of type ``%s``" \
+                  % cls.__name__
 
+        if cls is Method:
+            make = None  # allow gf's to use something else instead of Method
+        else:
+            maker = cls.make
 
+        def decorate(f, pred=()):
+            rules = rules_for(f)
 
+            def callback(frame, name, func, old_locals):
+                rules.add( Rule(func, pred, cls) )
+                if old_locals.get(name) in (f, rules):
+                    return f    # prevent overwriting if name is the same
+                return func
 
+            return decorate_assignment(callback)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        try:
+            decorate.__name__ = name
+        except TypeError:
+            decorate = new.function(
+                decorate.func_code, decorate.func_globals, name,
+                decorate.func_defaults, decorate.func_closure
+            )
+        decorate.__doc__ = doc
+        return decorate
 
 
 class RuleSet(object):
@@ -301,18 +301,18 @@ def abstract():
     return decorate_assignment(callback)
 
 
-def when(f,pred=()):
-    """Extend a generic function with a new action"""
+when = Method.make_decorator(
+    "when", "Extend a generic function with a new action"
+)
 
-    rules = rules_for(f)
 
-    def callback(frame, name, func, old_locals):
-        rules.add( Rule(func, pred) )
-        if old_locals.get(name) in (f, rules):
-            return f    # prevent overwriting if name is the same
-        return func
 
-    return decorate_assignment(callback)
+
+
+
+
+
+
 
 
 
@@ -367,8 +367,8 @@ def method_implies(a1, a2):
 
 
 
-YES = lambda s1,s2: True
-NO  = lambda s1,s2: False
+def YES(s1,s2): return True
+def NO(s1,s2):  return False
 
 def always_overrides(a,b):
     """instances of `a` always imply `b`; `b` instances never imply `a`"""
@@ -397,6 +397,8 @@ def combine_actions(a1,a2):
 class Around(Method):
     """'Around' Method (takes precedence over regular methods)"""
 
+around = Around.make_decorator('around')
+
 always_overrides(Around, Method)
 
 
@@ -406,36 +408,66 @@ always_overrides(Around, Method)
 
 
 
-
-
-'''class MethodList(Method):
+class MethodList(Method):
     """A list of related methods"""
-
     def __init__(self, items=(), tail=None):
         self.items = list(items)
         self.tail = tail
         self.can_tail = True
+
+    _sorted_items = None
 
     decorate(classmethod)
     def make(cls, body, signature=(), precedence=0):
         return cls( [(signature, precedence, body)] )
 
     def __repr__(self):
-        data = self.bodies, self.tail
+        data = self.items, self.tail
         return self.__class__.__name__+repr(data)
 
     def tail_with(self, tail):
-        return self.__class__(self.bodies, tail)
+        return self.__class__(self.items, tail)
 
     def merge(self, other):
         if other.__class__ is not self.__class__:
             raise TypeError("Incompatible action types for merge", self, other)
         return self.__class__(
-            self.bodies+other.bodies, combine_actions(self.tail, other.tail)
+            self.items+other.items, combine_actions(self.tail, other.tail)
         )
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    def sorted(self):
+        if self._sorted_items is not None:
+            return self._sorted_items
+
+        self.items.sort(lambda a,b: cmp(a[1],b[1]))
+        rest = [(s,b) for (s,p,b) in self.items]
+
+        self._sorted_items = items = []
+        seen = set()
+        while rest:
+            best = dominant_signatures(rest)
+            map(rest.remove, best)
+            for s,b in best:
+                if b not in seen:
+                    seen.add(b)
+                    items.append((s,b))
+        return items
+
 merge_by_default(MethodList)
-'''
 
 
 
@@ -444,6 +476,56 @@ merge_by_default(MethodList)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class Before(MethodList):
+    """Method(s) to be called before the primary method(s)"""
+
+    def __call__(self, *args, **kw):
+        for sig, body in self.sorted():
+            body(*args, **kw)
+        return self.tail(*args, **kw)
+
+before = Before.make_decorator('before')
+merge_by_default(Before)
+
+
+class After(MethodList):
+    """Method(s) to be called after the primary method(s)"""
+
+    def sorted(self):
+        # Reverse the sorting for after methods
+        if self._sorted_items is not None:
+            return self._sorted_items
+        items = super(After,self).sorted()
+        items.reverse()
+        return items
+
+    def __call__(self, *args, **kw):
+        retval = self.tail(*args, **kw)
+        for sig, body in self.sorted():
+            body(*args, **kw)
+
+after  = After.make_decorator('after')
+merge_by_default(After)
+
+always_overrides(Around, Before)
+always_overrides(Around, After)
+always_overrides(Before, After)
+always_overrides(Before, Method)
+always_overrides(After, Method)
 
 
 
@@ -530,4 +612,45 @@ merge_by_default(AmbiguousMethods)
 
 # the core is finished loading, snapshot the core rules for implies()
 _core_rules = implies.__engine__.registry.copy()
+
+def dominant_signatures(cases):
+    """Return the most-specific ``(signature,body)`` pairs from `cases`
+
+    `cases` is a sequence of ``(signature,body)`` pairs.  This routine checks
+    the ``implies()`` relationships between pairs of signatures, and then
+    returns a list of ``(signature,method)`` pairs such that no signature
+    remaining in the original list implies a signature in the new list.
+    The relative order of cases in the new list is preserved.
+    """
+
+    if len(cases)==1:
+        # Shortcut for common case
+        return list(cases)
+
+    best, rest = list(cases[:1]), list(cases[1:])
+
+    for new_sig, new_meth in rest:
+
+        for old_sig, old_meth in best[:]:   # copy so we can modify inplace
+
+            new_implies_old = implies(new_sig, old_sig)
+            old_implies_new = implies(old_sig, new_sig)
+
+            if new_implies_old:
+
+                if not old_implies_new:
+                    # better, remove the old one
+                    best.remove((old_sig, old_meth))
+
+            elif old_implies_new:
+                # worse, skip adding the new one
+                break
+        else:
+            # new_sig has passed the gauntlet, as it has not been implied
+            # by any of the current "best" items
+            best.append((new_sig,new_meth))
+
+    return best
+
+
 
