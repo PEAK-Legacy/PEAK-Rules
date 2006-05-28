@@ -77,7 +77,48 @@ class Method:
     def tail_with(self, tail):
         return self.__class__(self.body, self.signature, self.precedence, tail)
 
-    #def merge(self, other): return Ambig
+
+
+
+    def merge(self, other):
+        #if self.__class__ is other.__class__ and self.body is other.body:
+        #    XXX precedence should also match; need to merge signatures
+        #    return self.__class__(
+        #        self.body, ???, ???, combine_actions(self.tail, other.tail)
+        #    )
+        return AmbiguousMethods([self,other])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 class RuleSet(object):
@@ -285,6 +326,19 @@ def method_implies(a1, a2):
 
 
 
+YES = lambda s1,s2: True
+NO  = lambda s1,s2: False
+
+def always_overrides(a,b):
+    """instances of `a` always imply `b`; `b` instances never imply `a`"""
+    when(implies, (a, b))(YES)
+    when(implies, (b, a))(NO)
+
+def merge_by_default(t):
+    """instances of `t` never imply other instances of `t`"""
+    when(implies, (t, t))(NO)
+
+
 def combine_actions(a1,a2):
     """Return a new action for the combination of a1 and a2"""
     if a1 is None:
@@ -299,23 +353,10 @@ def combine_actions(a1,a2):
     return a1.merge(a2)
 
 
+class Around(Method):
+    """'Around' Method (takes precedence over regular methods)"""
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+always_overrides(Around, Method)
 
 
 
@@ -351,9 +392,9 @@ def combine_actions(a1,a2):
         return self.__class__(
             self.bodies+other.bodies, combine_actions(self.tail, other.tail)
         )
+
+merge_by_default(MethodList)
 '''
-
-
 
 
 
@@ -373,29 +414,16 @@ class DispatchError(Exception):
     def __call__(self,*args,**kw):
         raise self.__class__(*self.args+(args,kw))  # XXX
 
-
-class AmbiguousMethods(DispatchError):
-    """More than one choice of action is possible"""
-
-    def __init__(self, actions):
-        self.actions = actions
+merge_by_default(DispatchError)
 
 
 class NoApplicableMethods(DispatchError):
     """No applicable action has been defined for the given arguments"""
 
-YES = lambda s1,s2: True
-NO  = lambda s1,s2: False
+    def merge(self, other):
+        return AmbiguousMethods([self,other])
 
-when(implies, (Method, NoApplicableMethods))(YES)
-when(implies, (NoApplicableMethods, Method))(NO)
-when(implies, (NoApplicableMethods, NoApplicableMethods))(NO)
-
-class Around(Method):
-    """'Around' Method (takes precedence over regular methods)"""
-
-when(implies, (Around,Method))(YES)
-when(implies, (Method,Around))(NO)
+always_overrides(Method, NoApplicableMethods)
 
 
 
@@ -404,6 +432,60 @@ when(implies, (Method,Around))(NO)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class AmbiguousMethods(DispatchError):
+    """More than one choice of action is possible"""
+
+    def __init__(self, methods, *args):
+        DispatchError.__init__(self, methods, *args)
+        mine = self.methods = []
+        for m in methods:
+            if isinstance(m, AmbiguousMethods):
+                mine.extend(m.methods)
+            else:
+                mine.append(m)
+
+    def merge(self, other):
+        return AmbiguousMethods(self.methods+[other])
+
+    def override(self, other):
+        return self
+    def __repr__(self): return "AmbiguousMethods(%s)" % self.methods
+
+
+when(implies, (AmbiguousMethods, Method))
+def ambiguous_overrides(a1, a2):
+    for m in a1.methods:
+        if implies(m, a2):
+            # if any ambiguous method overrides a2, we can toss it
+            return True
+    return False
+
+when(implies, (Method, AmbiguousMethods))
+def override_ambiguous(a1, a2):
+    for m in a2.methods:
+        if not implies(a1, m):
+            return False
+    return True     # can only override if it overrides all the ambiguity
+
+# needed to disambiguate the above two methods if combining a pair of AM's:
+merge_by_default(AmbiguousMethods)
 
 
 

@@ -7,9 +7,6 @@ way, e.g. adding custom action types to specialize method combination, or
 creating new kinds of engines or conditions.  It isn't intended to be user
 documentation for the built-in rule facility.
 
-NOTE: Everything from this point down is just an outline of what will be here
-eventually.
-
 
 ------------------
 Method Combination
@@ -195,6 +192,7 @@ called with::
     NoApplicableMethods: ((1, 2), {'x': 'y'})
 
 
+
 Before and After
 ----------------
 
@@ -207,22 +205,64 @@ MethodList, Before, After,
 
 
 AmbiguousMethods
------------------
+----------------
+
+When you combine actions whose signatures are ambiguous (i.e. identical,
+overlapping, or mutually exclusive), you end up with an ``AmbiguousMethods``
+object containing the ambiguous methods::
+
+    >>> am = combine_actions(meth, meth)
+    >>> am
+    AmbiguousMethods([Method(...), Method(...)])
+
+Ambiguous methods can be overridden by an action that would override all of
+the ambiguous actions::
+
+    >>> m1 = Method(dummy, (int,))
+    >>> combine_actions(am, m1) is m1
+    True
+    >>> combine_actions(m1, am) is m1
+    True
+
+And if appropriate, the ``AmbiguousMethods`` will end up chained to the
+overriding method::
+
+    >>> m2 = Method(overriding_fn, (str,))
+    >>> combine_actions(am, m2)
+    Method(<...overriding_fn...>, (<type 'str'>,), 0, AmbiguousMethods(...))
+
+    >>> combine_actions(m2, am)
+    Method(<...overriding_fn...>, (<type 'str'>,), 0, AmbiguousMethods(...))
+
+Ambiguous methods override and ignore anything that would be overridden by
+any of their members::
+
+    >>> am = combine_actions(m1, m1)
+    >>> combine_actions(am, meth) is am
+    True
+    >>> combine_actions(meth, am) is am
+    True
+
+But anything that overlaps just results in a bigger ``AmbiguousMethods``::
+
+    >>> combine_actions(m2,am)
+    AmbiguousMethods([Method(...), Method(...), Method(...)])
+
+    >>> combine_actions(am,m2)
+    AmbiguousMethods([Method(...), Method(...), Method(...)])
+
+And invoking an ``AmbiguousMethods`` instance just outputs diagnostic info::
+
+    >>> am(1,2,x="y")
+    Traceback (most recent call last):
+      ...
+    AmbiguousMethods: ([Method(...), Method(...)], (1, 2), {'x': 'y'})
 
 
 
-decorators and how to create them: when, around, before, after
+XXX decorators and how to create them: when, around, before, after
 
-custom combination demo from RuleDispatch (compute upcharges+tax)
-
-
-Core Algorithm
-==============
-
-combine_actions(a1, a2)
-
-compile_action(engine, action)
-
+XXX custom combination demo from RuleDispatch (compute upcharges+tax)
 
 
 ----------------
@@ -310,15 +350,4 @@ operation of the ``actions_changed()`` method::
 Unsubscribing, however, does not send any removal messages::
 
     >>> rs.unsubscribe(do)
-
-
-
-
--------------
-Miscellaneous
--------------
-
-Subscription Management
-=======================
-
 
