@@ -34,12 +34,12 @@ def predicate_signatures(predicate):
     yield predicate # XXX
 
 
+_core_rules = None      # the core rules aren't loaded yet
 
 
 
 
-
-class Method:
+class Method(object):
     """A simple method w/optional chaining"""
     def __init__(self, body, signature=(), precedence=0, tail=None):
         self.body = body
@@ -124,6 +124,7 @@ class Method:
 class RuleSet(object):
     """An observable, stably-ordered collection of rules"""
 
+    #default_action = NoApplicableMethods()
     default_actiontype = Method
     counter = 0
 
@@ -161,7 +162,6 @@ class RuleSet(object):
                 yield actiondef
 
 
-
     def actions_for(self, rule, sequence):
         actiontype = rule.actiontype or self.default_actiontype
         for signature in predicate_signatures(rule.predicate):
@@ -169,7 +169,8 @@ class RuleSet(object):
 
     def subscribe(self, listener):
         self.listeners.append(listener)
-        listener.actions_changed(frozenset(self), empty)
+        if self.rules:
+            listener.actions_changed(frozenset(self), empty)
 
     def unsubscribe(self, listener):
         self.listeners.remove(listener)
@@ -202,45 +203,85 @@ class RuleSet(object):
 
 
 
-
-class DefaultEngine(object):
+class TypeEngine(object):
     """Simple type-based dispatching"""
 
     def __init__(self, func, rules):
         self.registry = {}
+        self.cache = {}
         self.func = func
         # XXX redefine func's code to call us, using BytecodeAssembler
         rules.subscribe(self)
         self.ruleset = rules
 
-    def close(self):
-        self.ruleset.unsubscribe(self)
-
     def actions_changed(self, added, removed):
-        # XXX support removes
+        registry = self.registry
+        for r in removed:
+            registry.clear()
+            added = self.ruleset
+            break   # force full regeneration if any rules removed
         for (atype, body, sig, seq) in added:
-            # XXX needs to be a list, to allow combinations for a signature
-            self.registry[sig] = atype(body,sig,seq)
+            action = atype(body,sig,seq)
+            if sig in registry:
+                registry[sig] = combine_actions(action, registry[sig])
+            else:
+                registry[sig] = action
+        self.reset_cache()
 
     def __getitem__(self, types):
         registry = self.registry
-
-        if types in registry:   # XXX shouldn't be needed w/a populated cache
-            return registry[types]
-
-        action = NoApplicableMethods()
+        action = self.ruleset.default_action
         for sig in registry:
             if implies(types, sig):
-                # XXX this should pull from the cache instead
                 action = combine_actions(action, registry[sig])
         return action
 
     def __call__(self, *args):
-        # XXX should cache - and the code should be generated in the function,
-        #     not run here.
-        return self[
-            tuple([getattr(arg,'__class__',type(arg)) for arg in args])
-        ](*args)
+        # XXX code similar to this should be generated inside self.func
+        types = tuple([getattr(arg,'__class__',type(arg)) for arg in args])
+        try: f = self.cache[types]
+        except KeyError: f = self.cache[types] = self[types]
+        return f(*args)
+
+
+    def reset_cache(self):
+
+        self.cache.clear()
+
+        if self is implies.__engine__:
+            # For every generic function *but* implies(), it's okay to let
+            # the cache populate lazily.  But implies() has to be working
+            # in order to populate the cache!  Therefore, we have to
+            # pre-populate the cache here.  This pre-population must include
+            # *only* core framework rules, because rules added later might
+            # need to override/combine and so should still be cached lazily.
+            #
+            if _core_rules:
+                # Update from our copy of the core rules
+                self.cache.update(_core_rules)
+            else:
+                # The core is not bootstrapped yet; copy *everything* to cache
+                # since anything being added now is a core rule by definition.
+                self.cache.update(self.registry)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -248,7 +289,7 @@ def rules_for(f, abstract=True):
     if not hasattr(f,'__rules__'):
         f.__rules__ = RuleSet()
     if not hasattr(f, '__engine__'):
-        f.__engine__ = DefaultEngine(f, f.__rules__)
+        f.__engine__ = TypeEngine(f, f.__rules__)
     return f.__rules__
 
 
@@ -425,7 +466,7 @@ class NoApplicableMethods(DispatchError):
 
 always_overrides(Method, NoApplicableMethods)
 
-
+RuleSet.default_action = NoApplicableMethods()
 
 
 
@@ -487,6 +528,6 @@ def override_ambiguous(a1, a2):
 # needed to disambiguate the above two methods if combining a pair of AM's:
 merge_by_default(AmbiguousMethods)
 
-
-
+# the core is finished loading, snapshot the core rules for implies()
+_core_rules = implies.__engine__.registry.copy()
 
