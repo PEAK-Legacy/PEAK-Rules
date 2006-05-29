@@ -20,24 +20,24 @@ except NameError:
 empty = frozenset()
 
 
-class Rule(object):
-    """A Rule"""
-
-    __slots__ = "body", "predicate", "actiontype"
-
-    def __init__(self, body, predicate=(), actiontype=None):
-        self.body = body
-        self.predicate = predicate
-        self.actiontype = actiontype
-
-    def __repr__(self):
-        return "Rule%r" % ((self.body, self.predicate, self.actiontype),)
-
+def Rule(body, predicate=(), actiontype=None):
+    return (body, predicate, actiontype)
 
 def predicate_signatures(predicate):
     yield predicate # XXX
 
 _core_rules = None      # the core rules aren't loaded yet
+
+
+
+
+
+
+
+
+
+
+
 
 class Method(object):
     """A simple method w/optional chaining"""
@@ -95,7 +95,7 @@ class Method(object):
                   % cls.__name__
 
         if cls is Method:
-            make = None  # allow gf's to use something else instead of Method
+            maker = None   # allow gf's to use something else instead of Method
         else:
             maker = cls.make
 
@@ -103,7 +103,7 @@ class Method(object):
             rules = rules_for(f)
 
             def callback(frame, name, func, old_locals):
-                rules.add( Rule(func, pred, cls) )
+                rules.add( Rule(func, pred, maker) )
                 if old_locals.get(name) in (f, rules):
                     return f    # prevent overwriting if name is the same
                 return func
@@ -136,7 +136,7 @@ class RuleSet(object):
     def add(self, rule):
         sequence = self.counter
         self.counter += 1
-        actiondefs = frozenset(self.actions_for(rule, sequence))
+        actiondefs = frozenset(self._actions_for(rule, sequence))
         self.rules.append( rule )
         self.actiondefs[rule] = sequence, actiondefs
         self.notify(added=actiondefs)
@@ -148,7 +148,7 @@ class RuleSet(object):
 
     #def changed(self, rule):
     #    sequence, actions = self.actions[rule]
-    #    new_actions = frozenset(self.actions_for(rule, sequence))
+    #    new_actions = frozenset(self._actions_for(rule, sequence))
     #    self.actions[rule] = sequence, new_actions
     #    self.notify(new_actions-actions, actions-new_actions)
 
@@ -162,10 +162,10 @@ class RuleSet(object):
                 yield actiondef
 
 
-    def actions_for(self, rule, sequence):
-        actiontype = rule.actiontype or self.default_actiontype
-        for signature in predicate_signatures(rule.predicate):
-            yield (actiontype, rule.body, signature, sequence)
+    def _actions_for(self, (body, predicate, actiontype), sequence):
+        actiontype = actiontype or self.default_actiontype
+        for signature in predicate_signatures(predicate):
+            yield (actiontype, body, signature, sequence)
 
     def subscribe(self, listener):
         self.listeners.append(listener)

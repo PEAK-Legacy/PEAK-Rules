@@ -231,15 +231,17 @@ But not the other way around::
     False
 
 And as a special case of type implication, any classic class implies both
-``object`` and ``InstanceType`` -- and nothing else::
+``object`` and ``InstanceType``, but cannot imply any other new-style classes.
+This special-casing is used to work around the fact that ``isinstance()`` will
+say that a classic class instance is an instance of both ``object`` and
+``InstanceType``, but ``issubclass()`` doesn't agree.  PEAK-Rules wants to
+conform with ``isinstance()`` here::
 
     >>> class X: pass
     >>> implies(X, object)
     True
-    >>> implies(X, type(X()))
+    >>> implies(X, type(X()))   # InstanceType
     True
-
-
 
 
 Action Types
@@ -509,6 +511,25 @@ Decorators
 
 XXX decorators and how to create them: when, around, before, after
 
+>>> from peak.rules import before, after
+>>> def p(x): print x
+>>> def f(): p("yo!")
+
+Rule decorators return the function they are decorating, unless the function's
+name is also the name of the generic function they're adding to::
+
+>>> before(f)(lambda: p("before"))
+<function <lambda> at ...>
+
+>>> after(f)(lambda: p("after"))
+<function <lambda> at ...>
+
+>>> f()
+before
+yo!
+after
+
+
 
 Creating Custom Combinations
 ============================
@@ -520,19 +541,20 @@ XXX custom combination demo from RuleDispatch (compute upcharges+tax)
 Rules Management
 ----------------
 
-Rule Objects
-============
+Rules
+=====
 
-Rule objects are essentially pure data objects, pairing a predicate, a body,
-and an action type that will be used as a factory to create the actions for the
-rule.  At minimum, all a rule needs is a body.  The predicate and action type
-both default to ``None`` if not specified::
+Rules are currently implemented as 3-item tuples comprising a predicate, a
+body, and an action type that will be used as a factory to create the actions
+for the rule.  At minimum, all a rule needs is a body, so there's a convenience
+constructor (``Rule``) that allows you to create a rule with defaults.  The
+predicate and action type default to ``()`` and ``None`` if not specified::
 
     >>> from peak.rules import Rule
     >>> def dummy(): pass
     >>> r = Rule(dummy)
     >>> r
-    Rule(<function dummy ...>, (), None)
+    (<function dummy ...>, (), None)
 
 An action type of ``None`` (or any false value) means that the ruleset should
 decide what action type to use.  Actually, it can decide anyway, since the
