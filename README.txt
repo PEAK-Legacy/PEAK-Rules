@@ -6,162 +6,108 @@ This package is very much a work in progress.  I expect it to be very stable
 (in the sense of being simple and quirk/bug-free) even in the short term, but
 it will also be very *unstable* in the API sense.  That is, the code here
 should always be working and fairly robust, but don't be surprised if *your*
-code suddenly stops working due to changes here.  Until the API stabilizes,
-you won't find a PyPI listing for this code.
-
-.. contents:: **Table of Contents**
-
----------------------------
-Roadmap and Design Overview
----------------------------
+code suddenly stops working due to API changes!
 
 
-Planned API
-===========
+----------
+QuickStart
+----------
 
-The ``peak.rules`` package will offer an API that looks something like this:
+Installation::
 
-``@rules.abstract()``
-    Decorator to mark a function as abstract, meaning that it has no default
-    rule defined.  Various arguments and keyword options will be available to
-    provide optimization hints or set the default method combination policy
-    for the function.
+    easy_install svn://svn.eby-sarna.com/svnroot/BytecodeAssembler
+    easy_install svn://svn.eby-sarna.com/svnroot/PEAK-Rules
 
-``@rules.when(f, condition=None)``
-    Decorator to extend an existing function (`f`), even if it is not already
-    a generic function.  Yes, that's right, you'll be able to extend any
-    Python function.  The condition will be optional, which means that if you
-    don't specify one, your function will simply replace or wrap the original
-    definition.
+Usage::
 
-``@rules.around()``, ``@rules.before()``, ``@rules.after()``
-    Just like ``@rules.when()``, except using different combination wrappers.
-    As with ``when()``, the condition will be optional and the function doesn't
-    have to have been declared "abstract" ahead of time.
+    from peak.rules import abstract, when, around, before, after
 
-Once a function has been made extensible, the usual ``f.when()`` and other
-decorators will probably be available, but I'm not 100% decided on that as yet.
-Unlike RuleDispatch, PEAK-Rules will have an open-ended method combination
-system that doesn't rely on the generic function itself controlling the
-combination rules.  So it might be cleaner just to always use ``@around(f, c)``
-instead of e.g. ``@f.around(c)``, even though the latter looks a bit more
-pleasant to me.
+    @abstract()
+    def pprint(ob):
+        """A pretty-printing generic function"""
 
-In addition to these functions, there will probably be some exception classes,
-and maybe a few other specialty classes or functions, including perhaps some
-of the core framework's generic functions.  None of those things are as yet
-well-defined enough to specify here.
+    @when(pprint, (list,))
+    def pprint_list(ob):
+        # etc...
 
+Basically, at the present moment, PEAK-Rules supports multiple-dispatch on
+positional arguments by *type only*.  But it supports the full method
+combination semantics of RuleDispatch using a new decentralized approach,
+that allows you to easily create new method types or combination semantics,
+complete with their own decorators (like ``when``, ``around``, etc.)
 
-Development Roadmap
-===================
+These decorators also all work with *existing* functions; you do not have to
+predeclare a function generic in order to use it.  You can also omit the
+condition from the decorator call, in which case the effect is the same as
+RuleDispatch's ``strategy.default``, i.e. there is no condition.  Thus, you
+can actually use PEAK-Rules's ``around()`` as a quick way to monkeypatch
+existing functions, even ones defined by other packages.  And the decorators
+use the ``DecoratorTools`` package, so you can omit the ``@`` signs for
+Python 2.3 compatibility.
 
-The first versions will focus on developing a core framework for extensible
-functions that is itself implemented using extensible functions.  This
-self-bootstrapping core will implement a type-tuple-caching engine using
-relatively primitive operations, and will then have a method combination
-system built on that.  The core will thus be capable of implementing generic
-functions with multiple dispatch based on positional argument types, and the
-decorator APIs will be built around that.
+Currently, the only conditions you can give to the decorators are tuples of
+types -- or objects that you've created and defined an ``implies()``
+relationship between them and a tuple of types!
 
-The next phase of development will add alternative engines that are oriented
-towards predicate dispatch and more sophisticated ways of specifying regular
-class dispatch (e.g. being able to say things like ``isinstance(x,Foo) or
-isinstance(y,Foo)``).  To some extent this will be porting the expression
-machinery from RuleDispatch to work on the new core, but in a lot of ways it'll
-just be redone from scratch.  Having type-based multiple dispatch available to
-implement the framework should enable a significant reduction in the complexity
-of the resulting library.
-
-An additional phase will focus on adding new features not possible with the
-RuleDispatch engine, such as "predicate functions" (a kind of dynamic macro
-or rule expansion feature), "classifiers" (a way of priority-sequencing a
-set of alternative criteria) and others.
-
-Finally, specialty features such as index customization, thread-safety,
-event-oriented rulesets, and such will be introduced.
-
-There is no defined timeframe for these most of these phases, although I
-anticipate that at least the first one will be finished in June.
+``peak.rules.implies()`` is the generic function that's used to define
+implication relationships, and it is user-extensible.  The current rule engine
+only works with type tuples, though, so you're limited in what you can do with
+it.
 
 
-Design Concepts
-===============
+-----------------------
+Where All This Is Going
+-----------------------
 
-Criterion
-    A criterion is a test that returns a boolean for a given value, for example
-    by testing its type.  The simplest criterion is just a class or type object,
-    meaning that the value should be of that type.
+The big differences between PEAK-Rules and RuleDispatch are:
 
-Signature
-    A condition expressed purely in terms of simple tests "and"ed together,
-    using no "or" operations of any kind.  A signature specifies what argument
-    expressions are tested, and which criteria should be applied to them.
-    The simplest possible signature is a tuple of criteria, with each criterion
-    applied to the corresponding argument in an argument tuple.  An empty tuple
-    matches any possible input.
+1. It's designed for extensibility/pluggability from the ground up
 
-Predicate
-    One or more signatures "or"ed together.  (Note that this means that
-    signatures are predicates, but predicates are not necessarily signatures.)
+2. It's built without adaptation, only generic functions, and so doesn't carry
+   as much baggage.  (The current implementation, including all dependencies
+   is <1400 lines of code: the size of just one of RuleDispatch's modules.)
 
-Rule
-    A combination of a predicate, an action type, and a body (usually a
-    function.)  The existence of a rule implies the existence of one or more
-    actions of the given action type and body, one for each possible signature
-    that could match the predicate.
+While it's true that the current default rule engine doesn't support arbitrary
+predicates, the point is that it's *pluggable*.  Future versions of PEAK-Rules
+will include another engine similar to the one in RuleDispatch, and when that
+happens the current engine will automatically switch over when it encounters
+rules it can't handle.  This means that PEAK-Rules can use custom-tuned engines
+for specific application scenarios, and over time it will evolve the ability
+to accept "tuning hints" to adjust the indexing techniques for special cases.
 
-Action Type
-    A factory that can produce an Action when supplied with a signature, body,
-    and sequence.  (Examples in ``peak.rules`` will include the ``MethodList``,
-    ``MethodChain``, ``Around``, ``Before``, and ``After`` types.)
+What got me started on all this was Guido's super-small multimethod prototype
+for Python 3000.  It was simple enough and fast enough that it got me thinking
+it was good enough for maybe 50% of what you need generic functions for,
+especially if you added method combination.  RuleDispatch was always conceived
+as a single implementation of a single dispatch algorithm intended to be
+"good enough" for all uses.
 
-Action
-    An object representing the behavior of a single invocation of a generic
-    function.  Action objects may be combined (using a generic function of
-    the form ``combine_actions(a1,a2)``) to create combined methods ala
-    RuleDispatch.  Each action comprises at least a signature and a body, but
-    actions of more complex types may include other information.
+Guido's argument on the Py3K mailing list, however, was that applications with
+custom dispatch needs should write custom dispatchers.  And I almost agree --
+except that I think they should get a RuleDispatch-like dispatcher for free,
+and be able to tune or write ones to plug in for specialized needs.  And thus,
+the idea of PEAK-Rules.
 
-Rule Set
-    A collection of rules, combined with some policy information (such
-    as the default action type) and optional optimization hints.  A rule
-    set does not directly implement dispatching.  Instead, rule engines
-    subscribe to rule sets, and the rule set informs them when actions are
-    added and removed due to changes in the rule set's rules.
+The kicker was that Guido's experiment with type-tuple caching (a predecessor
+algorithm to the Chambers-and-Chen algorithm used by RuleDispatch) showed it to
+be fast *enough* for common uses, even without any C code, as long as you were
+willing to do a little code generation.  And so, here it is.  Type-tuple-cached
+multiple dispatch with method combination.  It's not quite CLOS and it's sure
+not RuleDispatch, but it's a solid foundation for porting the rest of
+RuleDispatch's functionality.
 
-    This would almost be better named an "action set" than a "rule set",
-    in that it's (virtually speaking) a collection of actions rather than
-    rules.  However, you do add and remove entries from it by specifying
-    rules; the actions are merely implied by the rules.
+There's a heck of a lot of work left to do to implement that port.  The good
+news, though, is that a lot of the algorithms will be simpler, thanks to
+the new core.  Many times while writing RuleDispatch I wished I had a generic
+function engine already in existence, so I could use generic functions to write
+it with.  Now I have that, so it should be easier.
 
-    Generic functions will have a ``__rules__`` attribute that points to their
-    rule set, so that the various decorators can add rules to them.  You
-    will probably be able to subclass the base RuleSet class or create
-    alternate implementations, as might be useful for supporting persistent or
-    database-stored rules.  (Although you'd probably also need a custom rule
-    engine for that.)
-
-Rule Engine
-    An object that manages the dispatching of a given rule set to implement
-    a specific generic function.  Generic functions will have an ``__engine__``
-    attribute that points to their current engine.  Engines will be responsible
-    for doing any indexing, caching, or code generation that may be required to
-    implement the resulting generic function.
-
-    The default engine will implement simple type-based multiple dispatch with
-    type-tuple caching.  For simple generic functions this is likely to be
-    faster than almost anything else, even C-assisted RuleDispatch.  It also
-    should have far less definition-time overhead than a RuleDispatch-style
-    engine would.
-
-    Engines will be pluggable, and in fact there will be a mechanism to allow
-    engines to be switched at runtime when certain conditions are met.  For
-    example, the default engine could switch automatically to a
-    RuleDispatch-like engine if a rule is added whose conditions can't be
-    translated to simple type dispatching.  There will also be some type of
-    hint system to allow users to suggest what kind of engine implementation
-    or special indexing might be appropriate for a particular function.
+Still, there's about 2500 lines of code (not counting tests) that will need
+reworking.  I don't plan on dumping anything over except dispatch.ast_builder
+and its tests; it's purely a Python expression compiler library and not in any
+way specific to RuleDispatch.  The other stuff, dispatch.functions,
+dispatch.predicates, and dispatch.strategy are going to probably get redone in
+some fairly fundamental ways.
 
 
 ------------

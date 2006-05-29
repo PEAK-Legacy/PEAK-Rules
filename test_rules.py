@@ -1,5 +1,5 @@
 import unittest
-from peak.rules.framework import *
+from peak.rules import *
 
 x2 = lambda a: a*2
 x3 = lambda next_method, a: next_method(a)*3
@@ -42,7 +42,7 @@ class TypeEngineTests(unittest.TestCase):
 def additional_tests():
     import doctest
     return doctest.DocFileSuite(
-        'framework.txt', package='peak.rules',
+        'DESIGN.txt',
         optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE,
     )
 
