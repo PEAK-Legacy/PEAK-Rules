@@ -8,7 +8,7 @@ __all__ = [
 ]
 
 from peak.util.decorators import decorate_assignment, decorate
-from peak.util.assembler import Code, Const, Call
+from peak.util.assembler import Code, Const, Call, Local
 import inspect, new
 
 try:
@@ -213,6 +213,7 @@ class TypeEngine(object):
         self.generate_code()
         rules.subscribe(self)
         self.ruleset = rules
+
     def actions_changed(self, added, removed):
         registry = self.registry
         for r in removed:
@@ -243,18 +244,17 @@ class TypeEngine(object):
         return f(*args)
 
 
-
     def generate_code(self):
         c = Code.from_function(self.func, copy_lineno=True)
         args, star, dstar, defaults = inspect.getargspec(self.func)
         types = [
             Call(
                 Const(getattr),
-                (name, Const('__class__'), Call(Const(type),(name,)))
+                (Local(name), Const('__class__'), Call(Const(type),(Local(name),)))
             ) for name in flatten(args)
         ]
         target = Call(Const(self.cache.get), (tuple(types), Const(self)))
-        c.Return(Call(target, map(tuplize,args), (), star, dstar))
+        c.return_(Call(target, map(tuplize,args), (), star, dstar))
         self.func.func_code = c.code()
 
 
@@ -291,7 +291,7 @@ def flatten(v):
         for ii in flatten(i): yield ii
 
 def tuplize(v):
-    if isinstance(v,basestring): return v
+    if isinstance(v,basestring): return Local(v)
     if isinstance(v,list): return tuple(map(tuplize,v))
 
 

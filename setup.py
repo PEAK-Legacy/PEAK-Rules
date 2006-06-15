@@ -29,7 +29,7 @@ setup(
     version=PACKAGE_VERSION,
     description="Generic functions and business rules support systems",
     long_description = get_description(),
-    install_requires=['BytecodeAssembler>=0.0.2.dev-r2160','DecoratorTools>=1.0'],
+    install_requires=['BytecodeAssembler>=0.0.2.dev-r2188','DecoratorTools>=1.0'],
     author="Phillip J. Eby",
     author_email="peak@eby-sarna.com",
     license="PSF or ZPL",
