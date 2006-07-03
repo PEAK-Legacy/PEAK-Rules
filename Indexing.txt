@@ -1,0 +1,566 @@
+==================================
+Decision Trees and Index Selection
+==================================
+
+One of the most efficient representations for executing a collection of rules
+is a decision tree expressed as code.  This document describes the design (and
+tests the implementation) of the decision tree building subsystem and its
+index selection machinery.  You do not need to read this unless you are
+extending these subsystems, e.g. to support outputting something
+other than bytecode, or to add specialized indexes, an alternate expression
+language, etc.
+
+This document does not describe in detail how indexes are used to build
+executable decision trees (e.g. in bytecode or source code form), but focuses
+instead on the overall process of decision tree building, how indexes are
+selected to build individual nodes, and how these processes can be customized.
+
+The algorithms presented here are based in part on the ones described by Craig
+Chambers and Weimin Chen in their 1999 paper on `Efficient Multiple and
+Predicate Dispatching <http://citeseer.ist.psu.edu/chambers99efficient.html>`_.
+We do, however, introduce an improved appraoch to managing inter-expression
+constraints.  The new approach is simpler to explain and implement, while being
+more precise in what it constrains, as it more directly represents the actual
+constraints supplied by the input rules.
+
+This implementation also does not currently support considering an expression's
+computation cost into the index selection process, although it might be added
+later.
+
+
+---------------
+Index Selection
+---------------
+
+An "index" is an object that is used to build individual decision tree nodes,
+using statistics about which rules accept what values for a particular
+argument expression.  Different index types are used to apply different kinds
+of criteria, such as ``isinstance()`` or ``issubclass()`` tests versus equality
+or other comparison tests.  You can create new index types to support new kinds
+of criteria.
+
+For example, given rules with these criteria::
+
+    isinstance(x,Foo) and y==BAR
+    isinstance(x,Baz) and y>0 and z/y<27
+
+Three indexes would be required: one to handle ``isinstance()`` tests on ``x``,
+one to handle comparison tests on ``y``, and a third to handle comparison tests
+on ``z/y``.
+
+We would want the resulting decision tree to look something like this (ignoring
+inheritance and various other issues, of course)::
+
+    switch type(x):
+        case Foo:
+            if y==BAR:
+                ...
+        case Baz:
+            if y>0:
+                if z/y<27:
+                    ...
+
+The decision tree must meet two requirements: it must be correct, and it must
+be as efficient as possible.  To be efficient, it must test highly selective
+indexes first.  For example, it would be unwise to first test conditions that
+apply to only a small number of rules.  In the above example, testing
+``z/y<27`` first would have been wasteful because only one of the two rules
+cares about the value of ``z/y``.
+
+To be correct, however, the tree must avoid reordering tests that are guarded
+by preconditions -- like ``y>0 and z/y<27``, where the ``y>0`` guards against
+division by zero.  Even if it was highly selective, we can't use the ``z/y``
+equality index for the root of the decision tree.
+
+These two requirements of correctness and efficiency are met by managing
+`inter-expression constraints`_, and `selectivity statistics`_, as described
+in the next two sections.
+
+
+Inter-Expression Constraints
+============================
+
+Inter-expression constraints ensure that indexes are not reordered in such a
+way as to test expressions before their guards.  Support for tracking these
+guards is provided by the ``AbstractIndex`` class::
+
+    >>> from peak.rules.indexing import AbstractIndex
+
+``AbstractIndex`` objects have two methods for managing inter-expression
+constraints: ``add_constraint()`` and ``is_legal()``.  We'll create three
+indexes to start with::
+
+    >>> ix = AbstractIndex()
+    >>> iy = AbstractIndex()
+    >>> iz_div_y = AbstractIndex()
+
+The ``add_constraint()`` method adds a "constraint": a set of guard indexes
+that must all have been computed *before* the constrained index can be used.
+We'll add a constraint that ``z/y`` can only be computed after ``x`` and ``y``
+have been tested::
+
+    >>> iz_div_y.add_constraint([ix,iy])
+
+(Note: we won't add constraints for tests on plain arguments like ``x`` and
+``y`` themselves, because argument-only tests can be evaluated in any order.)
+
+An index can't be used to create a decision tree node unless at least one of
+its constraints is met.  As a decision tree is built, the tree builder tracks
+what indexes haven't yet been used -- and if a guard index hasn't been used
+yet, any constraints that contain it are not met.
+
+Initially, all of our indexes will be unused, but only ``ix`` and ``iy`` will
+be usable::
+
+    >>> unused = [ix, iy, iz_div_y]
+    >>> ix.is_legal(unused)
+    True
+    >>> iy.is_legal(unused)
+    True
+    >>> iz_div_y.is_legal(unused)
+    False
+
+Let's say that the tree builder decides to use ``iy``, and removes it from the
+unused set::
+
+    >>> unused.remove(iy)
+    >>> ix.is_legal(unused)
+    True
+    >>> iz_div_y.is_legal(unused)
+    False
+
+Since ``ix`` is still in the unused set, ``iz_div_y`` still can't be used.  We
+have to remove it also::
+
+    >>> unused.remove(ix)
+    >>> iz_div_y.is_legal(unused)
+    True
+
+
+Multiple Constraints
+--------------------
+
+You can add more than one constraint to an index, since the same index may
+apply to expressions with different guards.  For example, suppose we have
+the following criteria::
+
+    E1 and E2 and E3 and E4
+    E5 and E3 and E2 and E6
+
+E2 and E3 appear in two different places, resulting in the following indexes
+and guards::
+
+    >>> E1 = AbstractIndex()
+    >>> E2 = AbstractIndex()
+    >>> E3 = AbstractIndex()
+    >>> E4 = AbstractIndex()
+    >>> E5 = AbstractIndex()
+    >>> E6 = AbstractIndex()
+
+    >>> E2.add_constraint([E1])
+    >>> E3.add_constraint([E1, E2])
+    >>> E4.add_constraint([E1, E2, E3])
+
+    >>> E3.add_constraint([E5])
+    >>> E2.add_constraint([E5, E3])
+    >>> E6.add_constraint([E5, E3, E2])
+
+In other words, E3 can be computed as long as either E1 and E2 *or* E5 have
+been computed.  E2 can be computed as long as either E1 *or* E5 and E3 have
+been computed::
+
+    >>> E2.is_legal([E1, E2, E3, E4, E5, E6])
+    False
+    >>> E2.is_legal([E1, E5])
+    False
+    >>> E2.is_legal([E5])
+    True
+    >>> E2.is_legal([E1])
+    True
+
+This is somewhat different from the Chambers & Chen approach, in that their
+approach reduces the above example to a constraint graph of the form::
+
+    (E1 or E5) -> (E2 or E3) -> (E4 or E6)
+
+Their approach is a little over-optimistic here, in that it assumes that
+"E5, E2" is a valid calculation sequence, even though this sequence appears
+nowhere in the input rules!  The approach we use (which tracks the *actual*
+constraints provided by the rules) will allow any of these sequences to compute
+E2::
+
+    E5, E3, E2
+    E1, E2
+    E5, E1, E2
+    E1, E5, E2
+
+It does not overgeneralize from this to assume that "E5, E2" is valid, the way
+the Chambers & Chen approach does.
+
+
+Constraint Simplification
+-------------------------
+
+The active constraints of an index are maintained as a set of frozen sets::
+
+    >>> from peak.rules.indexing import set, frozenset  # 2.3 compatibility
+    >>> E2.constraints == set([frozenset([E1]), frozenset([E5, E3])])
+    True
+
+Because constraints are effectively "or"ed together, adding a more restrictive
+constraint than an existing constraint is ignored::
+
+    >>> E2.add_constraint([E5, E3, E4])
+    >>> E2.constraints == set([frozenset([E1]), frozenset([E5, E3])])
+    True
+
+And if a less-restrictive constraint is added, it replaces any constraints that
+it's a subset of::
+
+    >>> E2.add_constraint([E5])
+    >>> E2.constraints == set([frozenset([E1]), frozenset([E5])])
+    True
+
+And of course adding the same constraint more than once has no effect::
+
+    >>> E4.add_constraint([E1, E2, E3])
+    >>> E4.add_constraint([E1, E2, E3])
+    >>> E4.constraints == set([frozenset([E1, E2, E3])])
+    True
+
+
+Selectivity Statistics
+======================
+
+To maximize efficiency, decision tree nodes should always be built using the
+"most selective" index that is currently legal to evaluate.
+
+Selectivity isn't an absolute measurement, however.  It's based on the rules
+remaining to be distinguished at the current node.  If none of the rules at
+this node care about a particular expression, the index involved shouldn't be
+used.  Likewise, if *all* of the rules care about an expression, but they are
+all expecting the same class or value, there may be better choices that would
+narrow down the applicable rules faster.
+
+All of these conditions can be determined using two statistics: the number of
+branches that the index would construct for the current node, and the average
+number of rules remaining on each of the branches.  If none of the rules care
+about the index, then each branch will still have the same number of rules as
+the current node does.  Thus the average is N (the number of rules at the
+current node.)
+
+If all of the rules care about the index, but they all expect the same class or
+value, then there would be two branches at: one empty, and one with N rules.
+Thus, its average is N/2: better than the case where none of the rules care,
+but it could be better still.
+
+If each rule expects a different value for the index, then there will be N
+branches, each of length 1, resulting in an average of about 1 -- an optimal
+choice.
+
+To measure selectivity, an index must have a ``selectivity(cases)`` method,
+that returns a (`branches`, `total`) tuple.  The `branches` is the number of
+branches that the index expects to build for the given cases (action definition
+tuples) and the `total` is the total number of rules applying on each branch.
+The tree building algorithm uses these to compute the average number of rules
+on each branch, and also to determine if the index should be skipped altogether
+for the current subtree (in the case where ``total == branches * len(cases)``).
+
+For demonstration purposes in this document, we will create a ``DemoIndex``
+class that uses sequences of name-value pairs as rules, and creates branches
+for each value with a name matching the index's name::
+
+    >>> class DemoIndex(AbstractIndex):
+    ...     def __init__(self, name):
+    ...         self.name = name
+    ...         AbstractIndex.__init__(self)
+    ...
+    ...     def selectivity(self, cases):
+    ...         branches = self.branch_table(cases)
+    ...         total = 0
+    ...         for value, rules in branches.items():
+    ...             total += len(rules)
+    ...         return len(branches), total
+    ...
+    ...     def branch_table(self, cases):
+    ...         branches = {None: []}   # "none of the above" branch
+    ...         for case in cases:
+    ...             care = False
+    ...             for name, value in case:
+    ...                 if name==self.name:
+    ...                     branches.setdefault(value, []).append(case)
+    ...                     care = True
+    ...             if not care:
+    ...                 # "don't care" rules must be added to *every* branch
+    ...                 for b in branches:
+    ...                     branches[b].append(case)
+    ...         return branches
+
+Note, by the way, that this demo index is *very* inefficient.  A real index
+would have other methods to allow cases to be added to it in advance, and the
+selectivity and branch table calculations would be done by extracting a subset
+of precomputed index information.  However, for this demo index, clarity and
+simplicity are more important than performance.
+
+Note also that indexes aren't required to have a ``branch_table()`` method;
+that's just an implementation detail of the demos in this document.
+
+Here's a quick example to show how selectivity should be calculated for a few
+simple cases::
+
+    >>> def r(**kw):
+    ...     return tuple(kw.items())
+
+    >>> x = DemoIndex('x')
+    >>> x.selectivity([r(x=1), r(x=2)])     # 3 branches: 1, 2, None
+    (3, 2)
+    >>> x.selectivity([r(x=1), r(x=1)])     # 2 branches: 1, None
+    (2, 2)
+    >>> x.selectivity([])                   # 1 branch: "None of the above"
+    (1, 0)
+    >>> x.selectivity([r(y=42)])            # 1 branch: "None of the above"
+    (1, 1)
+    >>> x.selectivity([r(x=1), r(y=1)])     # 2 branches: 1, None
+    (2, 3)
+
+
+----------------------
+Decision Tree Building
+----------------------
+
+The ``TreeBuilder`` class implements the basic algorithm for transforming rules
+into a decision tree::
+
+    >>> from peak.rules.indexing import TreeBuilder
+
+A decision tree is built by taking a set of cases (action definitions), and
+a set of indexes that cover all expressions tested by those cases, using the
+``build()`` method:
+
+build(`cases`, `indexes`)
+    Builds a decision tree to distinguish `cases`, using `indexes`.  The "best"
+    index (based on legality of use and selectivity) is chosen and used to
+    build a dispach node, with subnodes recursively constructed by calls to
+    ``build()`` with the remaining `cases` and `indexes`.  Leaf nodes are
+    constructed whenever either the cases or indexes are exhausted along a
+    particular path.
+
+    This method is memoized, meaning that if it is called more than once with
+    the same cases and indexes, it will return the same result each time.  That
+    is, the first invocation's return value is cached, and returned by future
+    calls.  This helps cut down on the total decision tree size by eliminating
+    the redundancy that would otherwise occur when more than one path leads to
+    the same remaining options.
+
+    Because of this, however, the input `cases` and `indexes` must be hashable,
+    because the ``TreeBuilder`` will be using them as dictionary keys.  Our
+    examples here will use tuples of cases and indexes (so as to maintain their
+    order when we display them), but immutable sets could also be used, as
+    could integer "bit sets" or strings or anything else that's hashable.  The
+    ``build()`` method doesn't care about what the cases or indexes "mean"; it
+    just passes them off to other methods for handling.
+
+
+Subclassing TreeBuilder
+=======================
+
+Specifically, the ``TreeBuilder`` base class requires the following methods to
+be defined in a subclass, in order for the ``build()`` template method to
+work:
+
+build_node(`index`, `cases`, `remaining_indexes`)
+    Build a decision node, using `index` to determine the expression to switch
+    on and the dispatching algorithm to use.  `cases` are the action
+    definitions to be distinguished, and `remaining_indexes` are the indexes
+    that have not so far been used.  This method should call back to the
+    ``build()`` method to  obtain subnodes as needed, via e.g.
+    ``self.build(subnode_cases, remaining_indexes)``.  This method should
+    then return the parent node it has constructed.
+
+build_leaf(`cases`)
+    Build a leaf node for `cases`.  Usually this means something like picking
+    the most specific case, or producing a method combination for the cases.
+    The return value should be the leaf node it has constructed.
+
+    For improved efficiency, most ``TreeBuilder`` subclasses should also cache
+    these leaf nodes by their value, to allow equivalent leaves to be shared,
+    even if they were produced by different sets of `cases`.  Such caching
+    should be done by this method, if applicable.
+
+For our examples, we'll define these to build interior nodes as dictionaries,
+and leaf nodes as lists.  We'll also print out what we're doing, to show that
+redundant nodes are cached::
+
+    >>> class DemoBuilder(TreeBuilder):
+    ...
+    ...     def build_node(self, index, cases, remaining_indexes):
+    ...         inames = ", ".join([i.name for i in remaining_indexes])
+    ...         print "building switch for", index.name,
+    ...         print "with", map(list,cases), "and (", inames, ")"
+    ...         branches = index.branch_table(cases)
+    ...         return dict(
+    ...             [(key, self.build(tuple(values), remaining_indexes))
+    ...                 for key,values in branches.items()]
+    ...         )
+    ...
+    ...     def build_leaf(self, cases):
+    ...         print "building leaf node for", map(list,cases)
+    ...         return map(list,cases)
+
+
+Basic Tree-Building
+===================
+
+Building nothing produces an empty leaf node::
+
+    >>> DemoBuilder().build((), ())
+    building leaf node for []
+    []
+
+In fact, building anything with no remaining indexes produces a leaf node::
+
+    >>> DemoBuilder().build((r(x=1),), ())
+    building leaf node for [[('x', 1)]]
+    [[('x', 1)]]
+
+Any inapplicable indexes are ignored::
+
+    >>> DemoBuilder().build((r(x=1),), (DemoIndex('q'),))
+    building leaf node for [[('x', 1)]]
+    [[('x', 1)]]
+
+But applicable indexes are used::
+
+    >>> DemoBuilder().build((r(x=1),), (DemoIndex('x'),))
+    building switch for x with [[('x', 1)]] and (  )
+    building leaf node for []
+    building leaf node for [[('x', 1)]]
+    {None: [], 1: [[('x', 1)]]}
+
+    >>> DemoBuilder().build((r(x=1),), (DemoIndex('x'), DemoIndex('q')))
+    building switch for x with [[('x', 1)]] and (  )
+    building leaf node for []
+    building leaf node for [[('x', 1)]]
+    {None: [], 1: [[('x', 1)]]}
+
+    >>> DemoBuilder().build((r(x=1),), (DemoIndex('q'), DemoIndex('x')))
+    building switch for x with [[('x', 1)]] and (  )
+    building leaf node for []
+    building leaf node for [[('x', 1)]]
+    {None: [], 1: [[('x', 1)]]}
+
+As long as they have no constraints preventing them from being used::
+
+    >>> x = DemoIndex('x')
+    >>> y = DemoIndex('y')
+    >>> x.add_constraint([y])
+    >>> DemoBuilder().build((r(x=1, y=2),), (x, y))
+    building switch for y with [[('y', 2), ('x', 1)]] and ( x )
+    building leaf node for []
+    building switch for x with [[('y', 2), ('x', 1)]] and (  )
+    building leaf node for [[('y', 2), ('x', 1)]]
+    {None: [], 2: {None: [], 1: [[('y', 2), ('x', 1)]]}}
+
+    >>> DemoBuilder().build((r(x=1, y=2),), (y, x))
+    building switch for y with [[('y', 2), ('x', 1)]] and ( x )
+    building leaf node for []
+    building switch for x with [[('y', 2), ('x', 1)]] and (  )
+    building leaf node for [[('y', 2), ('x', 1)]]
+    {None: [], 2: {None: [], 1: [[('y', 2), ('x', 1)]]}}
+
+
+Optimizations
+=============
+
+If more than one index is applicable, the one with the best selectivity is
+chosen::
+
+    >>> z = DemoIndex('z')
+    >>> rules = r(x=1,y=2,z=3), r(z=4)
+
+    >>> DemoBuilder().build(rules, (x,y,z)) # doctest: +NORMALIZE_WHITESPACE
+    building switch for z with
+        [[('y', 2), ('x', 1), ('z', 3)], [('z', 4)]] and ( x, y )
+    building leaf node for []
+    building switch for y with [[('y', 2), ('x', 1), ('z', 3)]] and ( x )
+    building switch for x with [[('y', 2), ('x', 1), ('z', 3)]] and (  )
+    building leaf node for [[('y', 2), ('x', 1), ('z', 3)]]
+    building leaf node for [[('z', 4)]]
+    {None: [],
+        3: {None: [],
+               2: {None: [],
+                      1: [[('y', 2), ('x', 1), ('z', 3)]]}},
+        4: [[('z', 4)]]}
+
+    >>> DemoBuilder().build(rules, (z,y,x)) # doctest: +NORMALIZE_WHITESPACE
+    building switch for z with
+        [[('y', 2), ('x', 1), ('z', 3)], [('z', 4)]] and ( y, x )
+    building leaf node for []
+    building switch for y with [[('y', 2), ('x', 1), ('z', 3)]] and ( x )
+    building switch for x with [[('y', 2), ('x', 1), ('z', 3)]] and (  )
+    building leaf node for [[('y', 2), ('x', 1), ('z', 3)]]
+    building leaf node for [[('z', 4)]]
+    {None: [],
+        3: {None: [],
+               2: {None: [],
+                      1: [[('y', 2), ('x', 1), ('z', 3)]]}},
+        4: [[('z', 4)]]}
+
+If an index is skipped due to a constraint, its selectivity should still be
+checked if its constraints go away (due to the blocking index being found
+inapplicable)::
+
+    >>> z.add_constraint([y])       # z now must have y checked first
+    >>> rules = r(x=1,z=3), r(z=4)  # but y isn't used by the rules
+
+    >>> DemoBuilder().build(rules, (x,y,z)) # so z is the most-selective index
+    building switch for z with [[('x', 1), ('z', 3)], [('z', 4)]] and ( x )
+    building leaf node for []
+    building switch for x with [[('x', 1), ('z', 3)]] and (  )
+    building leaf node for [[('x', 1), ('z', 3)]]
+    building leaf node for [[('z', 4)]]
+    {None: [], 3: {None: [], 1: [[('x', 1), ('z', 3)]]}, 4: [[('z', 4)]]}
+
+    >>> DemoBuilder().build(rules, (z,y,x)) # try them in another order
+    building switch for z with [[('x', 1), ('z', 3)], [('z', 4)]] and ( x )
+    building leaf node for []
+    building switch for x with [[('x', 1), ('z', 3)]] and (  )
+    building leaf node for [[('x', 1), ('z', 3)]]
+    building leaf node for [[('z', 4)]]
+    {None: [], 3: {None: [], 1: [[('x', 1), ('z', 3)]]}, 4: [[('z', 4)]]}
+
+The above examples whose results contain more than one ``[]`` leaf node show
+that leaf nodes for the same cases are being cached, but let's also show that
+non-leaf nodes are similarly shared and cached::
+
+    >>> rules = (('x',1),('x',2),('y',1),('y',2)),
+    >>> tree = DemoBuilder().build(rules, (x,y,))
+    building switch for y
+        with [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]] and ( x )
+    building leaf node for []
+    building switch for x
+        with [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]] and (  )
+    building leaf node for [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]]
+
+    >>> tree # doctest: +NORMALIZE_WHITESPACE
+    {None: [],
+        1: {None: [],
+               1: [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]],
+               2: [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]]},
+        2: {None: [],
+               1: [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]],
+               2: [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]]}}
+
+    >>> tree[1] is tree[2]
+    True
+
+    >>> tree[1][1] is tree[1][2]
+    True
+
+    >>> tree[None] is tree[1][None]
+    True
+
+As you can see, the redundant leaf nodes and intermediate nodes are shared due
+to the caching, and the log shows that only two intermediate nodes and two
+leaf nodes were even created in the first place.
+
