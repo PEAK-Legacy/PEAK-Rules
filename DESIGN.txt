@@ -554,7 +554,7 @@ predicate and action type default to ``()`` and ``None`` if not specified::
     >>> def dummy(): pass
     >>> r = Rule(dummy)
     >>> r
-    (<function dummy ...>, (), None)
+    Rule(<function dummy ...>, (), None)
 
 An action type of ``None`` (or any false value) means that the ruleset should
 decide what action type to use.  Actually, it can decide anyway, since the
@@ -581,7 +581,7 @@ methods::
     >>> r = Rule(dummy)
     >>> rs.add(r)
     >>> list(rs)
-    [(<...Method...>, <function dummy ...>, (), 0)]
+    [ActionDef(<...Method...>, <function dummy ...>, (), 0)]
 
     >>> rs.remove(r)
     >>> list(rs)
@@ -604,10 +604,10 @@ be used to create action objects.)
     >>> rs.subscribe(do)
 
     >>> rs.add(r)
-    Add: (<...Method...>, <function dummy ...>, (), 1)
+    Add: ActionDef(<...Method...>, <function dummy ...>, (), 1)
 
     >>> rs.remove(r)
-    Remove: (<...Method...>, <function dummy ...>, (), 1)
+    Remove: ActionDef(<...Method...>, <function dummy ...>, (), 1)
 
     >>> rs.unsubscribe(do)
 
@@ -618,7 +618,7 @@ operation of the ``actions_changed()`` method::
 
     >>> rs.add(r)
     >>> rs.subscribe(do)
-    Add: (<...Method...>, <function dummy ...>, (), 2)
+    Add: ActionDef(<...Method...>, <function dummy ...>, (), 2)
 
 Unsubscribing, however, does not send any removal messages::
 

@@ -7,7 +7,7 @@ __all__ = [
     'always_overrides', 'merge_by_default',
 ]
 
-from peak.util.decorators import decorate_assignment, decorate
+from peak.util.decorators import decorate_assignment, decorate, struct
 from peak.util.assembler import Code, Const, Call, Local
 import inspect, new
 
@@ -19,22 +19,22 @@ except NameError:
 
 empty = frozenset()
 
-
+struct()
 def Rule(body, predicate=(), actiontype=None):
-    return (body, predicate, actiontype)
+    return body, predicate, actiontype
+
+struct()
+def ActionDef(actiontype, body, signature, sequence):
+    return actiontype, body, signature, sequence
 
 def predicate_signatures(predicate):
     yield predicate # XXX
 
 _core_rules = None      # the core rules aren't loaded yet
 
-
-
-
-
-
-
-
+def parse_rule(ruleset, body, predicate, actiontype, localdict, globaldict):
+    """Hook for pre-processing predicates, e.g. parsing string expressions"""
+    return Rule(body, predicate, actiontype)
 
 
 
@@ -101,13 +101,14 @@ class Method(object):
 
         def decorate(f, pred=()):
             rules = rules_for(f)
-
             def callback(frame, name, func, old_locals):
-                rules.add( Rule(func, pred, maker) )
+                rule = parse_rule(
+                    rules, func, pred, maker, frame.f_locals, frame.f_globals
+                )
+                rules.add(rule)
                 if old_locals.get(name) in (f, rules):
                     return f    # prevent overwriting if name is the same
                 return func
-
             return decorate_assignment(callback)
 
         try:
@@ -119,7 +120,6 @@ class Method(object):
             )
         decorate.__doc__ = doc
         return decorate
-
 
 class RuleSet(object):
     """An observable, stably-ordered collection of rules"""
@@ -165,7 +165,7 @@ class RuleSet(object):
     def _actions_for(self, (body, predicate, actiontype), sequence):
         actiontype = actiontype or self.default_actiontype
         for signature in predicate_signatures(predicate):
-            yield (actiontype, body, signature, sequence)
+            yield ActionDef(actiontype, body, signature, sequence)
 
     def subscribe(self, listener):
         self.listeners.append(listener)
