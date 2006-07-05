@@ -162,7 +162,7 @@ class RuleSet(object):
                 yield actiondef
 
 
-    def _actions_for(self, (body, predicate, actiontype), sequence):
+    def _actions_for(self, (na, body, predicate, actiontype), sequence):
         actiontype = actiontype or self.default_actiontype
         for signature in predicate_signatures(predicate):
             yield ActionDef(actiontype, body, signature, sequence)
@@ -220,7 +220,7 @@ class TypeEngine(object):
             registry.clear()
             added = self.ruleset
             break   # force full regeneration if any rules removed
-        for (atype, body, sig, seq) in added:
+        for (na, atype, body, sig, seq) in added:
             action = atype(body,sig,seq)
             if sig in registry:
                 registry[sig] = combine_actions(action, registry[sig])
