@@ -43,6 +43,7 @@ def additional_tests():
     import doctest
     return doctest.DocFileSuite(
         'DESIGN.txt', 'Indexing.txt', 'AST-Builder.txt',
+        'Code-Generation.txt',
         optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE,
     )
 

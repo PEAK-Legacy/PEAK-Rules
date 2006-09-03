@@ -1,0 +1,297 @@
+========================================
+Code Generation from Python Syntax Trees
+========================================
+
+The ``peak.rules.codegen`` module extends ``peak.util.assembler`` (from the
+"BytecodeAssembler" project) with additional AST node types to allow generation
+of code for simple Python expressions (i.e., those without lambdas,
+comprehensions, generators, or conditionals).  It also provides "builder"
+classes that work with the ``peak.rules.ast_builder`` module to generate
+expression ASTs from Python source code, thus creating an end-to-end compiler
+tool chain.
+
+This document describes the design (and tests the implementation) of the
+``codegen`` module.  You don't need to read it unless you want to use
+this module directly in your own programs.  If you do want to use it directly,
+keep in mind that it inherits the limitations and restrictions of both
+``peak.util.assembler`` and ``peak.rules.ast_builder``, so you should consult
+the documentation for those tools before proceeding.
+
+
+--------------
+AST Generation
+--------------
+
+To generate an AST from Python code, you need the ``ast_builder.parse_expr()``
+function, and the ``codegen.ExprBuilder`` type::
+
+    >>> from peak.rules.ast_builder import parse_expr
+    >>> from peak.rules.codegen import ExprBuilder
+
+``ExprBuilder`` instances are created using one or more namespaces.  The first
+namespace maps names to arbitrary AST nodes that will be substituted for any
+matching names found in an expression.  The second and remaining namespaces
+will have their values wrapped in ``Const`` nodes, so they can be used for
+constant-folding.  For our examples, we'll define a base namespace containing
+arguments named "a" through "g"::
+
+    >>> from peak.util.assembler import Local
+    >>> argmap = dict([(name,Local(name)) for name in 'abcdefg'])
+    >>> builder = ExprBuilder(argmap, locals(), globals(), __builtins__)
+
+And, for convenience, we'll define a short function to parse and output an
+expression's AST using this builder instance::
+
+    >>> def pe(expr):
+    ...     print parse_expr(expr, builder)
+
+
+Names and Constants
+===================
+
+Constants are wrapped in BytecodeAsssembler ``Const()`` nodes::
+
+    >>> pe("1")
+    Const(1)
+
+Names found in the first namespace are mapped to whatever value is in the
+namespace::
+
+    >>> pe("a")
+    Local('a')
+
+Names found in subsequent namespaces get their values wrapped in ``Const()``
+nodes::
+
+    >>> pe("ExprBuilder")
+    Const(<...peak.rules.codegen.ExprBuilder...>)
+
+    >>> pe("isinstance")
+    Const(<built-in function isinstance>)
+
+And unfound names produce a compile-time error::
+
+    >>> pe("fubar")
+    Traceback (most recent call last):
+      ...
+    NameError: fubar
+
+
+Operators
+=========
+
+Unary operators::
+
+    >>> pe("not - + ~ `a`")
+    Not(Minus(Plus(Invert(Repr(Local('a'))))))
+
+
+Attribute access::
+
+    >>> pe("a.b.c")
+    Getattr(Getattr(Local('a'), 'b'), 'c')
+
+
+Simple binary operators::
+
+    >>> pe("a+b")
+    Add(Local('a'), Local('b'))
+    >>> pe("b-a")
+    Sub(Local('b'), Local('a'))
+    >>> pe("c*d")
+    Mul(Local('c'), Local('d'))
+    >>> pe("c/d")
+    Div(Local('c'), Local('d'))
+    >>> pe("c%d")
+    Mod(Local('c'), Local('d'))
+    >>> pe("c//d")
+    FloorDiv(Local('c'), Local('d'))
+
+    >>> pe("a**b")
+    Power(Local('a'), Local('b'))
+    >>> pe("a<<b")
+    LeftShift(Local('a'), Local('b'))
+    >>> pe("a>>b")
+    RightShift(Local('a'), Local('b'))
+
+    >>> pe("a[1]")
+    Getitem(Local('a'), Const(1))
+    >>> pe("a[1][2]")
+    Getitem(Getitem(Local('a'), Const(1)), Const(2))
+
+    >>> pe("a&b&c")
+    Bitand(Bitand(Local('a'), Local('b')), Local('c'))
+    >>> pe("a|b|c")
+    Bitor(Bitor(Local('a'), Local('b')), Local('c'))
+    >>> pe("a^b^c")
+    Bitxor(Bitxor(Local('a'), Local('b')), Local('c'))
+
+List operators::
+
+    >>> pe("a and b")
+    And((Local('a'), Local('b')))
+
+    >>> pe("a or b")
+    Or((Local('a'), Local('b')))
+
+    >>> pe("a and b and c")
+    And((Local('a'), Local('b'), Local('c')))
+
+    >>> pe("a or b or c")
+    Or((Local('a'), Local('b'), Local('c')))
+
+    >>> pe("[]")
+    Const([])
+
+    >>> pe("[a]")
+    List((Local('a'),))
+
+    >>> pe("[a,b]")
+    List((Local('a'), Local('b')))
+
+    >>> pe("()")
+    Const(())
+
+    >>> pe("a,")
+    Tuple((Local('a'),))
+
+    >>> pe("a,b")
+    Tuple((Local('a'), Local('b')))
+
+Slicing::
+
+    >>> pe("a[:]")
+    GetSlice(Local('a'), Pass, Pass)
+
+    >>> pe("a[1:2]")
+    GetSlice(Local('a'), Const(1), Const(2))
+
+    >>> pe("a[1:]")
+    GetSlice(Local('a'), Const(1), Pass)
+
+    >>> pe("a[:2]")
+    GetSlice(Local('a'), Pass, Const(2))
+
+    >>> pe("a[::]")
+    Getitem(Local('a'), Const(slice(None, None, None)))
+
+    >>> pe("a[1:2:3]")
+    Getitem(Local('a'), Const(slice(1, 2, 3)))
+
+    >>> pe("a[b:c:d]")
+    Getitem(Local('a'), BuildSlice(Local('b'), Local('c'), Local('d')))
+
+
+Comparisons::
+
+    >>> pe("a>b")
+    Compare(Local('a'), (('>', Local('b')),))
+    >>> pe("a>=b")
+    Compare(Local('a'), (('>=', Local('b')),))
+    >>> pe("a<b")
+    Compare(Local('a'), (('<', Local('b')),))
+    >>> pe("a<=b")
+    Compare(Local('a'), (('<=', Local('b')),))
+    >>> pe("a<>b")
+    Compare(Local('a'), (('!=', Local('b')),))
+    >>> pe("a!=b")
+    Compare(Local('a'), (('!=', Local('b')),))
+    >>> pe("a==b")
+    Compare(Local('a'), (('==', Local('b')),))
+    >>> pe("a in b")
+    Compare(Local('a'), (('in', Local('b')),))
+    >>> pe("a is b")
+    Compare(Local('a'), (('is', Local('b')),))
+    >>> pe("a not in b")
+    Compare(Local('a'), (('not in', Local('b')),))
+    >>> pe("a is not b")
+    Compare(Local('a'), (('is not', Local('b')),))
+
+    >>> pe("a>=b>c")
+    Compare(Local('a'), (('>=', Local('b')), ('>', Local('c'))))
+
+
+Dictionaries::
+
+    >>> pe("{a:b,c:d}")
+    Dict(((Local('a'), Local('b')), (Local('c'), Local('d'))))
+
+
+Calls::
+
+    >>> pe("a()")
+    Call(Local('a'), (), (), (), (), True)
+
+    >>> pe("a(1,2)")
+    Call(Local('a'), (Const(1), Const(2)), (), (), (), True)
+
+    >>> pe("a(1, b=2)")
+    Call(Local('a'), (Const(1),), ((Const('b'), Const(2)),), (), (), True)
+
+    >>> pe("a(*b)")
+    Call(Local('a'), (), (), Local('b'), (), True)
+
+    >>> pe("a(**c)")
+    Call(Local('a'), (), (), (), Local('c'), True)
+
+    >>> pe("a(*b, **c)")
+    Call(Local('a'), (), (), Local('b'), Local('c'), True)
+
+
+-------------------
+Bytecode Generation
+-------------------
+
+AST's generated using ``ExprBuilder`` can be used directly with
+BytecodeAssembler ``Code`` objects to generate bytecode, complete with
+constant-folding.  Note that the node types not demonstrated below (e.g.
+``And``, ``Or``, ``Compare``, ``Call``) are not defined by the ``codegen``
+module, but instead are imported from ``peak.util.assembler``::
+
+    >>> from peak.rules.codegen import *
+    >>> from peak.util.assembler import Const, Pass
+
+    >>> Minus(1), Plus(2), Not(True), Invert(-1), Repr(4)
+    (Const(-1), Const(2), Const(False), Const(0), Const('4'))
+
+    >>> Add(1,2), Sub(3,2), Mul(4,5), Div(10,2), Mod(7,3), FloorDiv(7,3)
+    (Const(3), Const(1), Const(20), Const(5), Const(1), Const(2))
+
+    >>> Power(2,3), LeftShift(1,4), RightShift(12,2)
+    (Const(8), Const(16), Const(3))
+
+    >>> Getitem(Const([1,2]), 1)
+    Const(2)
+
+    >>> Bitand(3, 1), Bitor(1,2), Bitxor(3,1)
+    (Const(1), Const(3), Const(2))
+
+    >>> Getattr(Const(object), '__class__')
+    Const(<type 'type'>)
+
+    >>> Dict([(1,2)])
+    Const({1: 2})
+
+    >>> aList = Const([1,2,3,4])
+
+    >>> GetSlice(aList)
+    Const([1, 2, 3, 4])
+    >>> GetSlice(aList, 1)
+    Const([2, 3, 4])
+    >>> GetSlice(aList, 1, -1)
+    Const([2, 3])
+    >>> GetSlice(aList, Pass, -1)
+    Const([1, 2, 3])
+
+    >>> BuildSlice(1, 2, 3)
+    Const(slice(1, 2, 3))
+
+    >>> BuildSlice(1, 2)
+    Const(slice(1, 2, None))
+
+    >>> Tuple([1,2])
+    Const((1, 2))
+
+    >>> List([1,2])
+    Const([1, 2])
+
