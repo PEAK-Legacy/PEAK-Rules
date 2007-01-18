@@ -164,9 +164,6 @@ Rule Engine
 
 
 
-
-
-
 ------------------
 Method Combination
 ------------------
@@ -623,4 +620,80 @@ operation of the ``actions_changed()`` method::
 Unsubscribing, however, does not send any removal messages::
 
     >>> rs.unsubscribe(do)
+
+
+------------------
+Criteria and Logic
+------------------
+
+This section is currently just design notes to myself, hopefully to grow into
+a more thorough discussion and doctests of the relevant sub-frameworks.
+
+
+DNF Logic
+=========
+
+# These 2 funcs must skip dupes and return the item alone if only 1 found
+disj(*items) = Or( [i for item in items for i in disjuncts(item)] )
+conj(items)  = And([i for item in items for i in conjuncts(item)] )
+
+intersect(*items) = Or(
+    map(conj, combinatorial(*[list(disjuncts(item)) for item in items]))
+)
+
+disjuncts(Or) = Or.items
+disjuncts(Not) = map(negate, conjuncts(Not.expr))
+disjuncts(*) = [*]
+
+conjuncts(And) = And.items
+conjuncts(Not) = map(negate, disjuncts(Not.expr))
+conjuncts(*) = [*]
+
+negate(And) = Or(map(negate,And.items))
+negate(Or)  = And(map(negate,Or.items))
+negate(Not) = Not.expr
+negate(Compare) = reverse comparison sense ?
+negate(*) = Not(*)
+
+Not-methods and negate() function could be eliminated by CriteriaBuilder
+tracking negation during build.
+
+
+
+implies(Or, *)  iff all Or.items imply *
+implies(And, *) iff any And.items imply *
+implies(*, *)   iff equal items  [need to define for struct/struct, too!]
+
+implies(Range, Range) by range overlap
+implies(IsInstance, IsInstance) by subclass relationships/truth map
+
+to_logic(Call)    -> via function mapping for Call(Const(),...)
+to_logic(Compare) -> Identity, IsInstance, Range, etc.?
+to_logic(*)       -> Truth(expr, mode)
+
+
+Criteria/Indexing
+=================
+
+indexes(Compare)
+indexes(IsInstance)
+indexes(*)
+
+range indexing: have seed->offset mapping, use differences in offsets to count
+how many slots a range applies to.  rebuild seed->offset mapping on demand (via
+enumerate() of a sorted seeds list), clear whenever the seeds change.
+
+class indexing: keep class->seed count mapping (by walking each new seed's MRO)
+to approximate the spread for a given class target; multi-class criteria use
+smallest spread (or dynamic intersect?), negated criteria subtract the count
+from the total seed count (or subtract the classes from the seed set).
+
+2 index types: hierarchy and range
+multiple node types: isinstance, issubclass, range, identity, ...
+
+index id = base expression + node type
+
+node type determines index type and dispatch algorithm/codegen
+criteria type determines node type
+
 

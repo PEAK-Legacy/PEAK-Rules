@@ -64,8 +64,8 @@ The big differences between PEAK-Rules and RuleDispatch are:
 1. It's designed for extensibility/pluggability from the ground up
 
 2. It's built without adaptation, only generic functions, and so doesn't carry
-   as much baggage.  (The current implementation, including all dependencies
-   is <1400 lines of code: the size of just one of RuleDispatch's modules.)
+   as much baggage.  (The current implementation is about 1500 lines of code:
+   the size of just one of RuleDispatch's modules.)
 
 While it's true that the current default rule engine doesn't support arbitrary
 predicates, the point is that it's *pluggable*.  Future versions of PEAK-Rules
