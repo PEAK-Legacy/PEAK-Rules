@@ -1,9 +1,14 @@
 from peak.util.assembler import *
 from peak.util.symbols import Symbol
 from ast_builder import build
+try:
+    set
+except NameError:
+    from sets import Set as set
 
 __all__ = [
-    'Getattr', 'GetSlice', 'BuildSlice', 'Dict', 'ExprBuilder'
+    'Getattr', 'GetSlice', 'BuildSlice', 'Dict', 'ExprBuilder', 'IfElse',
+    'CSECode',
 ]
 
 nodetype()
@@ -34,11 +39,6 @@ def GetSlice(expr, start=Pass, stop=Pass, code=None):
 
 
 
-
-
-
-
-
 nodetype()
 def BuildSlice(start=Pass, stop=Pass, stride=Pass, code=None):
     if code is None:
@@ -61,16 +61,16 @@ def Dict(items, code=None):
         code.ROT_THREE()
         code.STORE_SUBSCR()
 
-
-
-
-
-
-
-
-
-
-
+nodetype()
+def IfElse(tval, cond, fval, code=None):
+    if code is None:
+        return fold_args(IfElse, tval, cond, fval)
+    else_clause, end_if = Label(), Label()
+    code(cond)
+    code(else_clause.JUMP_IF_FALSE, Code.POP_TOP, tval)
+    if code.stack_size is not None:
+        code(end_if.JUMP_FORWARD)
+    return code(else_clause, Code.POP_TOP, fval, end_if)
 
 
 
@@ -150,6 +150,131 @@ globalOps(
 globalOps(
     listOp, Tuple = Code.BUILD_TUPLE, List = Code.BUILD_LIST
 )
+
+
+
+
+
+
+
+
+
+
+
+
+CACHE = Local('$CSECache')
+SET_CACHE = lambda code: code.STORE_FAST(CACHE.name)
+
+class CSETracker(Code):
+    """Helper object that tracks common sub-expressions"""
+
+    def __init__(self):
+        super(CSETracker, self).__init__()
+        self.cse_depends = {}
+
+    def track(self, expr):
+        self.track_stack = [None, 0]
+        self.to_cache = []
+        try:
+            self(expr)
+            return self.to_cache
+        finally:
+            del self.track_stack, self.to_cache
+
+    def __call__(self, *args):
+        scall = super(CSETracker, self).__call__
+        ts = self.track_stack
+        for ob in args:           
+            ts[-1] += 1
+            ts.append(ob)
+            ts.append(0)
+            try:
+                scall(ob)
+            finally:
+                count = ts.pop()
+                ts.pop()
+            if count and callable(ob):
+                # Only consider non-leaf callables for caching
+                top = tuple(ts[-2:])
+                if self.cse_depends.setdefault(ob, top) != top:
+                    if ob not in self.to_cache:
+                        self.to_cache.append(ob)
+
+
+
+
+
+
+class CSECode(Code):
+    """Code object with common sub-expression caching support"""
+
+    def __init__(self):
+        super(CSECode, self).__init__()
+        self.expr_cache = {}
+        self.tracker = CSETracker()
+        
+    def cache(self, expr):
+        if not self.expr_cache:
+            self.LOAD_CONST(None)
+            self.STORE_FAST(CACHE.name)
+        self.expr_cache.setdefault(
+            expr, "%s #%d" % (expr, len(self.expr_cache)+1)
+        )
+
+    def maybe_cache(self, expr):
+        map(self.cache, self.tracker.track(expr))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    def __call__(self, *args):
+
+        scall = super(CSECode, self).__call__
+
+        for ob in args:
+            if callable(ob) and ob in self.expr_cache:
+                key = self.expr_cache[ob]
+                have_cache, calc, done = Label(), Label(), Label()
+                self(
+                        CACHE, have_cache.JUMP_IF_TRUE,
+                        {}, SET_CACHE,
+                        calc.JUMP_FORWARD,
+                        
+                    have_cache,
+                        Compare(Const(key), [('in', Pass)]),
+                        calc.JUMP_IF_FALSE,
+                        Code.POP_TOP,
+                        Getitem(CACHE, Const(key)),
+                        done.JUMP_FORWARD,
+    
+                    calc,                    
+                        Code.POP_TOP,
+                );      scall(ob)
+                self(
+                        Code.DUP_TOP, CACHE, Const(key), Code.STORE_SUBSCR,
+                    done,
+                )
+            else:
+                scall(ob)
 
 
 
@@ -282,6 +407,6 @@ class ExprBuilder:
             star_node and b(star_node), dstar_node and b(dstar_node)
         )
 
-
-
+    def IfElse(self, tval, cond, fval):
+        return IfElse(build(self,tval), build(self,cond), build(self,fval))
 

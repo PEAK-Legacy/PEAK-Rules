@@ -336,10 +336,10 @@ will of course get chained to the other method's tail (if appropriate).
     >>> meth = Method.make(overriding_fn)
 
     >>> combine_actions(naf, meth)
-    Method(<...overriding_fn...>, (), 0, <...NoApplicableMethods...>)
+    Method(<...overriding_fn...>, (), 0, NoApplicableMethods())
 
     >>> combine_actions(meth, naf)
-    Method(<...overriding_fn...>, (), 0, <...NoApplicableMethods...>)
+    Method(<...overriding_fn...>, (), 0, NoApplicableMethods())
 
 Calling a ``NoApplicableMethods`` raises it, displaying the arguments it was
 called with::
@@ -637,9 +637,26 @@ DNF Logic
 disj(*items) = Or( [i for item in items for i in disjuncts(item)] )
 conj(items)  = And([i for item in items for i in conjuncts(item)] )
 
+
+def combinatorial(seq, *tail):
+    if tail:
+        return ((item,)+t for item in seq for t in combinatorial(*tail))
+    else:
+        return ((item,) for item in seq)
+
+# this func would be more efficient if 'conj' were moved inside 'combinatorial'
+# especially if conj were a binary operation, and the results of each nested
+# loop were reduced to a unique set...
+#
 intersect(*items) = Or(
-    map(conj, combinatorial(*[list(disjuncts(item)) for item in items]))
+    map(conj, combinatorial(*map(disjuncts,items)))
 )
+
+# simplified, but still needs dupe skipping/flattening of the Or
+intersect(i1, i2) = Or(
+    *[conj((a,b)) for a in set(disjuncts(i1)) for b in set(disjuncts(i2))]
+)
+
 
 disjuncts(Or) = Or.items
 disjuncts(Not) = map(negate, conjuncts(Not.expr))

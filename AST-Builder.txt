@@ -375,8 +375,8 @@ The ``Slice3`` method is similar, but takes three arguments::
     Subscript(a,Slice(1:2:3))
 
 
-Comparisons
-===========
+Comparisons and Conditional Expressions
+=======================================
 
 The ``Compare`` method receives two arguments: a node for the first expression
 to be compared, followed by a list of ``(op, expr)`` tuples for subsequent
@@ -414,7 +414,6 @@ used, and each ``expr`` is a node::
     >>> pe("a is not b")
     Compare(a is not b)
 
-
 N-Way Comparisons
 -----------------
 
@@ -440,6 +439,27 @@ comparisons as additional values in the list of ``(op, expr)`` tuples::
 
 Note that you *must* explicitly set ``simplify_comparisons`` to either a true
 or false value; there is no default.
+
+
+Conditional Expressions
+-----------------------
+
+The ``IfElse`` method receives three arguments: a node for the "true" value,
+a node for the condition, and a node for the "false" value::
+
+    >>> class Builder(Builder):
+    ...     def IfElse(self, trueVal, condition, falseVal):
+    ...         return 'IfElse(%s, %s, %s)' % (
+    ...             build(self, trueVal), build(self, condition),
+    ...             build(self, falseVal)
+    ...         )
+
+    >>> import sys
+    >>> if sys.version>='2.5':
+    ...     pe("a if b else c")
+    ... else:
+    ...     print "IfElse(a, b, c)"
+    IfElse(a, b, c)
 
 
 Dictionaries

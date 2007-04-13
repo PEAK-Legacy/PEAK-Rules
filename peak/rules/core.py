@@ -537,6 +537,10 @@ class DispatchError(Exception):
     def __call__(self,*args,**kw):
         raise self.__class__(*self.args+(args,kw))  # XXX
 
+    def __repr__(self):
+        # This method is needed so doctests for 2.3/2.4 match 2.5
+        return self.__class__.__name__+repr(self.args)
+
 merge_by_default(DispatchError)
 
 
@@ -549,10 +553,6 @@ class NoApplicableMethods(DispatchError):
 always_overrides(Method, NoApplicableMethods)
 
 RuleSet.default_action = NoApplicableMethods()
-
-
-
-
 
 
 

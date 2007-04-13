@@ -216,6 +216,14 @@ Dictionaries::
     >>> pe("{a:b,c:d}")
     Dict(((Local('a'), Local('b')), (Local('c'), Local('d'))))
 
+Conditional Expressions::
+
+    >>> import sys
+    >>> if sys.version>='2.5':
+    ...     pe("a if b else c")
+    ... else:
+    ...     print "IfElse(Local('a'), Local('b'), Local('c'))"
+    IfElse(Local('a'), Local('b'), Local('c'))
 
 Calls::
 
@@ -294,4 +302,262 @@ module, but instead are imported from ``peak.util.assembler``::
 
     >>> List([1,2])
     Const([1, 2])
+
+    >>> IfElse(1,2,3)
+    Const(1)
+
+    >>> IfElse(1,0,3)
+    Const(3)
+
+
+Subexpression Caching
+=====================
+
+The ``peak.rules.codegen`` module includes a common-subexpression caching
+extension of ``peak.util.assembler``, used to implement "at most once"
+calculation of any intermediate results during rule evaluation.  It works
+by setting aside a local variable (``$CSECache``) to hold a dictionary of
+temporary values, keyed by strings.
+
+Any time a cached value is needed, the dictionary is checked first.  However,
+the local variable is initially set to ``None``, to avoid creating a dictionary
+unnecessarily.  In this way, only those portions of the dispatch tree that
+require intermediate expression evaluation will incur the cost of creating or
+accessing the dictionary.
+
+Note that this caching mechanism is not primarily aimed at improving the
+performance of the underlying code, although in some cases it *might* have this
+effect.  It is also not aimed at producing compact code; the code it generates
+may be an order of magnitude larger than the unadorned code would be!
+
+Rather, the goal is to provide the desired semantics with better performance
+than the ``RuleDispatch`` package provides for the same operations.  In
+``RuleDispatch``, expressions are calculated using partial functions and a
+similar cache dictionary to this one, whereas here the functions are
+effectively inlined as Python bytecode.
+
+The ``CSECode`` class replaces the ``assembler.Code`` class::
+
+    >>> from dis import dis
+
+    >>> c = CSECode()
+    >>> a, b = Local('a'), Local('b')
+
+    >>> dis(c.code())
+
+And the added ``cache()`` method takes an expression to cache.  If no previous
+expressions were cached, a preamble is emitted to initialize the cache::
+
+    >>> c.cache(Add(a,b))
+    >>> dis(c.code())
+      0           0 LOAD_CONST               0 (None)
+                  3 STORE_FAST               0 ($CSECache)
+
+But subsequent ``cache()`` calls of course do not repeat the preamble::
+
+    >>> c.cache(Add(a,b))   # deliberate dupe to verify above only happens once
+    >>> dis(c.code())
+      0           0 LOAD_CONST               0 (None)
+                  3 STORE_FAST               0 ($CSECache)
+
+Generating a cached object results in extra code being added to ensure that
+the cache variable is initialized and to retrieve the cached value, if present.
+The resulting code looks complex, but each of the possible code paths are
+actually fairly short.  The cache keys are the string forms of the cached
+expressions, with an added number to ensure uniqueness::
+
+    >>> c.return_(Add(a,b))
+    >>> dis(c.code())
+      0           0 LOAD_CONST               0 (None)
+                  3 STORE_FAST               0 ($CSECache)
+                  6 LOAD_FAST                0 ($CSECache)
+                  9 JUMP_IF_TRUE             9 (to 21)
+                 12 BUILD_MAP                0
+                 15 STORE_FAST               0 ($CSECache)
+                 18 JUMP_FORWARD            20 (to 41)
+            >>   21 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                 24 COMPARE_OP               6 (in)
+                 27 JUMP_IF_FALSE           11 (to 41)
+                 30 POP_TOP
+                 31 LOAD_FAST                0 ($CSECache)
+                 34 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                 37 BINARY_SUBSCR
+                 38 JUMP_FORWARD            16 (to 57)
+            >>   41 POP_TOP
+                 42 LOAD_FAST                1 (a)
+                 45 LOAD_FAST                2 (b)
+                 48 BINARY_ADD
+                 49 DUP_TOP
+                 50 LOAD_FAST                0 ($CSECache)
+                 53 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                 56 STORE_SUBSCR
+            >>   57 RETURN_VALUE
+
+While the ``cache()`` method marks an expression as definitely cacheable, the
+``maybe_cache()`` method allows the code object to decide for itself whether
+the expression should be cached.  Specifically, the given expression and all
+its subexpressions are evaluated against a dummy code object, and its tree
+structure is examined.  Any non-leaf node that appears as a child of two
+or more parents, or twice or more as a child of the same parent, is considered
+suitable for caching.
+
+In our first example, the expression ``(a+b)/c*d`` is cached, because it's
+passed to ``maybe_cache()`` twice -- once by itself, and once as a child of
+``((a+b)/c*d) % 3``::
+
+    >>> a_plus_b = Add(a,b)
+    >>> c_times_d = Mul(Local('c'), Local('d'))
+    >>> abcd = Div(a_plus_b, c_times_d)
+    >>> m3 = Mod(abcd, 3)
+
+    >>> c = CSECode()
+    >>> c.maybe_cache(abcd)
+    >>> c.maybe_cache(m3)
+
+    >>> c.return_(m3)
+    >>> dis(c.code())
+      0           0 LOAD_CONST               0 (None)
+                  3 STORE_FAST               0 ($CSECache)
+                  6 LOAD_FAST                0 ($CSECache)
+                  9 JUMP_IF_TRUE             9 (to 21)
+                 12 BUILD_MAP                0
+                 15 STORE_FAST               0 ($CSECache)
+                 18 JUMP_FORWARD            20 (to 41)
+            >>   21 LOAD_CONST               1 ("Div(Add(Local('a'), Local('b')), Mul(Local('c'), Local('d'))) #1")
+                 24 COMPARE_OP               6 (in)
+                 27 JUMP_IF_FALSE           11 (to 41)
+                 30 POP_TOP             
+                 31 LOAD_FAST                0 ($CSECache)
+                 34 LOAD_CONST               1 ("Div(Add(Local('a'), Local('b')), Mul(Local('c'), Local('d'))) #1")
+                 37 BINARY_SUBSCR       
+                 38 JUMP_FORWARD            24 (to 65)
+            >>   41 POP_TOP             
+                 42 LOAD_FAST                1 (a)
+                 45 LOAD_FAST                2 (b)
+                 48 BINARY_ADD          
+                 49 LOAD_FAST                3 (c)
+                 52 LOAD_FAST                4 (d)
+                 55 BINARY_MULTIPLY     
+                 56 BINARY_DIVIDE       
+                 57 DUP_TOP             
+                 58 LOAD_FAST                0 ($CSECache)
+                 61 LOAD_CONST               1 ("Div(Add(Local('a'), Local('b')), Mul(Local('c'), Local('d'))) #1")
+                 64 STORE_SUBSCR        
+            >>   65 LOAD_CONST               2 (3)
+                 68 BINARY_MODULO       
+                 69 RETURN_VALUE        
+
+In the next example, we compute ``(a+b)*(a+b)`` after inspecting
+``(a+b)*(b+a)`` and ``(b+a)*(a+b)`` for recurring sub-expressions.  Naturally,
+we detect that ``(a+b)`` is used more than once, so it is cached::
+
+    >>> c = CSECode()
+    >>> b_plus_a = Add(b,a)
+    >>> ab_2 = Mul(a_plus_b, a_plus_b)
+    >>> c.maybe_cache(Mul(b_plus_a, a_plus_b))
+    >>> c.maybe_cache(Mul(a_plus_b, b_plus_a))
+    >>> c.return_(ab_2)
+    >>> dis(c.code())
+      0           0 LOAD_CONST               0 (None)
+                  3 STORE_FAST               0 ($CSECache)
+                  6 LOAD_FAST                0 ($CSECache)
+                  9 JUMP_IF_TRUE             9 (to 21)
+                 12 BUILD_MAP                0
+                 15 STORE_FAST               0 ($CSECache)
+                 18 JUMP_FORWARD            20 (to 41)
+            >>   21 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                 24 COMPARE_OP               6 (in)
+                 27 JUMP_IF_FALSE           11 (to 41)
+                 30 POP_TOP             
+                 31 LOAD_FAST                0 ($CSECache)
+                 34 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                 37 BINARY_SUBSCR       
+                 38 JUMP_FORWARD            16 (to 57)
+            >>   41 POP_TOP             
+                 42 LOAD_FAST                1 (a)
+                 45 LOAD_FAST                2 (b)
+                 48 BINARY_ADD          
+                 49 DUP_TOP             
+                 50 LOAD_FAST                0 ($CSECache)
+                 53 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                 56 STORE_SUBSCR        
+            >>   57 LOAD_FAST                0 ($CSECache)
+                 60 JUMP_IF_TRUE             9 (to 72)
+                 63 BUILD_MAP                0
+                 66 STORE_FAST               0 ($CSECache)
+                 69 JUMP_FORWARD            20 (to 92)
+            >>   72 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                 75 COMPARE_OP               6 (in)
+                 78 JUMP_IF_FALSE           11 (to 92)
+                 81 POP_TOP             
+                 82 LOAD_FAST                0 ($CSECache)
+                 85 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                 88 BINARY_SUBSCR       
+                 89 JUMP_FORWARD            16 (to 108)
+            >>   92 POP_TOP             
+                 93 LOAD_FAST                1 (a)
+                 96 LOAD_FAST                2 (b)
+                 99 BINARY_ADD          
+                100 DUP_TOP             
+                101 LOAD_FAST                0 ($CSECache)
+                104 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                107 STORE_SUBSCR        
+            >>  108 BINARY_MULTIPLY     
+                109 RETURN_VALUE        
+
+And in this example, we also compute ``(a+b)*(a+b)``, but this time only
+inspecting that one expression for recurrences.  We still find the recurrence,
+because ``(a+b)`` occurs more than once under the parent expression::
+
+    >>> c = CSECode()
+    >>> c.maybe_cache(ab_2)
+    >>> c.return_(ab_2)
+    >>> dis(c.code())
+      0           0 LOAD_CONST               0 (None)
+                  3 STORE_FAST               0 ($CSECache)
+                  6 LOAD_FAST                0 ($CSECache)
+                  9 JUMP_IF_TRUE             9 (to 21)
+                 12 BUILD_MAP                0
+                 15 STORE_FAST               0 ($CSECache)
+                 18 JUMP_FORWARD            20 (to 41)
+            >>   21 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                 24 COMPARE_OP               6 (in)
+                 27 JUMP_IF_FALSE           11 (to 41)
+                 30 POP_TOP             
+                 31 LOAD_FAST                0 ($CSECache)
+                 34 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                 37 BINARY_SUBSCR       
+                 38 JUMP_FORWARD            16 (to 57)
+            >>   41 POP_TOP             
+                 42 LOAD_FAST                1 (a)
+                 45 LOAD_FAST                2 (b)
+                 48 BINARY_ADD          
+                 49 DUP_TOP             
+                 50 LOAD_FAST                0 ($CSECache)
+                 53 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                 56 STORE_SUBSCR        
+            >>   57 LOAD_FAST                0 ($CSECache)
+                 60 JUMP_IF_TRUE             9 (to 72)
+                 63 BUILD_MAP                0
+                 66 STORE_FAST               0 ($CSECache)
+                 69 JUMP_FORWARD            20 (to 92)
+            >>   72 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                 75 COMPARE_OP               6 (in)
+                 78 JUMP_IF_FALSE           11 (to 92)
+                 81 POP_TOP             
+                 82 LOAD_FAST                0 ($CSECache)
+                 85 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                 88 BINARY_SUBSCR       
+                 89 JUMP_FORWARD            16 (to 108)
+            >>   92 POP_TOP             
+                 93 LOAD_FAST                1 (a)
+                 96 LOAD_FAST                2 (b)
+                 99 BINARY_ADD          
+                100 DUP_TOP             
+                101 LOAD_FAST                0 ($CSECache)
+                104 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
+                107 STORE_SUBSCR        
+            >>  108 BINARY_MULTIPLY     
+                109 RETURN_VALUE        
+
 
