@@ -67,17 +67,17 @@ def IfElse(tval, cond, fval, code=None):
         return fold_args(IfElse, tval, cond, fval)
     else_clause, end_if = Label(), Label()
     code(cond)
-    code(else_clause.JUMP_IF_FALSE, Code.POP_TOP, tval)
-    if code.stack_size is not None:
-        code(end_if.JUMP_FORWARD)
-    return code(else_clause, Code.POP_TOP, fval, end_if)
+    if tval != cond:
+        code(else_clause.JUMP_IF_FALSE, Code.POP_TOP, tval)
+        if code.stack_size is not None:
+            code(end_if.JUMP_FORWARD)
+    elif fval != cond:
+        code(end_if.JUMP_IF_TRUE)
 
-
-
-
-
-
-
+    if fval !=cond:       
+        return code(else_clause, Code.POP_TOP, fval, end_if)
+    else:
+        return code(else_clause, end_if)
 
 
 def unaryOp(name, opcode):
@@ -203,8 +203,6 @@ class CSETracker(Code):
 
 
 
-
-
 class CSECode(Code):
     """Code object with common sub-expression caching support"""
 
@@ -224,66 +222,25 @@ class CSECode(Code):
     def maybe_cache(self, expr):
         map(self.cache, self.tracker.track(expr))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     def __call__(self, *args):
-
         scall = super(CSECode, self).__call__
-
         for ob in args:
             if callable(ob) and ob in self.expr_cache:
                 key = self.expr_cache[ob]
-                have_cache, calc, done = Label(), Label(), Label()
-                self(
-                        CACHE, have_cache.JUMP_IF_TRUE,
-                        {}, SET_CACHE,
-                        calc.JUMP_FORWARD,
-                        
-                    have_cache,
-                        Compare(Const(key), [('in', Pass)]),
-                        calc.JUMP_IF_FALSE,
-                        Code.POP_TOP,
+                def calculate(code):
+                    scall(ob, Code.DUP_TOP, CACHE, Const(key), Code.STORE_SUBSCR)
+                cache = IfElse(
+                    CACHE, CACHE, lambda c: scall({}, Code.DUP_TOP, SET_CACHE)
+                )
+                scall(
+                    IfElse(
                         Getitem(CACHE, Const(key)),
-                        done.JUMP_FORWARD,
-    
-                    calc,                    
-                        Code.POP_TOP,
-                );      scall(ob)
-                self(
-                        Code.DUP_TOP, CACHE, Const(key), Code.STORE_SUBSCR,
-                    done,
+                        Compare(Const(key), [('in', cache)]),
+                        calculate
+                    )
                 )
             else:
                 scall(ob)
-
-
-
-
-
-
-
-
-
 
 
 
