@@ -4,9 +4,8 @@ __all__ = [
     'DispatchError', 'AmbiguousMethods', 'NoApplicableMethods',
     'abstract', 'when', 'before', 'after', 'around',
     'implies', 'dominant_signatures', 'combine_actions',
-    'always_overrides', 'merge_by_default',
+    'always_overrides', 'merge_by_default', 'Aspect',
 ]
-
 from peak.util.decorators import decorate_assignment, decorate, struct
 from peak.util.assembler import Code, Const, Call, Local
 import inspect, new
@@ -16,7 +15,6 @@ try:
 except NameError:
     from sets import Set as set
     from sets import ImmutableSet as frozenset
-
 empty = frozenset()
 
 struct()
@@ -36,8 +34,10 @@ def parse_rule(ruleset, body, predicate, actiontype, localdict, globaldict):
     """Hook for pre-processing predicates, e.g. parsing string expressions"""
     return Rule(body, predicate, actiontype)
 
-
-
+def clone_function(f):
+    return new.function(
+      f.func_code, f.func_globals, f.func_name, f.func_defaults, f.func_closure
+    )
 
 class Method(object):
     """A simple method w/optional chaining"""
@@ -121,6 +121,47 @@ class Method(object):
         decorate.__doc__ = doc
         return decorate
 
+def aspects_for(ob):
+    #try:
+    return ob.__dict__
+    #except (AttributeError, TypeError):
+    #           
+
+class Aspect(object):
+    """Attach extra state to an object"""
+
+    __slots__ = ()
+
+    class __metaclass__(type):
+        def __call__(cls, ob, *key):
+            a = aspects_for(ob)
+            try:
+                return a[cls, key]
+            except KeyError:
+                # Use setdefault() to prevent race conditions
+                ob = a.setdefault((cls, key), type.__call__(cls, ob, *key))
+                return ob
+
+    decorate(classmethod)
+    def exists_for(cls, ob, *key):
+        """Does an aspect of this type for the given key exist?""" 
+        return (cls, key) in aspects_for(ob)
+
+    decorate(classmethod)
+    def delete(cls, ob, *key):
+        """Ensure an aspect of this type for the given key does not exist"""
+        a = aspects_for(ob)
+        try:
+            del a[cls, key]
+        except KeyError:
+            pass
+
+    def __init__(self, owner):
+        pass
+
+
+
+
 class RuleSet(object):
     """An observable, stably-ordered collection of rules"""
 
@@ -176,75 +217,94 @@ class RuleSet(object):
         self.listeners.remove(listener)
 
 
+class Dispatching(Aspect):
+    """Hold the dispatching attributes of a generic function"""
+
+    def __init__(self, func):
+        self.function = func
+        self.snapshot()
+        self.rules    = RuleSet()
+        self.engine   = TypeEngine(self)
+
+    def snapshot(self):
+        self.clone = clone_function(self.function)
+
+def rules_for(f):
+    """Return the initialized ruleset for a generic function"""
+    if not Dispatching.exists_for(f):
+        d = Dispatching(f)
+        d.rules.add(Rule(d.clone))
+    return Dispatching(f).rules
+
+def abstract():
+    """Declare a function to be abstract"""
+    def callback(frame, name, func, old_locals):
+        Dispatching(func)   # Create empty RuleSet and default engine for func
+        return func
+    return decorate_assignment(callback)
 
 
+class Engine(object):
+    """Abstract base for dispatching engines"""
 
+    def __init__(self, disp):
+        self.func = disp.function
+        self.ruleset = disp.rules
+        disp.rules.subscribe(self)
+    
+    def actions_changed(self, added, removed):
+        for r in removed:
+            # force full regeneration if any rules removed
+            return self.full_reset()
+        for (na, atype, body, sig, seq) in added:
+            self.add_method(sig, atype(body,sig,seq))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-class TypeEngine(object):
+class TypeEngine(Engine):
     """Simple type-based dispatching"""
 
-    def __init__(self, func, rules):
+    def __init__(self, disp):
         self.registry = {}
+        self.static_cache = {}
         self.cache = {}
-        self.func = func
-        self.generate_code()
-        rules.subscribe(self)
-        self.ruleset = rules
+        super(TypeEngine, self).__init__(disp)
+        self.generate_code(disp)
 
-    def actions_changed(self, added, removed):
+    def full_reset(self):
+        self.registry.clear()
+        self.actions_changed(self.ruleset, ())
+
+    def add_method(self, sig, action):
         registry = self.registry
-        for r in removed:
-            registry.clear()
-            added = self.ruleset
-            break   # force full regeneration if any rules removed
-        for (na, atype, body, sig, seq) in added:
-            action = atype(body,sig,seq)
-            if sig in registry:
-                registry[sig] = combine_actions(action, registry[sig])
-            else:
-                registry[sig] = action
-        self.reset_cache()
+        if sig in self.registry:
+            registry[sig] = combine_actions(action, registry[sig])
+        else:
+            registry[sig] = action
+        self.changed()
+        
+    def changed(self):
+        if self.cache != self.static_cache:
+            self.generate_code(Dispatching(self.func))
 
-    def __getitem__(self, types):
-        registry = self.registry
-        action = self.ruleset.default_action
-        for sig in registry:
-            if implies(types, sig):
-                action = combine_actions(action, registry[sig])
-        return action
+    def _snapshot_static(self):
+        self.static_cache = self.registry.copy()
+        self.changed()
 
-    def __call__(self, *args):
-        # XXX code similar to this should be generated inside self.func
-        types = tuple([getattr(arg,'__class__',type(arg)) for arg in args])
-        try: f = self.cache[types]
-        except KeyError: f = self.cache[types] = self[types]
-        return f(*args)
+    def generate_code(self, disp):
+        self.cache = cache = self.static_cache.copy()
 
+        def callback(*args):
+            # XXX code similar to this could be generated directly...
+            types = tuple([getattr(arg,'__class__',type(arg)) for arg in args])
+            try:
+                f = cache[types]
+            except KeyError:
+                action = self.ruleset.default_action
+                for sig in self.registry:
+                    if types==sig or implies(types, sig):
+                        action = combine_actions(action, self.registry[sig])
+                f = cache[types] = action
+            return f(*args)
 
-    def generate_code(self):
         c = Code.from_function(self.func, copy_lineno=True)
         args, star, dstar, defaults = inspect.getargspec(self.func)
         types = [
@@ -253,37 +313,9 @@ class TypeEngine(object):
                 (Local(name), Const('__class__'), Call(Const(type),(Local(name),)))
             ) for name in flatten(args)
         ]
-        target = Call(Const(self.cache.get), (tuple(types), Const(self)))
+        target = Call(Const(cache.get), (tuple(types), Const(callback)))
         c.return_(Call(target, map(tuplize,args), (), star, dstar))
         self.func.func_code = c.code()
-
-
-    def reset_cache(self):
-
-        self.cache.clear()
-
-        if self is implies.__engine__:
-            # For every generic function *but* implies(), it's okay to let
-            # the cache populate lazily.  But implies() has to be working
-            # in order to populate the cache!  Therefore, we have to
-            # pre-populate the cache here.  This pre-population must include
-            # *only* core framework rules, because rules added later might
-            # need to override/combine and so should still be cached lazily.
-            #
-            if _core_rules:
-                # Update from our copy of the core rules
-                self.cache.update(_core_rules)
-            else:
-                # The core is not bootstrapped yet; copy *everything* to cache
-                # since anything being added now is a core rule by definition.
-                self.cache.update(self.registry)
-
-
-
-
-
-
-
 
 def flatten(v):
     if isinstance(v,basestring): yield v; return
@@ -294,42 +326,13 @@ def tuplize(v):
     if isinstance(v,basestring): return Local(v)
     if isinstance(v,list): return tuple(map(tuplize,v))
 
-
-def rules_for(f, abstract=False):
-    if not hasattr(f,'__rules__'):
-        f.__rules__ = RuleSet()
-        if not abstract:
-            clone = new.function(
-                f.func_code, f.func_globals, f.func_name, f.func_defaults,
-                f.func_closure
-            )
-            f.__rules__.add(Rule(clone))
-    if not hasattr(f, '__engine__'):
-        f.__engine__ = TypeEngine(f, f.__rules__)
-    return f.__rules__
-
-
-def abstract():
-    """Declare a function to be abstract"""
-    def callback(frame, name, func, old_locals):
-        rules_for(func, True)
-        return func
-    return decorate_assignment(callback)
-
-
 when = Method.make_decorator(
     "when", "Extend a generic function with a new action"
 )
 
-
-
-
-
-
 abstract()
 def implies(s1,s2):
     """Is s2 always true if s1 is true?"""
-
 
 when(implies, (tuple,tuple))
 def tuple_implies(s1,s2):
@@ -358,17 +361,11 @@ def method_implies(a1, a2):
         return implies(a1.signature, a2.signature)
     raise TypeError("Incompatible action types", a1, a2)
 
-
-
-
-
-
-
-
-
-
 def YES(s1,s2): return True
 def NO(s1,s2):  return False
+
+
+
 
 def always_overrides(a,b):
     """instances of `a` always imply `b`; `b` instances never imply `a`"""
@@ -400,6 +397,9 @@ class Around(Method):
 around = Around.make_decorator('around')
 
 always_overrides(Around, Method)
+
+
+
 
 
 
@@ -611,7 +611,7 @@ def override_ambiguous(a1, a2):
 merge_by_default(AmbiguousMethods)
 
 # the core is finished loading, snapshot the core rules for implies()
-_core_rules = implies.__engine__.registry.copy()
+Dispatching(implies).engine._snapshot_static()
 
 def dominant_signatures(cases):
     """Return the most-specific ``(signature,body)`` pairs from `cases`

@@ -14,13 +14,13 @@ class TypeEngineTests(unittest.TestCase):
         rx2 = Rule(x2,(int,), Method)
         rx3 = Rule(x3,(int,), Around)
 
-        f.__rules__.add(rx2)
+        rules_for(f).add(rx2)
         self.assertEqual(f(1), 2)
 
-        f.__rules__.add(rx3)
+        rules_for(f).add(rx3)
         self.assertEqual(f(1), 6)
 
-        f.__rules__.remove(rx3)
+        rules_for(f).remove(rx3)
         self.assertEqual(f(1), 2)
 
     def testAroundDecoratorAndRetroactiveCombining(self):
@@ -43,10 +43,9 @@ def additional_tests():
     import doctest
     return doctest.DocFileSuite(
         'DESIGN.txt', 'Indexing.txt', 'AST-Builder.txt',
-        'Code-Generation.txt',
+        'Code-Generation.txt', 'Aspects.txt',
         optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE,
     )
-
 
 
 
