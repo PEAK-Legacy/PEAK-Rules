@@ -18,8 +18,7 @@ This document describes the design (and tests the implementation) of the
 this module directly in your own programs.  If you do want to use it directly,
 you should keep in mind that it currently only implements a subset of Python
 *expression* syntax: it does not support lambdas, list comprehensions,
-generator expressions, any syntax newly introduced in Python 2.5 (e.g. yield
-expressions or conditional expressions), or any kind of statements.
+generator expressions, yield expressions, or any kind of statements.
 
 
 ------------------------

@@ -4,9 +4,11 @@ The PEAK Rules Project
 
 This package is very much a work in progress.  I expect it to be very stable
 (in the sense of being simple and quirk/bug-free) even in the short term, but
-it will also be very *unstable* in the API sense.  That is, the code here
-should always be working and fairly robust, but don't be surprised if *your*
-code suddenly stops working due to API changes!
+it its extension API may still be very *unstable*.  That is, the code here
+should always be working and fairly robust, and using documented *user* APIs
+should be safe.  But the extension API is still under development, so if you
+hook deep into indexing or tree building or code generation stuff, you might
+have to refactor a bit to keep up.
 
 
 ----------
@@ -64,8 +66,8 @@ The big differences between PEAK-Rules and RuleDispatch are:
 1. It's designed for extensibility/pluggability from the ground up
 
 2. It's built without adaptation, only generic functions, and so doesn't carry
-   as much baggage.  (The current implementation is about 1500 lines of code:
-   the size of just one of RuleDispatch's modules.)
+   as much baggage.  (The current implementation is about 1900 lines of code:
+   less than half the size of RuleDispatch.)
 
 While it's true that the current default rule engine doesn't support arbitrary
 predicates, the point is that it's *pluggable*.  Future versions of PEAK-Rules
@@ -102,12 +104,8 @@ the new core.  Many times while writing RuleDispatch I wished I had a generic
 function engine already in existence, so I could use generic functions to write
 it with.  Now I have that, so it should be easier.
 
-Still, there's about 2500 lines of code (not counting tests) that will need
-reworking.  I don't plan on dumping anything over except dispatch.ast_builder
-and its tests; it's purely a Python expression compiler library and not in any
-way specific to RuleDispatch.  The other stuff, dispatch.functions,
-dispatch.predicates, and dispatch.strategy are going to probably get redone in
-some fairly fundamental ways.
+Still, there's about 1500 lines of code (not counting tests) that still need
+reworking as of June 2007.
 
 
 ------------

@@ -81,7 +81,9 @@ Finally, specialty features such as index customization, thread-safety,
 event-oriented rulesets, and such will be introduced.
 
 There is no defined timeframe for these most of these phases, although I
-anticipate that at least the first one will be finished in June.
+anticipate that at least the first one will be finished in June 2006.
+(Actually, the first phase was finished in May '06; then I didn't do hardly
+any work on the thing for nearly a year.  Phase 2 should be done in July '07.)
 
 
 Design Concepts

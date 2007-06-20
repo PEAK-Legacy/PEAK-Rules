@@ -5,7 +5,7 @@ Code Generation from Python Syntax Trees
 The ``peak.rules.codegen`` module extends ``peak.util.assembler`` (from the
 "BytecodeAssembler" project) with additional AST node types to allow generation
 of code for simple Python expressions (i.e., those without lambdas,
-comprehensions, generators, or conditionals).  It also provides "builder"
+comprehensions, generators, or yields).  It also provides "builder"
 classes that work with the ``peak.rules.ast_builder`` module to generate
 expression ASTs from Python source code, thus creating an end-to-end compiler
 tool chain.
