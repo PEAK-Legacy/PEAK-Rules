@@ -1,43 +1,8 @@
 from __future__ import division
 import sys
 from peak.rules.core import Aspect, abstract, Dispatching, Engine, when
-from peak.util.decorators import struct
-from weakref import ref
-from sys import maxint
-from types import ClassType
-
-try:
-    set = set
-    frozenset = frozenset
-except NameError:
-    from sets import Set as set
-    from sets import ImmutableSet as frozenset
-
-try:
-    sorted = sorted
-except NameError:
-    def sorted(seq,key=None):
-        if key:
-            d = [(key(v),v) for v in seq]
-        else:
-            d = list(seq)
-        d.sort()
-        if key:
-            return [v[1] for v in d]
-        return d
-
-
-abstract()
-def seeds_for(index, criterion):
-    """Determine the seeds needed to index `criterion`
-
-    Methods must return a 3-tuple (seeds, inclusions, exclusions) of seed sets
-    or sequences.  See Indexing.txt for details.
-    """
-
-
-
-
+from peak.rules.criteria import *
+from peak.rules.criteria import _ExtremeType, sorted, set, frozenset
 
 class Ordering(Aspect):
     """Track inter-expression ordering constraints"""
@@ -69,16 +34,16 @@ class Ordering(Aspect):
         else:
             return False
 
+
+
+
+
+
 def define_ordering(ob, seq):
     items = []
     for key in seq:
         Ordering(ob, key).requires(items)
         items.append(key)
-
-
-
-
-
 
 def to_bits(ints):
     """Return a bitset encoding the numbers contained in sequence `ints`"""
@@ -109,12 +74,6 @@ def from_bits(n):
             yield b
         n >>= 1
         b += 1
-
-
-
-
-
-
 
 
 
@@ -250,13 +209,6 @@ class BitmapIndex(Aspect):
         cases = map(self.case_seeds.__getitem__, cases)
         return (len(self.all_seeds), sum(map(len, cases)))
 
-        '''seeds = -1
-        while len(self.all_seeds) > seeds:
-            # The loop ensures accuracy in the case where a len() adds seeds
-            seeds = len(self.all_seeds)  # must be the value *before* totalling
-            total = sum(map(len, cases))            
-        return seeds, total'''
-
     def seed_bits(self, cases):
         bits = self.criteria_bits
         return dict([
@@ -273,6 +225,13 @@ class BitmapIndex(Aspect):
         ]
 
 
+abstract()
+def seeds_for(index, criterion):
+    """Determine the seeds needed to index `criterion`
+
+    Methods must return a 3-tuple (seeds, inclusions, exclusions) of seed sets
+    or sequences.  See Indexing.txt for details.
+    """
 
 
 
@@ -283,27 +242,6 @@ class BitmapIndex(Aspect):
 
 
 
-
-
-class Pointer(int):
-    """Criterion for 'is' comparisons"""
-
-    __slots__ = 'ref', 'equal'
-
-    def __new__(cls, ob, equal=True):
-        self = Pointer.__base__.__new__(cls, id(ob)&maxint)
-        self.equal = equal
-        self.ref = ob
-        return self
-
-    def __eq__(self,other):
-        return self is other or (
-            int(self)==int(other)
-            and (not isinstance(other, Pointer) or self.equal==other.equal)
-        )
-
-    def __repr__(self):
-        return "Pointer(%r)" % self.ref
 
 
 class _FixedSubset(object):
@@ -322,55 +260,6 @@ def seeds_for_pointer(index, criterion):
     return _FixedSubset(index.all_seeds), [None], [idref]
 
 
-
-
-
-
-class _ExtremeType(object):     # Courtesy of PEP 326
-    def __init__(self, cmpr, rep):
-        object.__init__(self)
-        self._cmpr = cmpr
-        self._rep = rep
-
-    def __cmp__(self, other):
-        if isinstance(other, self.__class__) and\
-           other._cmpr == self._cmpr:
-            return 0
-        return self._cmpr
-
-    def __repr__(self):
-        return self._rep
-
-    def __lt__(self,other):
-        return self.__cmp__(other)<0
-
-    def __le__(self,other):
-        return self.__cmp__(other)<=0
-
-    def __gt__(self,other):
-        return self.__cmp__(other)>0
-
-    def __eq__(self,other):
-        return self.__cmp__(other)==0
-
-    def __ge__(self,other):
-        return self.__cmp__(other)>=0
-
-    def __ne__(self,other):
-        return self.__cmp__(other)<>0
-
-Max = _ExtremeType(1, "Max")
-Min = _ExtremeType(-1, "Min")
-
-struct()
-def Range(lo=(Min,-1), hi=(Max,1)):
-    assert hi>lo
-    return lo, hi
-
-struct()
-def Value(value, truth=True):
-    return value, truth
-
 class _RangeSubset(object):
     __slots__ = 'offsets', 'seeds', 'lo', 'hi'
 
@@ -387,6 +276,15 @@ class _RangeSubset(object):
                 off[k] = n                
         return off[self.hi] - off[self.lo]
         
+
+
+        
+
+
+
+
+
+
 when(seeds_for, (BitmapIndex, Range))
 def seeds_for_range(index, criterion):
     lo, hi = criterion.lo, criterion.hi
@@ -403,6 +301,26 @@ def seeds_for_value(index, criterion):
         return [v], [v], []
     else:
         return _FixedSubset(index.all_seeds), [(Min, -1)], [v]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

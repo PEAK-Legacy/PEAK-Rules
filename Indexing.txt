@@ -727,7 +727,8 @@ every criterion will seed only to itself.  We'll create a simple criterion
 type, and register a suitable method with the ``seeds_for()`` generic
 function::
 
-    >>> from peak.rules.indexing import BitmapIndex, seeds_for, struct
+    >>> from peak.rules.indexing import BitmapIndex, seeds_for
+    >>> from peak.util.decorators import struct
     >>> from peak.rules import when
 
     >>> class DemoEngine: pass
@@ -959,7 +960,7 @@ a sorted list of all the index's seeds::
     >>> ind.selectivity([0])
     (2, 1)
 
-    >>> from peak.rules.indexing import sorted
+    >>> from peak.rules.criteria import sorted
     >>> sorted(ind.expanded_sets())
     [((1, -1), [[0], []]), ((23, 1), [[], [0]])]
 
