@@ -662,7 +662,7 @@ The ``BitmapIndex`` aspect provides these methods and attributes:
 
 add_case(case_id, criterion)
     Given an integer `case_id`, update ``all_seeds`` by calling the
-    ``seeds_for(engine, expr, criterion)`` generic function and caching the
+    ``seeds_for(index, criterion)`` generic function and caching the
     result (so that multiple cases using the same criterion share the same
     seeds).
 
@@ -704,7 +704,8 @@ criteria_bits
     cases that use that criterion.
 
 criteria_seeds
-    A dictionary that caches the result of the index's calls to ``seeds_for()``
+    A dictionary that caches the result of the index's calls to
+    ``seeds_for()``.
 
 engine
     The engine the index is associated with.
@@ -722,19 +723,25 @@ extras
     intermediate indexes.
 
 For our first demo, we'll assume we're indexing a simple equality condition, so
-every criterion will seed only to itself.  We'll register a suitable method
-with the ``seeds_for()`` generic function::
+every criterion will seed only to itself.  We'll create a simple criterion
+type, and register a suitable method with the ``seeds_for()`` generic
+function::
 
-    >>> from peak.rules.indexing import BitmapIndex, seeds_for
+    >>> from peak.rules.indexing import BitmapIndex, seeds_for, struct
     >>> from peak.rules import when
 
     >>> class DemoEngine: pass
 
-    >>> def seeds_for_demo(engine, expr, criterion):
-    ...     print "computing seeds for", `criterion`
-    ...     return [criterion], [criterion], []
+    >>> def find(val):
+    ...     """A structure type used as a criterion"""
+    ...     return val,
+    >>> find = struct()(find)
 
-    >>> seeds_for_demo = when(seeds_for, (DemoEngine,))(seeds_for_demo)
+    >>> def seeds_for_demo(index, criterion):
+    ...     print "computing seeds for", criterion
+    ...     return [criterion.val], [criterion.val], []
+
+    >>> seeds_for_demo = when(seeds_for, (BitmapIndex, find))(seeds_for_demo)
 
 To start with, selectivity is 0/0 because there are no seeds (and therefore no
 branches)::
@@ -763,14 +770,14 @@ branches)::
 By adding a case, we'll add a criterion (and therefore a seed), which gets
 cached::
 
-    >>> ind.add_case(0, "x")
-    computing seeds for 'x'
+    >>> ind.add_case(0, find("x"))
+    computing seeds for find('x',)
 
     >>> ind.criteria_seeds
-    {'x': (['x'], ['x'], [])}
+    {find('x',): (['x'], ['x'], [])}
 
     >>> ind.criteria_bits
-    {'x': 1}
+    {find('x',): 1}
 
 
 Now, selectivity will always be at least 1/0, because there's one possible
@@ -801,10 +808,10 @@ If we add another case with the same criterion, the number of branches will
 stay the same.  Notice also, that the seeds for a previously-seen criterion are
 not recalculated::
 
-    >>> ind.add_case(1, "x")
+    >>> ind.add_case(1, find("x"))
 
     >>> ind.criteria_bits   # criterion 'x' was used for cases 0 and 1
-    {'x': 3}
+    {find('x',): 3}
 
     >>> dict(ind.expanded_sets())
     {'x': [[0, 1], []]}
@@ -824,8 +831,8 @@ not recalculated::
 However, if we add a new case with a *new* criterion, its seeds are computed,
 and the number of branches increases::
 
-    >>> ind.add_case(2, "y")
-    computing seeds for 'y'
+    >>> ind.add_case(2, find("y"))
+    computing seeds for find('y',)
 
     >>> dict(ind.expanded_sets())
     {'y': [[2], []], 'x': [[0, 1], []]}

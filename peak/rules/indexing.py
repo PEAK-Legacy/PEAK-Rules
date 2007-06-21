@@ -28,7 +28,7 @@ except NameError:
 
 
 abstract()
-def seeds_for(engine, expr, criterion):
+def seeds_for(index, criterion):
     """Determine the seeds needed to index `criterion`
 
     Methods must return a 3-tuple (seeds, inclusions, exclusions) of seed sets
@@ -203,6 +203,88 @@ class TreeBuilder(object):
             del remaining[best_expr]
         return best_expr, frozenset(remaining)
 
+class BitmapIndex(Aspect):
+    """Index that computes selectivity and handles basic caching w/bitmaps"""
+
+    known_cases = 0
+
+    def __init__(self, engine, expr):
+        self.extra = {}
+        self.all_seeds = {}         # seed -> inc_cri, exc_cri
+        self.criteria_bits = {}     # cri  -> case bits
+        self.case_seeds = []        # case -> seed set
+        self.criteria_seeds = {}    # cri  -> seeds, inc_seeds, exc_seeds
+        self.expr = expr
+        self.engine = engine
+
+    def add_case(self, case_id, criterion):       
+        self._extend_cases(case_id)
+        if criterion in self.criteria_seeds:
+            seeds, inc, exc = self.criteria_seeds[criterion]
+        else:
+            self.criteria_bits[criterion] = 0
+            seeds, inc, exc = self.criteria_seeds[criterion] \
+                            = seeds_for(self, criterion)
+
+        self.case_seeds[case_id] = seeds
+        bit = to_bits([case_id])
+        self.known_cases |= bit
+        self.criteria_bits[criterion] |= bit
+
+        all_seeds = self.all_seeds
+        for i, seeds in ((0,inc), (1,exc)):
+            for seed in seeds:
+                if seed not in all_seeds:
+                    all_seeds[seed] = set(), set()
+                all_seeds[seed][i].add(criterion)
+
+    def _extend_cases(self, case_id):
+        if case_id >= len(self.case_seeds):
+            self.case_seeds.extend(
+                [self.all_seeds]*(case_id+1-len(self.case_seeds))
+            )
+
+    def selectivity(self, cases):
+        if cases and cases[-1] >= len(self.case_seeds):
+            self._extend_cases(cases[-1])
+        cases = map(self.case_seeds.__getitem__, cases)
+        return (len(self.all_seeds), sum(map(len, cases)))
+
+        '''seeds = -1
+        while len(self.all_seeds) > seeds:
+            # The loop ensures accuracy in the case where a len() adds seeds
+            seeds = len(self.all_seeds)  # must be the value *before* totalling
+            total = sum(map(len, cases))            
+        return seeds, total'''
+
+    def seed_bits(self, cases):
+        bits = self.criteria_bits
+        return dict([
+            (seed,
+                (sum([bits[i] for i in inc]) & cases,
+                 sum([bits[e] for e in exc]) & cases))
+                for seed, (inc, exc) in self.all_seeds.items()
+        ])
+
+    def expanded_sets(self):
+        return [
+            (seed, [list(from_bits(inc)), list(from_bits(exc))])
+            for seed, (inc, exc) in self.seed_bits(self.known_cases).items()
+        ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class Pointer(int):
     """Criterion for 'is' comparisons"""
 
@@ -232,12 +314,12 @@ class _FixedSubset(object):
         return len(self.parent)-1
 
         
-when(seeds_for, (object, object, Pointer))
-def seeds_for_pointer(engine, expr, criterion):
+when(seeds_for, (BitmapIndex, Pointer))
+def seeds_for_pointer(index, criterion):
     idref = id(criterion.ref)
     if criterion.equal:
         return [idref], [idref], [None]
-    return _FixedSubset(BitmapIndex(engine, expr).all_seeds), [None], [idref]
+    return _FixedSubset(index.all_seeds), [None], [idref]
 
 
 
@@ -305,24 +387,24 @@ class _RangeSubset(object):
                 off[k] = n                
         return off[self.hi] - off[self.lo]
         
-when(seeds_for, (object, object, Range))
-def seeds_for_range(engine, expr, criterion):
-    ind = BitmapIndex(engine, expr)
+when(seeds_for, (BitmapIndex, Range))
+def seeds_for_range(index, criterion):
     lo, hi = criterion.lo, criterion.hi
-    if lo not in ind.all_seeds or hi not in ind.all_seeds:
-        ind.extra.clear()   # ensure offsets are rebuilt on next selectivity()
-    return _RangeSubset(ind, lo, hi), [lo], [hi]
+    if lo not in index.all_seeds or hi not in index.all_seeds:
+        index.extra.clear()   # ensure offsets are rebuilt on next selectivity()
+    return _RangeSubset(index, lo, hi), [lo], [hi]
 
-when(seeds_for, (object, object, Value))
-def seeds_for_value(engine, expr, criterion):
+when(seeds_for, (BitmapIndex, Value))
+def seeds_for_value(index, criterion):
     v = (criterion.value, 0)
-    ind = BitmapIndex(engine, expr)
-    if v not in ind.all_seeds:
-        ind.extra.clear()   # ensure offsets are rebuilt on next selectivity()
+    if v not in index.all_seeds:
+        index.extra.clear()   # ensure offsets are rebuilt on next selectivity()
     if criterion.truth:
         return [v], [v], []
     else:
-        return _FixedSubset(ind.all_seeds), [(Min, -1)], [v]
+        return _FixedSubset(index.all_seeds), [(Min, -1)], [v]
+
+
 
 
 
@@ -365,87 +447,5 @@ def split_ranges(ind, cases):
             low = ranges.pop()[0][0]
         ranges.append(((low, Max), current))    
     return exact, ranges
-
-
-class BitmapIndex(Aspect):
-    """Index that computes selectivity and handles basic caching w/bitmaps"""
-
-    known_cases = 0
-
-    def __init__(self, engine, expr):
-        self.extra = {}
-        self.all_seeds = {}         # seed -> inc_cri, exc_cri
-        self.criteria_bits = {}     # cri  -> case bits
-        self.case_seeds = []        # case -> seed set
-        self.criteria_seeds = {}    # cri  -> seeds, inc_seeds, exc_seeds
-        self.expr = expr
-        self.engine = engine
-
-    def add_case(self, case_id, criterion):       
-        self._extend_cases(case_id)
-        if criterion in self.criteria_seeds:
-            seeds, inc, exc = self.criteria_seeds[criterion]
-        else:
-            self.criteria_bits[criterion] = 0
-            seeds, inc, exc = self.criteria_seeds[criterion] \
-                            = seeds_for(self.engine, self.expr, criterion)
-
-        self.case_seeds[case_id] = seeds
-        bit = to_bits([case_id])
-        self.known_cases |= bit
-        self.criteria_bits[criterion] |= bit
-
-        all_seeds = self.all_seeds
-        for i, seeds in ((0,inc), (1,exc)):
-            for seed in seeds:
-                if seed not in all_seeds: all_seeds[seed] = set(), set()
-                all_seeds[seed][i].add(criterion)
-
-    def _extend_cases(self, case_id):
-        if case_id >= len(self.case_seeds):
-            self.case_seeds.extend(
-                [self.all_seeds]*(case_id+1-len(self.case_seeds))
-            )
-
-
-    def selectivity(self, cases):
-        if cases and cases[-1] >= len(self.case_seeds):
-            self._extend_cases(cases[-1])
-        return (
-            len(self.all_seeds),
-            sum(map(len, map(self.case_seeds.__getitem__, cases)))
-        )
-
-    def seed_bits(self, cases):
-        bits = self.criteria_bits
-        return dict([
-            (seed,
-                (sum([bits[i] for i in inc]) & cases,
-                 sum([bits[e] for e in exc]) & cases))
-                for seed, (inc, exc) in self.all_seeds.items()
-        ])
-
-    def expanded_sets(self):
-        return [
-            (seed, [list(from_bits(inc)), list(from_bits(exc))])
-            for seed, (inc, exc) in self.seed_bits(self.known_cases).items()
-        ]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
