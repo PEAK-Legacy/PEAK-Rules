@@ -168,11 +168,11 @@ been computed::
     >>> E2 = Ordering(f, "E2")
 
     >>> E2.can_precede(["E1", "E2", "E3", "E4", "E5", "E6"])
-    False 
+    False
     >>> E2.can_precede(["E1", "E5"])
-    False 
+    False
     >>> E2.can_precede(["E5"])
-    True  
+    True
     >>> E2.can_precede(["E1"])
     True
 
@@ -351,7 +351,7 @@ But first, we'll need an expression class.  For simplicity's sake, we'll use
 a string subclass that uses sequences of name-value pairs as rules, and creates
 branches for each value whose name equals the expression string::
 
-    >>> class DemoExpr(str):   
+    >>> class DemoExpr(str):
     ...     def branch_table(self, cases):
     ...         branches = {None: []}   # "none of the above" branch
     ...         for case in cases:
@@ -429,17 +429,17 @@ and build dispatch tables.
 
 Here's a quick example to show how selectivity should be calculated for a few
 simple cases::
-    
+
     >>> db = DemoBuilder()
 
     >>> db.selectivity(x, [r(x=1), r(x=2)])  # 3 branches: 1, 2, None
-    (3, 2)                                   
+    (3, 2)
     >>> db.selectivity(x, [r(x=1), r(x=1)])  # 2 branches: 1, None
-    (2, 2)                                   
+    (2, 2)
     >>> db.selectivity(x, [])                # 1 branch: "None of the above"
-    (1, 0)                                      
+    (1, 0)
     >>> db.selectivity(x, [r(y=42)])         # 1 branch: "None of the above"
-    (1, 1)                                   
+    (1, 1)
     >>> db.selectivity(x, [r(x=1), r(y=1)])  # 2 branches: 1, None
     (2, 3)
     >>> db.selectivity(x, [r(y=2), r(z=1)])  # 1 branch: "None of the above"
@@ -636,7 +636,7 @@ bitmap (integer or long integer), and vice versa::
     >>> odds = to_bits([9,11,13,1,3,5,7,15])
     >>> print hex(odds)
     0xaaaa
-    
+
     >>> list(from_bits(odds))
     [1, 3, 5, 7, 9, 11, 13, 15]
 
@@ -646,9 +646,436 @@ long integers::
     >>> seven_long = to_bits([32,33,34])
     >>> print hex(seven_long)
     0x700000000L
-    
+
     >>> list(from_bits(seven_long))
     [32, 33, 34]
+
+
+The ``BitmapIndex`` Aspect
+==========================
+
+The ``BitmapIndex`` aspect provides basic support for indexing cases
+identified by sequential integers.  Indexes are keyed by expression and attach
+to an "engine", which can be any object that supports aspects.
+
+The ``BitmapIndex`` aspect provides these methods and attributes:
+
+add_case(case_id, criterion)
+    Given an integer `case_id`, update ``all_seeds`` by calling the
+    ``seeds_for(engine, expr, criterion)`` generic function and caching the
+    result (so that multiple cases using the same criterion share the same
+    seeds).
+
+    The ``seeds_for()`` generic function must return a tuple of three sets or
+    sequences.  The first is the set or sequence of all seeds for which the
+    criterion holds true.  The second contains seeds that should be "marked for
+    inclusion" in the bitmaps for that criterion, and the third contains the
+    seeds that should be "marked for exclusion".
+
+    For the simplest kinds of indexes, the method can simply return the same
+    set or sequence twice, followed by a set or sequence containing a seed that
+    means "none of the above".  However, more sophisticated indexes will use
+    the inclusions and exclusions to denote ranges or hierarchies in a more
+    efficient way than simply listing all the matching seeds.  (Also, the first
+    set or sequence is only used for its ``len()`` as a basis for computing
+    selectivity; its contents aren't actually used by the ``BitmapIndex``
+    itself.)
+
+selectivity(case_id_list)
+    Given a **sorted** sequence of integer case ids, return the `selectivity
+    statistics`_ of the index for those cases.
+
+seed_bits(cases)
+    Given a bitmap of cases, return a dictionary mapping seeds to
+    ``(include, exclude)`` bitset pairs.
+
+expanded_sets()
+    Return a list of ``(seed, (inc, exc)`` tuples, where ``inc`` and ``exc``
+    are integer case lists.  This method is for debugging and testing only.
+
+all_seeds
+    A dictionary containing information about all seeds seen by the index.
+    The keys are the seeds, and the values are ``(include,exclude)`` tuples of
+    sets of criteria, indicating which criteria include or exclude that key,
+    respectively.
+
+criteria_bits
+    A dictionary mapping each known criterion to a bitset representing the
+    cases that use that criterion.
+
+criteria_seeds
+    A dictionary that caches the result of the index's calls to ``seeds_for()``
+
+engine
+    The engine the index is associated with.
+
+expr
+    The expression that the index is being applied to.
+
+known_cases
+    A bitset representing the case ids of all cases added to the index using
+    the ``add_case()`` method.
+
+extras
+    An empty dictionary, made available for the use of ``seeds_for()``
+    algorithms that may require additional storage for dependencies or
+    intermediate indexes.
+
+For our first demo, we'll assume we're indexing a simple equality condition, so
+every criterion will seed only to itself.  We'll register a suitable method
+with the ``seeds_for()`` generic function::
+
+    >>> from peak.rules.indexing import BitmapIndex, seeds_for
+    >>> from peak.rules import when
+
+    >>> class DemoEngine: pass
+
+    >>> def seeds_for_demo(engine, expr, criterion):
+    ...     print "computing seeds for", `criterion`
+    ...     return [criterion], [criterion], []
+
+    >>> seeds_for_demo = when(seeds_for, (DemoEngine,))(seeds_for_demo)
+
+To start with, selectivity is 0/0 because there are no seeds (and therefore no
+branches)::
+
+    >>> eng = DemoEngine()
+    >>> ind = BitmapIndex(eng, "some expression")
+
+    >>> ind.engine is eng
+    True
+
+    >>> ind.expr
+    'some expression'
+
+    >>> ind.selectivity([])
+    (0, 0)
+
+    >>> ind.all_seeds
+    {}
+
+    >>> ind.criteria_seeds
+    {}
+
+    >>> list(from_bits(ind.known_cases))
+    []
+
+By adding a case, we'll add a criterion (and therefore a seed), which gets
+cached::
+
+    >>> ind.add_case(0, "x")
+    computing seeds for 'x'
+
+    >>> ind.criteria_seeds
+    {'x': (['x'], ['x'], [])}
+
+    >>> ind.criteria_bits
+    {'x': 1}
+
+
+Now, selectivity will always be at least 1/0, because there's one possible
+branch::
+
+    >>> ind.selectivity([])
+    (1, 0)
+    >>> ind.selectivity([1])
+    (1, 1)
+    >>> ind.selectivity([2])
+    (1, 1)
+    >>> ind.selectivity([1,2])
+    (1, 2)
+
+And the seed bitmaps reflect this::
+
+    >>> list(from_bits(ind.known_cases))
+    [0]
+
+    >>> ind.seed_bits(ind.known_cases)
+    {'x': (1, 0)}
+
+    >>> dict(ind.expanded_sets())   # expanded form of seed_bits(known_cases)
+    {'x': [[0], []]}
+
+
+If we add another case with the same criterion, the number of branches will
+stay the same.  Notice also, that the seeds for a previously-seen criterion are
+not recalculated::
+
+    >>> ind.add_case(1, "x")
+
+    >>> ind.criteria_bits   # criterion 'x' was used for cases 0 and 1
+    {'x': 3}
+
+    >>> dict(ind.expanded_sets())
+    {'x': [[0, 1], []]}
+
+    >>> list(from_bits(ind.known_cases))
+    [0, 1]
+
+    >>> ind.selectivity([])
+    (1, 0)
+    >>> ind.selectivity([1])
+    (1, 1)
+    >>> ind.selectivity([2])
+    (1, 1)
+    >>> ind.selectivity([1,2])
+    (1, 2)
+
+However, if we add a new case with a *new* criterion, its seeds are computed,
+and the number of branches increases::
+
+    >>> ind.add_case(2, "y")
+    computing seeds for 'y'
+
+    >>> dict(ind.expanded_sets())
+    {'y': [[2], []], 'x': [[0, 1], []]}
+
+    >>> list(from_bits(ind.known_cases))
+    [0, 1, 2]
+
+    >>> ind.selectivity([])
+    (2, 0)
+    >>> ind.selectivity([1])
+    (2, 1)
+    >>> ind.selectivity([2])
+    (2, 1)
+    >>> ind.selectivity([1,2])
+    (2, 2)
+
+
+------------------
+Indexable Criteria
+------------------
+
+PEAK-Rules has a number of built-in criterion types that can be used with
+bitmap indexes. (i.e., they have ``seeds_for()`` implementations).  To
+demonstrate them, we'll use a dummy engine object::
+
+    >>> class Engine: pass
+    >>> eng = Engine()
+
+
+Pointers
+========
+
+The ``Pointer`` criterion type implements indexing for the ``is`` and ``is
+not`` operators.  ``Pointer(x)`` represents ``is x``, and ``Pointer(x, False)``
+represents ``is not x``.  The bitmap index seeds for ``Pointer`` objects are
+the ``id()`` values of the target objects, or ``None`` to represent the "none
+of the above" cases::
+
+    >>> from peak.rules.indexing import Pointer
+
+    >>> p = object()
+    >>> ppeq = Pointer(p)
+    >>> ppne = Pointer(p, False)
+
+    >>> ind = BitmapIndex(eng, "x")
+    >>> ind.add_case(0, ppeq)
+
+    >>> dict(ind.expanded_sets())
+    {...: [[0], []], None: [[], [0]]}
+
+
+The selectivity of ``is`` pointers is 1::
+
+    >>> ind.selectivity([0])
+    (2, 1)
+
+And for ``is not`` pointers, it's always one less than the total number of
+seeds currently in the index (because an ``is not`` criterion is true for every
+possible branch *except* its target)::
+
+    >>> ind.add_case(1, ppne)
+
+    >>> dict(ind.expanded_sets())
+    {...: [[0], [1]], None: [[1], [0]]}
+
+    >>> ind.selectivity([1])
+    (2, 1)
+
+    >>> ind.selectivity([0,1])
+    (2, 2)
+
+    >>> ind.add_case(2, Pointer(object()))
+
+    >>> ind.selectivity([1])    # now it's (3,2) instead of (2,1) or (3,1)
+    (3, 2)
+
+    >>> ind.selectivity([0])    # 'is' pointers are always 1
+    (3, 1)
+
+
+
+Ranges and Value Comparisons
+============================
+
+
+``Range`` Objects
+-----------------
+
+The ``Range()`` criterion type represents an inequality such as ``lo < x < hi``
+or ``x >= lo``.  The lows and highs given have to be a 2-tuple, consisting of
+a value and a "direction".  The direction is an integer (either -1 or 1) that
+indicates whether the edge is on the low or high side of the target value.
+Thus, a tuple ``(27, -1)`` means "the low edge of 27", while ``(99, 1)``
+means "the high edge of 99".  In this way, any simple inequality or range
+can be represented by a pair of edges::
+
+    >>> from peak.rules.indexing import Range
+
+    >>> Range(lo=(27, -1))      # >=27 : below 27 ... above Max
+    Range((27, -1), (Max, 1))
+
+    >>> Range(lo=(27, 1))       # > 27 : above 27 ... above Max
+    Range((27, 1), (Max, 1))
+
+    >>> Range(hi=(99, -1))      # < 99 : below Min ... below 99
+    Range((Min, -1), (99, -1))
+
+    >>> Range(hi=(99,1))        # <=99 : below Min ... above 99
+    Range((Min, -1), (99, 1))
+
+Notice that if we omit the high or low, it's replaced with "below ``Min``" or
+"above ``Max``", as appropriate.  (The ``Min`` and ``Max`` values are special
+objects that compare below or above any other object.)
+
+The bitmap index seeds for ``Range`` objects are edge tuples, and the
+selectivity of a ``Range`` is the distance between the low and high edges in
+a sorted list of all the index's seeds::
+
+    >>> ind = BitmapIndex(eng, "y")
+
+    >>> r = Range((1,-1), (23,1))
+
+    >>> ind.add_case(0, r)
+    >>> ind.selectivity([0])
+    (2, 1)
+
+    >>> from peak.rules.indexing import sorted
+    >>> sorted(ind.expanded_sets())
+    [((1, -1), [[0], []]), ((23, 1), [[], [0]])]
+
+    >>> ind.add_case(1, Range((5,-1), (20,1)))
+    >>> ind.selectivity([1])
+    (4, 1)
+
+    >>> sorted(ind.expanded_sets())
+    [((1, -1), [[0], []]), ((5, -1), [[1], []]),
+     ((20, 1), [[], [1]]), ((23, 1), [[], [0]])]
+
+    >>> ind.add_case(2, Range((7,-1), (24,1)))
+    >>> ind.selectivity([2])
+    (6, 3)
+
+    >>> sorted(ind.expanded_sets())
+    [((1, -1), [[0], []]), ((5, -1), [[1], []]),
+     ((7, -1), [[2], []]), ((20, 1), [[], [1]]), ((23, 1), [[], [0]]),
+     ((24, 1), [[], [2]])]
+
+    >>> ind.add_case(3, Range((7,-1), (7,1)))
+    >>> sorted(ind.expanded_sets())
+    [((1, -1), [[0], []]),
+     ((5, -1), [[1], []]), ((7, -1), [[2, 3], []]), ((7, 1), [[], [3]]),
+     ((20, 1), [[], [1]]), ((23, 1), [[], [0]]), ((24, 1), [[], [2]])]
+
+    >>> ind.selectivity([0])
+    (7, 5)
+    >>> ind.selectivity([1])
+    (7, 3)
+    >>> ind.selectivity([2])
+    (7, 4)
+    >>> ind.selectivity([3])
+    (7, 1)
+
+
+``Value`` Objects
+-----------------
+
+``Value`` objects are used to represent ``==`` and ``!=`` comparisons.
+``Value(x)`` represents ``==x`` and ``Value(x, False)`` represents ``!=x``.
+The bitmap index seeds for ``Value`` objects are ``(value, 0)`` tuples, which
+fall between the "below" and "above" tuples of any ``Range`` objects in the
+same index.  And the selectivity of a ``Value`` is either 1 or the number of
+seeds in the index, minus one::
+
+    >>> from peak.rules.indexing import Value
+
+    >>> ind.add_case(4, Value(7, False))
+    >>> ind.selectivity([4])
+    (9, 8)
+
+    >>> sorted(ind.expanded_sets())
+    [((Min, -1), [[4], []]), ((1, -1), [[0], []]),
+     ((5, -1), [[1], []]), ((7, -1), [[2, 3], []]), ((7, 0), [[], [4]]),
+     ((7, 1), [[], [3]]), ((20, 1), [[], [1]]), ((23, 1), [[], [0]]),
+     ((24, 1), [[], [2]])]
+
+    >>> ind.add_case(5, Value(7))
+    >>> ind.selectivity([5])
+    (9, 1)
+
+    >>> sorted(ind.expanded_sets())
+    [((Min, -1), [[4], []]), ((1, -1), [[0], []]),
+     ((5, -1), [[1], []]), ((7, -1), [[2, 3], []]), ((7, 0), [[5], [4]]),
+     ((7, 1), [[], [3]]), ((20, 1), [[], [1]]), ((23, 1), [[], [0]]),
+     ((24, 1), [[], [2]])]
+
+ Notice that the seeds for a ``Value`` always include either an inclusion or
+ exclusion for ``(Min, -1)``, as this
+
+
+Value Map Generation
+--------------------
+
+    >>> from peak.rules.indexing import split_ranges
+
+    >>> def dump_ranges(ind, cases):
+    ...     exact, ranges = split_ranges(ind, cases)
+    ...     for k in exact.keys():
+    ...         exact[k] = list(from_bits(exact[k]))
+    ...     for n, (k, v) in enumerate(ranges):
+    ...         ranges[n] = k, list(from_bits(v))
+    ...     return exact, ranges
+
+    >>> dump_ranges(ind, ind.known_cases)
+    ({1: [0, 4], 5: [0, 1, 4], 7: [0, 1, 2, 3, 5]},
+     [((Min, 1), [4]), ((1, 5), [0, 4]), ((5, 7), [0, 1, 4]),
+      ((7, 20), [0, 1, 2, 4]), ((20, 23), [0, 2, 4]), ((23, 24), [2, 4]),
+      ((24, Max), [4])])
+
+    >>> ind = BitmapIndex(eng, 'q')
+    >>> dump_ranges(ind, ind.known_cases)
+    ({}, [])
+
+    >>> ind.add_case(0, Value(19))
+    >>> dump_ranges(ind, ind.known_cases)
+    ({19: [0]}, [])    
+
+    >>> ind.add_case(1, Value(23))
+    >>> dump_ranges(ind, ind.known_cases)
+    ({19: [0], 23: [1]}, [])    
+
+    >>> ind.add_case(2, Value(23, False))
+    >>> dump_ranges(ind, ind.known_cases)
+    ({19: [0, 2], 23: [1]}, [((Min, Max), [2])])    
+
+    >>> ind.add_case(3, Range(lo=(57,1)))
+    >>> dump_ranges(ind, ind.known_cases)
+    ({19: [0, 2], 23: [1]}, [((Min, 57), [2]), ((57, Max), [2, 3])])
+
+    >>> ind.add_case(4, Range(lo=(57,-1)))
+    >>> dump_ranges(ind, ind.known_cases)
+    ({57: [2, 4], 19: [0, 2], 23: [1]}, [((Min, 57), [2]), ((57, Max), [2, 3, 4])])
+
+
+Instances and Subclasses
+========================
+
+seeds_for(*, *, type/class) -> set([cls]), [cls], []  (+ensure bases are indexed)
+seeds_for(*, *, ClsExpr) -> *special*, [], excluded
+
+ClsExpr(included=(object,), excluded=())
 
 
 

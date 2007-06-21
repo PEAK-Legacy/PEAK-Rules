@@ -694,25 +694,13 @@ to_logic(*)       -> Truth(expr, mode)
 Criteria/Indexing
 =================
 
-indexes(Compare)
-indexes(IsInstance)
-indexes(*)
-
-range indexing: have seed->offset mapping, use differences in offsets to count
-how many slots a range applies to.  rebuild seed->offset mapping on demand (via
-enumerate() of a sorted seeds list), clear whenever the seeds change.
-
 class indexing: keep class->seed count mapping (by walking each new seed's MRO)
 to approximate the spread for a given class target; multi-class criteria use
 smallest spread (or dynamic intersect?), negated criteria subtract the count
 from the total seed count (or subtract the classes from the seed set).
 
-2 index types: hierarchy and range
-multiple node types: isinstance, issubclass, range, identity, ...
-
-index id = base expression + node type
-
-node type determines index type and dispatch algorithm/codegen
-criteria type determines node type
+dispatch_table(*, Identity, cases) -> {seed: bitmap}
+  where bitmap = inclusions[seed] | (inclusions[None] - exclusions[seed])
+     | (cases - known_cases)
 
 
