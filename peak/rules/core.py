@@ -291,7 +291,6 @@ class TypeEngine(Engine):
 
     def generate_code(self, disp):
         self.cache = cache = self.static_cache.copy()
-
         def callback(*args):
             # XXX code similar to this could be generated directly...
             types = tuple([getattr(arg,'__class__',type(arg)) for arg in args])
@@ -314,17 +313,18 @@ class TypeEngine(Engine):
             ) for name in flatten(args)
         ]
         target = Call(Const(cache.get), (tuple(types), Const(callback)))
-        c.return_(Call(target, map(tuplize,args), (), star, dstar))
+        c.return_(
+            Call(target, map(gen_arg,args), (), gen_arg(star), gen_arg(dstar))
+        )
         self.func.func_code = c.code()
 
 def flatten(v):
     if isinstance(v,basestring): yield v; return
     for i in v:
         for ii in flatten(i): yield ii
-
-def tuplize(v):
+def gen_arg(v):
     if isinstance(v,basestring): return Local(v)
-    if isinstance(v,list): return tuple(map(tuplize,v))
+    if isinstance(v,list): return tuple(map(gen_arg,v))
 
 when = Method.make_decorator(
     "when", "Extend a generic function with a new action"

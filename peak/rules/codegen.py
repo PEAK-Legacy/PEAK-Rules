@@ -1,6 +1,8 @@
 from peak.util.assembler import *
 from peak.util.symbols import Symbol
+from peak.rules.core import gen_arg, clone_function
 from ast_builder import build
+import sys
 try:
     set
 except NameError:
@@ -34,8 +36,6 @@ def GetSlice(expr, start=Pass, stop=Pass, code=None):
         code(stop)
         return code.SLICE_2()
     return code.SLICE_0()
-
-
 
 
 
@@ -150,6 +150,88 @@ globalOps(
 globalOps(
     listOp, Tuple = Code.BUILD_TUPLE, List = Code.BUILD_LIST
 )
+
+
+
+
+
+
+
+
+
+
+
+
+class SMIGenerator:
+    """State Machine Interpreter Generator"""
+    
+    ARG = Local('$Arg')
+    SET_ARG = lambda self, code: code.STORE_FAST(self.ARG.name)
+    WHY_CONTINUE = {'2.3':5, '2.4':32, '2.5':32}[sys.version[:3]]
+
+    def __init__(self, func):
+        import inspect
+        self.code = code = CSECode.from_function(func) #, copy_lineno=True)
+        self.actions = {}
+        self.func = func
+        loop_top, exit, bad_action = Label(), Label(), Label()
+        args, star, dstar, defaults = inspect.getargspec(func)
+        actions, self.actions_const = self.make_const({})
+        start_node, self.startnode_const = self.make_const(object())
+
+        code.cache(None)    # force CSE preamble here
+        code(start_node, loop_top)
+        code.UNPACK_SEQUENCE(2)     # action, argument
+        code(
+            Code.ROT_TWO,   # argument, action
+            self.SET_ARG,   # action
+            exit.JUMP_IF_FALSE,
+            Compare(Code.DUP_TOP, (('in', actions),)),
+            bad_action.JUMP_IF_FALSE,
+            Code.POP_TOP,
+            exit.SETUP_LOOP, self.WHY_CONTINUE, Code.END_FINALLY,
+            Code.POP_BLOCK, Return(None),  # <- dummy code, will never get here
+        exit,
+            Code.POP_TOP,       # drop action
+            Return(
+                Call(self.ARG, map(gen_arg, args),(),
+                               gen_arg(star), gen_arg(dstar))
+            ),
+        bad_action,
+            Code.POP_TOP, Call(Const(self.bad_action),(Code.ROT_TWO, self.ARG))
+        )
+        self.NEXT_STATE = loop_top.JUMP_ABSOLUTE
+        self.maybe_cache = code.maybe_cache
+
+    def generate(self, start_node):
+        func = clone_function(self.func)
+        self.code.co_consts[self.startnode_const] = start_node
+        self.code.co_consts[self.actions_const] = dict.fromkeys(
+            self.actions.values()
+        )
+        func.func_code = self.code.code()
+        return func
+
+    def make_const(self, value):
+        self.code.co_consts.append(value)
+        return Const(value), len(self.code.co_consts)-1
+
+    def action_id(self, expression):
+        try:
+            return self.actions[expression]
+        except KeyError:
+            action = self.actions[expression] = self.code.here()
+            self.code.stack_size = 0
+            self.code(expression)
+            if self.code.stack_size is not None:
+                self.code(self.NEXT_STATE)
+            return action
+
+    def bad_action(self, action, argument):
+        raise AssertionError("Invalid action: %s, %s" % (action, argument))
+
+
+
 
 
 
