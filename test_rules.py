@@ -81,20 +81,20 @@ class MiscTests(unittest.TestCase):
 
 
     def testPointers(self):
-        from peak.rules.indexing import Pointer
+        from peak.rules.indexing import IsObject
         from sys import maxint
         anOb = object()
-        ptr = Pointer(anOb)
+        ptr = IsObject(anOb)
         self.assertEqual(id(anOb)&maxint,ptr)
         self.assertEqual(hash(id(anOb)&maxint),hash(ptr))
 
-        self.assertEqual(ptr.equal, True)
-        self.assertEqual(Pointer(anOb, False).equal, False)
-        self.assertNotEqual(Pointer(anOb, False), ptr)
+        self.assertEqual(ptr.match, True)
+        self.assertEqual(IsObject(anOb, False).match, False)
+        self.assertNotEqual(IsObject(anOb, False), ptr)
 
         class X: pass
         anOb = X()
-        ptr = Pointer(anOb)
+        ptr = IsObject(anOb)
         oid = id(anOb)&maxint
         self.assertEqual(oid,ptr)
         self.assertEqual(hash(oid),hash(ptr))
@@ -121,12 +121,11 @@ class MiscTests(unittest.TestCase):
 
 
 
-
 def additional_tests():
     import doctest
     return doctest.DocFileSuite(
         'DESIGN.txt', 'Indexing.txt', 'AST-Builder.txt',
-        'Code-Generation.txt', 'Aspects.txt',
+        'Code-Generation.txt', 'Aspects.txt', 'Criteria.txt',
         optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE,
     )
 

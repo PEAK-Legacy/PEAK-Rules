@@ -1,0 +1,842 @@
+================
+Logical Criteria
+================
+
+In order to process arbitrary expression-based rules, PEAK-Rules needs to
+"understand" the way that conditions logically relate to each other.  This
+document describes the design (and tests the implementation) of its logical
+criteria management.  You do not need to read this unless you are extending or
+interfacing with this subsystem directly, or just want to understand how this
+stuff actually works!
+
+The most important ideas here are implication, intersection, and disjunctive
+normal form.  But don't panic if you don't know what those terms mean!  They're
+really quite simple.
+
+Implication means that if one thing is true, then so is another.  A implies B
+if B is always true whenever A is true.  It doesn't matter what B is when A is
+not true, however.  It could be true or false, we don't care.  Implication is
+important for prioritizing which rules are "more specific" than others
+
+Intersection just means that both things have to be true for a condition to
+be true - it's like the "and" of two conditions.  But rather than performing
+an actual "and", we're creating a *new condition* that will only be true when
+the two original conditions would be true.
+
+And finally, disjunctive normal form (DNF) means "an OR of ANDs".  For example,
+this expression is in DNF::
+
+    (A and C) or (B and C) or (A and D) or (B and D)
+
+But this equivalent expression is **not** in DNF::
+
+    (A or B) and (C or D)
+
+The criteria used to define generic function methods are likely to look more
+like this, than they are to be in disjunctive normal form.  Therefore, we must
+convert them in order implement the Chambers & Chen dispatch algorithm
+correctly (see Indexing.txt).
+
+We do this using the ``Disjunction`` class to represent overall expressions
+(sets of "ors"), and the ``Signature`` and ``Conjunction`` classes to represent
+sets of "and"-ed conditions.
+
+Within a ``Signature``, the things that are "and"-ed together are implemented
+as ``Test`` instances.  A ``Test`` pairs a "dispatch expression" with a
+"criterion".  For example, this expression::
+
+    isinstance(x, Y)
+
+would be represented internally as a ``Test`` instance like this::
+
+    Test(IsInstance(Local('x')), Class(Y))
+
+``Conjunction`` subclasses, on the other hand, are used to "and" together
+criteria that apply to the same dispatch expression.  For example, this
+expression::
+
+    isinstance(x, Y) and isinstance(x, Z)
+
+would be represented internally like this::
+
+    Test(IsInstance(Local('x')), Classes([Class(Y), Class(Z)]))
+
+(That is, ``Classes`` is a ``Conjunction`` subclass representing the "and" of
+multiple ``Class`` criteria.)
+
+
+The rest of this document describes how predicates, signatures, tests, dispatch
+expressions, and criteria work together to create expressions in disjunctive
+normal form, and whose implication of other expressions can be determined.
+
+The basic logical functions we will use are ``implies()``, ``intersect()``,
+and ``disjuncts()``, all of which are defined in ``peak.rules.core``::
+
+    >>> from peak.rules.core import implies, intersect, disjuncts
+
+
+----------------------------------------
+Boolean Conditions and Logical Operators
+----------------------------------------
+
+The most fundamental conditions are simply ``True`` and ``False``.  ``True``
+represents a rule that *always* applies, while ``False`` represents a rule that
+*never* applies.  Therefore, the result of intersecting ``True`` and any other
+object, always returns that object, while intersecting ``False`` with any other
+object returns ``False``::
+
+    >>> intersect(False, False)
+    False
+    >>> intersect(False, True)
+    False
+    >>> intersect(True, False)
+    False
+    >>> intersect(True, True)
+    True
+
+    >>> intersect(object(), True)
+    <object object at ...>
+
+    >>> intersect(True, object())
+    <object object at ...>
+
+    >>> intersect(object(), False)
+    False
+
+    >>> intersect(False, object())
+    False
+
+Because ``True`` means "condition that always applies", *everything* implies
+``True``, but ``True`` only implies itself::
+
+    >>> implies(object(), True)
+    True
+    >>> implies(True, object())
+    False
+
+    >>> implies(True, True)
+    True
+
+On the other hand, because ``False`` means "condition that never applies",
+``False`` implies *everything*.  (Because if you start from a false premise,
+you can arrive at any conclusion!)::
+
+    >>> implies(False, True)
+    True
+
+    >>> implies(False, object())
+    True
+
+However, no condition other than ``False`` can ever imply ``False``, because
+all other conditions can *sometimes* apply::
+
+    >>> implies(object(), False)
+    False
+    >>> implies(True, False)
+    False
+    >>> implies(False, False)
+    True
+
+Notice, by the way, a few important differences between ``implies()`` and
+``intersect()``.  ``implies()`` *always* returns a boolean value, ``True`` or
+``False``, because it's an immediate answer to the question of, "does the
+second condition always apply if the first condition applies?"
+
+``intersect()``, on the other hand, returns a *condition* that will always be
+true when the original conditions apply.  So, if it returns a boolean value,
+that's just an indication that the intersection of the two input conditions
+would always apply or never apply.  Also, ``intersect()`` is logically
+symmetrical, in that it doesn't matter what order the arguments in, whereas
+the order is critically important for ``implies()``.
+
+However, ``intersect()`` methods must be order *preserving*, because the order
+in which logical "and" operations occur is important.  Consider, for example,
+the condition ``y!=0 and z>x/y``, in which it would be a bad thing to skip the
+zero check before division.  So, as we will see later on, when working with
+more complex conditions, ``intersect()`` methods must ensure that the subparts
+of the output condition are in the same relative order as they were in the
+input.
+
+(Also, note that in general, intersecting two conditions where one condition
+implies the other, the result is the implying condition.  This general rule
+greatly simplifies the implementation of most intersect operations, since as
+long as there is an implication relationship defined between conditions, many
+common cases of intersection can be handled automatically.)
+
+In contrast to both of these functions, the ``disjuncts()`` function takes
+only a single argument, and returns a list of the "disjuncts" (or-ed-together
+conditions) of its argument.  More precisely, it returns a list of conditions
+that, if true, would make the original condition true.
+
+Thus, the ``disjuncts()`` of an arbitrary object will normally be a list
+containing just that object::
+
+    >>> disjuncts(object())
+    [<object object at ...>]
+
+    >>> disjuncts(True)
+    [True]
+
+But ``False`` is a special case; ``False`` has *no* disjuncts, since no other
+condition can ever imply ``False``::
+
+    >>> disjuncts(False)
+    []
+
+As a result, "or"-ing ``False`` with other conditions will simply remove the
+``False`` from the resulting predicate.
+
+
+
+-------------------
+"Criterion" Objects
+-------------------
+
+A criterion object describes a set of possible values for a dispatch
+expression. There are several criterion types supplied with PEAK-Rules, but you
+can also add your own, as long as they can be tested for implication with
+``implies()``, and intersected with ``intersect()``.  (And if they represent an
+"or" of sub-criteria, they should be able to provide their list of
+``disjuncts()``.)
+
+
+"And"-ed Criteria
+=================
+
+Sometimes, more than one criterion is applied to the same dispatch expression.
+For example in the expression ``x is not y and x is not z``, two criteria are
+being applied to the identity of ``x``.  To represent this, we need a way to
+represent a set of "and-ed" criteria.  ``peak.rules.criteria`` provides a base
+class for this, called ``Conjunction``::
+
+    >>> from peak.rules.criteria import Conjunction
+
+    >>> Conjunction([str, int])
+    Conjunction([<type 'str'>, <type 'int'>])
+
+This class is a subclass of ``frozenset``, but has a few additional features.
+First, a ``Conjunction`` never contains redundant (implied) items.
+For example, the conjunction of the classes ``object`` and ``int`` is ``int``,
+because ``int`` already implies ``object``::
+
+    >>> Conjunction([int, object])
+    <type 'int'>
+
+    >>> Conjunction([object, int])
+    <type 'int'>
+
+Notice also that instead of getting back a set with one member, we got back the
+item that would have been in the set.  This helps to simplify the expression
+structure.  As a further simplification, creating an empty conjunction returns
+``True``, because "no conditions required" is the same as "always true"::
+
+    >>> Conjunction([])
+    True
+
+A conjunction implies a condition, if any condition in the conjunction
+implies the other condition::
+
+    >>> implies(Conjunction([str, int]), str)
+    True
+    >>> implies(Conjunction([str, int]), int)
+    True
+    >>> implies(Conjunction([str, int]), object)
+    True
+    >>> implies(Conjunction([str, int]), float)
+    False
+
+A condition implies a conjunction, however, only if the condition implies
+every part of the conjunction::
+
+    >>> class a: pass
+    >>> class b: pass
+    >>> class c(a,b): pass
+    >>> class d(a, int): pass
+
+    >>> implies(c, Conjunction([a, b]))
+    True
+    >>> implies(a, Conjunction([a, b]))
+    False
+
+    >>> implies(Conjunction([c,d]), Conjunction([a, int]))
+    True
+    >>> implies(Conjunction([c,int]), Conjunction([a, int]))
+    False
+
+By the way, on a more sophisticated level of reasoning, you could say that
+``Conjunction([str, int])`` should have equalled ``False`` above, since
+there's no way for an object to be both an ``int`` and a ``str`` at the same
+time.  But that would be an excursion into semantics and outside the bounds of
+what PEAK-Rules can "reason" about using only logical implication as defined by
+the ``implies()`` generic function.
+
+``Conjunction`` objects can be intersected with one another, or with
+additional conditions, and the result is another ``Conjunction`` of the
+same type as the leftmost set.  So, if we use subclasses of our own, the result
+of intersecting them will be a conjunction of the correct subclass::
+
+    >>> class MySet(Conjunction): pass
+
+    >>> intersect(MySet([int, str]), float)
+    MySet([<type 'int'>, <type 'str'>, <type 'float'>])
+
+    >>> intersect(float, MySet([int, str]))
+    MySet([<type 'float'>, <type 'int'>, <type 'str'>])
+
+    >>> intersect(MySet([d, c]), MySet([int, str]))
+    MySet([<class 'd'>, <class ...c...>, <type 'str'>])
+
+If you want to ensure that all items in a set are of appropriate type or value,
+you can override ``__init__`` to do the checking, and raise an appropriate
+error.  PEAK-Rules does this for its specialized conjunction classes, but uses
+``if __debug__:`` and ``assert`` statements to avoid the extra overhead when
+run with ``python -O``.  You may wish to do the same for your subclasses.
+
+
+"Or"-ed Criteria
+================
+
+As you might imagine, the ``Disjunction`` class is used to represent "or"-ed
+criteria or signatures::
+
+    >>> from peak.rules.criteria import Disjunction
+
+    >>> Disjunction([str, int])
+    Disjunction([<type 'str'>, <type 'int'>])
+
+This class is a subclass of ``frozenset``, but has a few additional features.
+First, a ``Disjunction`` never contains redundant (more-specific) items.
+For example, the disjunction of the classes ``object`` and ``int`` is
+``object``, because ``object`` is implied by ``int``::
+
+    >>> Disjunction([int, object])
+    <type 'object'>
+
+    >>> Disjunction([object, int])
+    <type 'object'>
+
+Notice also that instead of getting back a set with one member, we got back the
+item that would have been in the set.  This helps to simplify the expression
+structure.  As a further simplification, creating an empty disjunction returns
+``False``, because "no conditions are sufficient" is the same as "always
+false"::
+
+    >>> Disjunction([])
+    False
+
+In addition to eliminating redundancy, disjunctions also flatten any nested
+disjunctions::
+
+    >>> Disjunction([Disjunction([1, 2]), Disjunction([3, 4])])
+    Disjunction([1, 2, 3, 4])
+
+This is because it uses the ``disjuncts()`` generic function to determine
+whether any of the items it's given are "or"-ed conditions of some kind.  And
+the ``disjuncts()`` of a ``Disjunction`` are a list of its contents::
+
+    >>> disjuncts(Disjunction([1, 2, 3, 4]))
+    [1, 2, 3, 4]
+
+A disjunction only implies a condition if *all* conditions in the disjunction
+imply the other condition::
+
+    >>> implies(Disjunction([str, int]), str)
+    False
+    >>> implies(Disjunction([str, int]), int)
+    False
+    >>> implies(Disjunction([str, int]), float)
+    False
+    >>> implies(Disjunction([str, int]), object)
+    True
+
+A condition implies a disjunction, however, if the condition implies any part
+of the disjunction::
+
+    >>> class a: pass
+    >>> class b: pass
+    >>> class c(a,b): pass
+    >>> class d(a, int): pass
+
+    >>> implies(c, Disjunction([a, b]))
+    True
+    >>> implies(a, Disjunction([a, b]))
+    True
+    >>> implies(a, Disjunction([int, str]))
+    False
+    >>> implies(Disjunction([c,d]), Disjunction([a, int]))
+    True
+    >>> implies(Disjunction([c,int]), Disjunction([a, int]))
+    True
+
+    >>> implies(Disjunction([c, int]), True)
+    True
+    >>> implies(False, Disjunction([c, int]))
+    True
+
+The intersection of a disjunction and any other object is a disjunction
+containing the intersection of that object with the original disjunctions'
+contents.  In other words::
+
+    >>> int_or_str = Disjunction([int, str])
+    >>> long_or_float = Disjunction([long, float])
+
+    >>> intersect(int_or_str, float) == Disjunction([
+    ...     Conjunction([int, float]), Conjunction([str, float])
+    ... ])
+    True
+
+    >>> intersect(long, int_or_str) == Disjunction([
+    ...     Conjunction([long, int]), Conjunction([long, str])
+    ... ])
+    True
+
+    >>> intersect(int_or_str, long_or_float) == Disjunction([
+    ...     Conjunction([int,long]), Conjunction([int, float]),
+    ...     Conjunction([str,long]), Conjunction([str, float]),
+    ... ])
+    True
+
+
+Object Identity
+===============
+
+The ``IsObject`` criterion type represents the set of objects which either
+are -- or are *not* -- one specific object instance.  ``IsObject(x)`` (or
+``IsObject(x, True)``) represents the set of objects ``y`` for which the
+``y is x`` condition would be true.  Conversely, ``IsObject(x, False)``
+represents the set of objects ``y`` for whom ``y is not x``::
+
+    >>> from peak.rules.criteria import IsObject
+
+    >>> o = object()
+    >>> is_o = IsObject(o)
+    >>> is_not_o = IsObject(o, False)
+
+    >>> is_o
+    IsObject(<object object at ...>, True)
+
+    >>> is_not_o
+    IsObject(<object object at ...>, False)
+
+The intersection of two different ``is`` identities is ``False``, since an
+object cannot be both itself and another object::
+
+    >>> intersect(is_o, IsObject("foo"))
+    False
+
+    >>> implies(is_o, IsObject("foo"))
+    False
+
+Similarly, an object can't be both itself, and not itself::
+
+    >>> intersect(is_o, is_not_o)
+    False
+
+    >>> intersect(is_not_o, is_o)
+    False
+
+    >>> implies(is_o, is_not_o)
+    False
+
+But it *can* be itself and itself::
+
+    >>> intersect(is_o, is_o) == is_o
+    True
+
+    >>> implies(is_o, is_o)
+    True
+
+Or not itself and not itself::
+
+    >>> intersect(is_not_o, is_not_o) == is_not_o
+    True
+
+    >>> implies(is_not_o, is_not_o)
+    True
+
+And an object can be itself, while not being something else::
+
+    >>> intersect(is_o, IsObject("foo", False)) == is_o
+    True
+
+    >>> intersect(IsObject("foo", False), is_o) == is_o
+    True
+
+    >>> implies(is_o, IsObject("foo", False))
+    True
+
+But just because an object is not something, doesn't mean it's something else::
+
+    >>> implies(is_not_o, IsObject("foo"))
+    False
+
+And the intersection of multiple ``is not`` conditions produces a
+``NotObjects`` set::
+
+    >>> not_foo = IsObject("foo", False)
+    >>> not_bar = IsObject("bar", False)
+    >>> not_foobar = intersect(not_foo, not_bar)
+    >>> not_foobar
+    NotObjects([IsObject('foo', False), IsObject('bar', False)])
+
+Which of course then implies each of the individual "not" conditions::
+
+    >>> implies(not_foobar, not_bar)
+    True
+    >>> implies(not_foobar, not_foo)
+    True
+
+But not their opposites::
+
+    >>> implies(not_foobar, IsObject("bar"))
+    False
+
+Oh, and an ``is`` condition implies any ``NotObjects`` that don't contain its
+opposite::
+
+    >>> implies(is_o, not_foobar)
+    True
+
+But not the other way around::
+
+    >>> implies(not_foobar, is_o)
+    False
+
+
+Values and Ranges
+=================
+
+``Value`` objects are used to represent ``==`` and ``!=`` comparisons.
+``Value(x)`` represents ``==x`` and ``Value(x, False)`` represents ``!=x``.
+
+A ``Value`` implies another ``Value`` if the two are identical::
+
+    >>> from peak.rules.criteria import Value
+
+    >>> implies(Value(27), Value(42))
+    False
+    >>> implies(Value(27, False), Value(42))
+    False
+    >>> implies(Value(27), Value(27))
+    True
+    >>> implies(Value(99), Value(99, False))
+    False
+    >>> implies(Value(99, False), Value(99, False))
+    True    
+
+Or, if they have different target values, but the first is an ``==``
+comparison, and the second is a ``!=`` comparison::
+
+    >>> implies(Value(27), Value(99, False))
+    True
+
+    >>> intersect(Value(27), Value(99, False))
+    Value(27, True)
+
+The intersection of two different ``==`` values, or a ``!=`` and ``==`` of the
+same value, is ``False`` (i.e., no possible match::
+
+    >>> intersect(Value(27), Value(42))
+    False
+    >>> intersect(Value(27), Value(27, False))
+    False
+
+But the intersection of two different ``!=`` values produces a disjunction of
+three ``Range()`` objects::
+
+    >>> intersect(Value(27, False), Value(42, False))
+    Disjunction([Range(...), Range(...), Range(...)])
+
+The ``Range()`` criterion type represents an inequality such as ``lo < x < hi``
+or ``x >= lo``.  The lows and highs given have to be a 2-tuple, consisting of
+a value and a "direction".  The direction is an integer (either -1 or 1) that
+indicates whether the edge is on the low or high side of the target value.
+Thus, a tuple ``(27, -1)`` means "the low edge of 27", while ``(99, 1)``
+means "the high edge of 99".  In this way, any simple inequality or range
+can be represented by a pair of edges::
+
+    >>> from peak.rules.criteria import Range, Min, Max
+
+    >>> Range(lo=(27, -1))      # >=27 : below 27 ... above Max
+    Range((27, -1), (Max, 1))
+
+    >>> Range(lo=(27, 1))       # > 27 : above 27 ... above Max
+    Range((27, 1), (Max, 1))
+
+    >>> Range(hi=(99, -1))      # < 99 : below Min ... below 99
+    Range((Min, -1), (99, -1))
+
+    >>> Range(hi=(99,1))        # <=99 : below Min ... above 99
+    Range((Min, -1), (99, 1))
+
+Notice that if we omit the high or low, it's replaced with "below ``Min``" or
+"above ``Max``", as appropriate.  (The ``Min`` and ``Max`` values are special
+objects that compare below or above any other object.)
+
+Thus, the intersection of two different ``!=`` values produces a disjunction of
+three ``Range()`` objects, representing the intervals that "surround" the
+original ``!=`` values::
+
+    >>> intersect(Value(27, False), Value(42, False)) == Disjunction([
+    ...     Range((Min, -1), (27, -1)),     # below Min ... below 27
+    ...     Range((27,   1), (42, -1)),     # above  27 ... below 42
+    ...     Range((42,   1), (Max, 1)),     # above  42 ... above Max
+    ... ])
+    True
+
+Intersecting two ranges (or a ranges and an ``==`` value) produces a smaller
+range or value, or ``False`` if there is no overlap::
+
+    >>> intersect(Range(hi=(27,-1)), Range(lo=(19,1)))
+    Range((19, 1), (27, -1))
+
+    >>> intersect(Range(lo=(27,-1)), Range(hi=(19,1)))
+    False
+
+    >>> intersect(Value(27), Range(lo=(27,-1)))
+    Value(27, True)
+    
+    >>> intersect(Range(lo=(27,-1)), Value(27))
+    Value(27, True)
+
+    >>> intersect(Value(27), Range(hi=(27,-1)))
+    False
+    >>> intersect(Range(hi=(27,-1)), Value(27))
+    False    
+    
+And the intersection of a range and a ``!=`` value
+
+Last, but not least, a range (or value) implies another range or value if it
+lies entirely within it::
+
+    >>> implies(Range((42,-1), (42,1)), Value(42))
+    True
+
+    >>> implies(Range((27,-1), (42,1)), Range((15,1),(99,-1)))
+    True
+
+    >>> implies(Range((27,-1), (42,1)), Value(99, False))
+    True
+
+But not if it overlaps or lies outside of it::
+
+    >>> implies(Range((15,-1),(42,1)), Range((15,1),(99,-1)))
+    False
+
+    >>> implies(Range((27,-1), (42,1)), Value(99))
+    False
+
+
+Classes and Types
+=================
+
+``Class`` objects represent ``issubclass()`` or ``isinstance()`` tests.
+``Class(x)`` is a instance/subclass match, while ``Class(x, False)`` is a
+non-match.  Implication and intersection are defined accordingly::
+
+    >>> from peak.rules.criteria import Class
+
+    >>> implies(Class(int), Class(object))
+    True
+    >>> implies(Class(object, False), Class(int, False))
+    True
+
+    >>> implies(Class(int), Class(str))
+    False
+    >>> implies(Class(object), Class(int, False))
+    False
+    >>> implies(Class(object), Class(int))
+    False
+    >>> implies(Class(int), Class(int))
+    True
+
+    >>> intersect(Class(int), Class(object))
+    Class(<type 'int'>, True)
+
+    >>> intersect(Class(object), Class(int))
+    Class(<type 'int'>, True)
+
+The intersection of two or more unrelated ``Class`` criteria is a ``Classes``
+set::
+
+    >>> from peak.rules.criteria import Classes
+
+    >>> intersect(Class(int, False), Class(str, False)) == Classes(
+    ...     [Class(int, False), Class(str, False)]
+    ... )
+    True
+
+``Classes`` is a subclass of ``Conjunction``, so all the standard
+rules of intersection and implication apply.
+
+
+--------------------
+Tests and Signatures
+--------------------
+
+A ``Test`` is the combination of a "dispatch expression" and a criterion to
+be applied to it::
+
+    >>> from peak.rules.criteria import Test
+    >>> x_isa_int = Test("x", Class(int))
+
+(Note that although these examples use strings, actual dispatch expressions will
+be AST-like structures.)
+
+The disjuncts of a test is ordinarily a list containing a copy of the test::
+
+    >>> disjuncts(x_isa_int)
+    [Test('x', Class(<type 'int'>, True))]
+
+But the disjuncts of a test whose criterion has disjuncts is formed by
+splitting the test into a list of tests with the same dispatch expression, each
+containing one of the originally "or"-ed criteria::
+
+    >>> disjuncts(Test("x", Disjunction([int, str])))
+    [Test('x', <type 'int'>), Test('x', <type 'str'>)]
+
+Intersecting two tests for the same dispatch expression returns a test whose
+criterion is the intersection of the original tests' criteria::
+
+    >>> intersect(x_isa_int, Test("x", Class(str))) == Test(
+    ...     'x', Classes([Class(int), Class(str)])
+    ... )
+    True
+
+And similarly, a test only implies another test if they have equal dispatch
+expressions, and the second test's criterion is implied by the first's::
+
+    >>> implies(x_isa_int, Test("x", Class(str)))
+    False
+    >>> implies(x_isa_int, Test("x", Class(object)))
+    True
+    >>> implies(x_isa_int, Test("y", Class(int)))
+    False
+
+But the intersection of two tests with *different* dispatch expressions
+produces a ``Signature`` object::
+
+    >>> y_isa_str = Test("y", Class(str))
+    >>> x_int_y_str = intersect(x_isa_int, y_isa_str)
+    >>> x_int_y_str
+    Signature([Test('x', Class(...int...)), Test('y', Class(...str...))])
+
+``Signature`` objects are similar to ``Conjunction`` objects, except for three
+important differences.
+
+First, signatures are sequences, not sets.  They preserve the ordering they
+were created with::
+
+    >>> intersect(x_isa_int, y_isa_str)
+    Signature([Test('x', Class(...int...)), Test('y', Class(...str...))])
+
+    >>> intersect(y_isa_str, x_isa_int)
+    Signature([Test('y', Class(...str...)), Test('x', Class(...int...))])
+
+Second, signatures can only contain ``Test`` instances, and they automatically
+combine any tests that apply to the same dispatch signatures::
+
+    >>> from peak.rules.criteria import Signature
+
+    >>> intersect(x_int_y_str, Test("y", Class(float))) == Signature([
+    ...     Test('x', Class(int)),
+    ...     Test('y', Classes([Class(str), Class(float)]))
+    ... ])
+    True
+
+    >>> intersect(x_int_y_str, Test("x", Class(float))) == Signature([
+    ...     Test('x', Classes([Class(int), Class(float)])),
+    ...     Test('y', Class(str))
+    ... ])
+    True
+
+    >>> intersect(Test("x", Class(float)), x_int_y_str) == Signature([
+    ...     Test('x', Classes([Class(int), Class(float)])),
+    ...     Test('y', Class(str))
+    ... ])
+    True
+
+But, as with conjunctions, you can't create a signature with less than two
+items in it::
+
+    >>> Signature([Test("x",1)])
+    Test('x', 1)
+
+    >>> Signature([True])
+    True
+
+    >>> Signature([False])
+    False   
+
+    >>> Signature([])
+    True
+
+Finally, creating a signature containing any disjunctive tests, causes them to
+be converted to disjunctive normal form.  That is::
+
+    >>> Signature([Test('x', Disjunction([1,2]))]) == Disjunction([
+    ...     Test('x', 1), Test('x', 2)
+    ... ])
+    True
+
+    >>> Signature([Test('y',42), Test('x', Disjunction([1,2]))]) == Disjunction(
+    ...     [Signature([Test('y', 42), Test('x', 1)]),
+    ...      Signature([Test('y', 42), Test('x', 2)])]
+    ... )
+    True
+    
+    >>> Signature([Test('x', Disjunction([1,2])), Test('y',42)]) == Disjunction(
+    ...     [Signature([Test('x', 1), Test('y', 42)]),
+    ...      Signature([Test('x', 2), Test('y', 42)])]
+    ... )
+    True
+
+
+----------
+Predicates
+----------
+
+Now that we've got all the basic pieces in place, we can now operationally
+define predicates for the Chambers & Chen dispatch algorithm.
+
+Specifically, a predicate can be any of the following:
+
+* ``True`` (meaning a condition that always applies)
+
+* ``False`` (meaning a condition that *never* applies)
+
+* A ``Test`` or ``Signature`` instance
+
+* A ``Disjunction`` containing two or more ``Test`` or ``Signature`` instances
+
+In each case, invoking ``disjuncts()`` on the object in question will return
+a list of objects suitable for constructing dispatch "cases" -- sets of simple
+"and-ed" criteria.
+
+The ``tests_for()`` function can then be used to yield the component tests of
+each case signature.  When called on a ``Test``, it yields the given test::
+
+    >>> from peak.rules.criteria import tests_for
+
+    >>> list(tests_for(Test('y',42)))
+    [Test('y', 42)]
+    
+But called on a ``Signature``, it yields the tests contained within::
+    
+    >>> list(tests_for(x_int_y_str))
+    [Test('x', Class(...int...)), Test('y', Class(...str...))]
+
+And called on ``True``, it yields nothing::
+
+    >>> list(tests_for(True))
+    []
+
+``tests_for(False)``, however, is undefined, because ``False`` cannot be
+represented as a conjunction of tests.  ``False`` is still a valid predicate,
+of course, because it represents an empty disjunction.
+
+In normal predicate processing, one loops over the ``disjuncts()`` of a
+predicate, and only then uses ``tests_for()`` to inspect the individual items.
+But since ``disjuncts(False)`` is an empty list, it should never be necessary
+to invoke ``tests_for(False)``.
+

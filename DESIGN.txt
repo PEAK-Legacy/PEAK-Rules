@@ -694,11 +694,6 @@ to_logic(*)       -> Truth(expr, mode)
 Criteria/Indexing
 =================
 
-class indexing: keep class->seed count mapping (by walking each new seed's MRO)
-to approximate the spread for a given class target; multi-class criteria use
-smallest spread (or dynamic intersect?), negated criteria subtract the count
-from the total seed count (or subtract the classes from the seed set).
-
 dispatch_table(*, Identity, cases) -> {seed: bitmap}
   where bitmap = inclusions[seed] | (inclusions[None] - exclusions[seed])
      | (cases - known_cases)

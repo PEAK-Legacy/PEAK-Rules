@@ -4,7 +4,7 @@ __all__ = [
     'DispatchError', 'AmbiguousMethods', 'NoApplicableMethods',
     'abstract', 'when', 'before', 'after', 'around',
     'implies', 'dominant_signatures', 'combine_actions',
-    'always_overrides', 'merge_by_default', 'Aspect',
+    'always_overrides', 'merge_by_default', 'Aspect', 'intersect', 'disjuncts'
 ]
 from peak.util.decorators import decorate_assignment, decorate, struct
 from peak.util.assembler import Code, Const, Call, Local
@@ -330,12 +330,14 @@ when = Method.make_decorator(
     "when", "Extend a generic function with a new action"
 )
 
-abstract()
 def implies(s1,s2):
     """Is s2 always true if s1 is true?"""
+    return s1==s2
 
 when(implies, (tuple,tuple))
 def tuple_implies(s1,s2):
+    if type(s1) is not tuple or type(s2) is not tuple:
+        return s1==s2
     if len(s2)>len(s1):
         return False    # shorter tuple can't imply longer tuple
     for t1,t2 in zip(s1,s2):
@@ -363,8 +365,6 @@ def method_implies(a1, a2):
 
 def YES(s1,s2): return True
 def NO(s1,s2):  return False
-
-
 
 
 def always_overrides(a,b):
@@ -398,8 +398,8 @@ around = Around.make_decorator('around')
 
 always_overrides(Around, Method)
 
-
-
+# XXX need to get rid of the need for this!
+when(implies, (Around,Around))(method_implies)
 
 
 
@@ -469,25 +469,25 @@ class MethodList(Method):
 
 merge_by_default(MethodList)
 
+def disjuncts(ob):
+    """Return a *list* of the logical disjunctions of `ob`"""
+    return [ob]
 
+when(disjuncts, (bool,))(lambda ob: [ob][:ob])
 
+abstract()
+def intersect(c1, c2):
+    """Return the logical intersection of two conditions"""
 
+around(intersect, (object, object))
+def intersect_if_implies(next_method, c1, c2):
+    if implies(c1,c2):      return c1
+    elif implies(c2, c1):   return c2
+    return next_method(c1, c2)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+when(implies, (bool, bool))(lambda c1, c2: c2 or not c1)
+when(implies, (bool, object))(lambda c1, c2: not c1)
+when(implies, (object, bool))(lambda c1, c2: c2)
 
 
 class Before(MethodList):

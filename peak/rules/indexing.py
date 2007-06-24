@@ -187,7 +187,7 @@ class BitmapIndex(Aspect):
 
         self.case_seeds[case_id] = seeds
         bit = to_bits([case_id])
-        self.known_cases |= bit
+        if seeds is not self.all_seeds: self.known_cases |= bit
         self.criteria_bits[criterion] |= bit
 
         all_seeds = self.all_seeds
@@ -233,10 +233,10 @@ def seeds_for(index, criterion):
     or sequences.  See Indexing.txt for details.
     """
 
-
-
-
-
+when(seeds_for, (BitmapIndex, bool))(
+    # True->all seeds, False->no seeds
+    lambda index, criterion: ([(), index.all_seeds][criterion], [], [])
+)
 
 
 
@@ -252,10 +252,10 @@ class _FixedSubset(object):
         return len(self.parent)-1
 
         
-when(seeds_for, (BitmapIndex, Pointer))
+when(seeds_for, (BitmapIndex, IsObject))
 def seeds_for_pointer(index, criterion):
     idref = id(criterion.ref)
-    if criterion.equal:
+    if criterion.match:
         return [idref], [idref], [None]
     return _FixedSubset(index.all_seeds), [None], [idref]
 
@@ -297,7 +297,7 @@ def seeds_for_value(index, criterion):
     v = (criterion.value, 0)
     if v not in index.all_seeds:
         index.extra.clear()   # ensure offsets are rebuilt on next selectivity()
-    if criterion.truth:
+    if criterion.match:
         return [v], [v], []
     else:
         return _FixedSubset(index.all_seeds), [(Min, -1)], [v]
@@ -365,5 +365,128 @@ def split_ranges(ind, cases):
             low = ranges.pop()[0][0]
         ranges.append(((low, Max), current))    
     return exact, ranges
+
+
+when(seeds_for, (BitmapIndex, Class))
+def seeds_for_class(index, criterion):
+
+    cls = criterion.cls
+    if isinstance(cls, type):
+        mro = cls.__mro__
+    else:
+        class tmp(cls, object): pass
+        mro = tmp.__mro__[1:]
+
+    parents = []
+    csmap = index.criteria_seeds
+    all_seeds = index.all_seeds
+    unions = index.extra
+    
+    for base in mro:
+        parents.append(base)
+        c = Class(base)
+        if c not in csmap:
+            csmap[c] = set(
+                # ancestors aren't always parents of things past them in mro
+                [p for p in parents if issubclass(p, base)]
+            ), set([base]), []
+        else:
+            csmap[c][0].add(cls)
+
+        if base not in all_seeds:
+            all_seeds[base] = set(), set()
+
+        if base in unions:
+            for s in unions[base]: s.add(cls)
+
+    if not criterion.match:
+        return _DiffSet(
+            index.all_seeds, csmap[Class(cls)][0]
+        ), [object], [cls]
+
+    return csmap[criterion]
+
+
+
+when(seeds_for, (BitmapIndex, Classes))
+def seeds_for_classes(index, criterion):
+
+    csmap = index.criteria_seeds
+    excluded, required = sets = [], []
+
+    for c in criterion:
+        if c not in csmap:
+            csmap.setdefault(c, seeds_for(index, c))
+        sets[c.match].append(c)
+
+    ex_classes = [c.cls for c in excluded]
+    cex = Classes(excluded)
+    if cex not in csmap:
+        ex_union = reduce(
+            set.union, [csmap[c][0].subtract for c in excluded], set()
+        )
+        for c in ex_classes:
+            index.extra.setdefault(c, []).append(ex_union)
+        
+        csmap[cex] = _DiffSet(index.all_seeds, ex_union), [object], ex_classes
+
+    if required:
+        required = [csmap[c][0] for c in required] or index.all
+        required = _MultiSet(index, criterion, required, csmap[cex][0].subtract)
+        return required, [], ex_classes
+
+    return csmap[cex]
+
+
+
+
+
+
+
+
+
+
+
+
+
+class _MultiSet(object):
+    def __init__(self, index, classes, required, excluded):
+        self.all_seeds = index.all_seeds
+        self.classes = classes
+        self.lastlen = self.cachelen = 0
+        self.seen = set()
+        self.required = required
+        self.excluded = excluded
+
+    def __len__(self):
+        if len(self.all_seeds)==self.lastlen:
+            return self.cachelen        
+        s = reduce(set.intersection, self.required) - self.excluded
+        l = self.cachelen = len(s)
+        self.lastlen = len(self.all_seeds)
+        if l > len(self.seen):
+            for cls in s - self.seen:
+                for c in cls.__bases__:
+                    if c in s:
+                        break   # not a root if any of its bases are in the set
+                else:
+                    # Flag the new root as an inclusion point for our criterion
+                    self.all_seeds[cls][0].add(self.classes)
+            self.seen = s
+        return l
+
+class _DiffSet(object):   
+    def __init__(self, base, subtract):
+        self.base = base
+        self.subtract = subtract
+        self.baselen = -1
+        self.cache = None
+
+    def __len__(self):        
+        if len(self.base)>self.baselen:
+            self.cache = set(self.base) - self.subtract
+            self.baselen = len(self.base)
+        return len(self.cache)
+
 
 
