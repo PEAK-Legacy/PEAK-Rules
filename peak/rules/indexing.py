@@ -39,6 +39,10 @@ class Ordering(Aspect):
 
 
 
+def always_testable(expr):
+    """Is `expr` safe to evaluate in any order?"""
+    return False    
+
 def define_ordering(ob, seq):
     items = []
     for key in seq:
@@ -62,7 +66,6 @@ if sys.version<"2.4":
             b |= 1<<i   # under 2.3, this breaks when i>31 unless it's a long
         return b
 
-
 def from_bits(n):
     """Yield the (ascending) numbers contained in bitset n"""
     b = 0
@@ -74,9 +77,6 @@ def from_bits(n):
             yield b
         n >>= 1
         b += 1
-
-
-
 
 
 

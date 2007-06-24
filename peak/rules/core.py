@@ -1,15 +1,14 @@
 __all__ = [
-    'Rule', 'RuleSet', 'predicate_signatures', 'rules_for',
+    'Rule', 'RuleSet', 'Dispatching', 'Engine', 'rules_for',
     'Method', 'Around', 'Before', 'After', 'MethodList',
     'DispatchError', 'AmbiguousMethods', 'NoApplicableMethods',
     'abstract', 'when', 'before', 'after', 'around',
-    'implies', 'dominant_signatures', 'combine_actions',
+    'implies', 'dominant_signatures', 'combine_actions', 'overrides',
     'always_overrides', 'merge_by_default', 'Aspect', 'intersect', 'disjuncts'
 ]
 from peak.util.decorators import decorate_assignment, decorate, struct
 from peak.util.assembler import Code, Const, Call, Local
 import inspect, new
-
 try:
     set, frozenset
 except NameError:
@@ -25,10 +24,11 @@ struct()
 def ActionDef(actiontype, body, signature, sequence):
     return actiontype, body, signature, sequence
 
-def predicate_signatures(predicate):
-    yield predicate # XXX
-
-_core_rules = None      # the core rules aren't loaded yet
+def disjuncts(ob):
+    """Return a *list* of the logical disjunctions of `ob`"""
+    # False == no condition is sufficient == no disjuncts
+    if ob is False: return []   
+    return [ob]
 
 def parse_rule(ruleset, body, predicate, actiontype, localdict, globaldict):
     """Hook for pre-processing predicates, e.g. parsing string expressions"""
@@ -121,6 +121,47 @@ class Method(object):
         decorate.__doc__ = doc
         return decorate
 
+when = Method.make_decorator(
+    "when", "Extend a generic function with a new action"
+)
+
+class DispatchError(Exception):
+    """A dispatch error has occurred"""
+
+    def __call__(self,*args,**kw):
+        raise self.__class__(*self.args+(args,kw))  # XXX
+
+    def __repr__(self):
+        # This method is needed so doctests for 2.3/2.4 match 2.5
+        return self.__class__.__name__+repr(self.args)
+
+class NoApplicableMethods(DispatchError):
+    """No applicable action has been defined for the given arguments"""
+
+    def merge(self, other):
+        return AmbiguousMethods([self,other])
+
+class AmbiguousMethods(DispatchError):
+    """More than one choice of action is possible"""
+
+    def __init__(self, methods, *args):
+        DispatchError.__init__(self, methods, *args)
+        mine = self.methods = []
+        for m in methods:
+            if isinstance(m, AmbiguousMethods):
+                mine.extend(m.methods)
+            else:
+                mine.append(m)
+
+    def merge(self, other):
+        return AmbiguousMethods(self.methods+[other])
+
+    def override(self, other):
+        return self
+    def __repr__(self): return "AmbiguousMethods(%s)" % self.methods
+
+
+
 def aspects_for(ob):
     #try:
     return ob.__dict__
@@ -165,7 +206,7 @@ class Aspect(object):
 class RuleSet(object):
     """An observable, stably-ordered collection of rules"""
 
-    #default_action = NoApplicableMethods()
+    default_action = NoApplicableMethods()
     default_actiontype = Method
     counter = 0
 
@@ -205,7 +246,7 @@ class RuleSet(object):
 
     def _actions_for(self, (na, body, predicate, actiontype), sequence):
         actiontype = actiontype or self.default_actiontype
-        for signature in predicate_signatures(predicate):
+        for signature in disjuncts(predicate):
             yield ActionDef(actiontype, body, signature, sequence)
 
     def subscribe(self, listener):
@@ -215,7 +256,6 @@ class RuleSet(object):
 
     def unsubscribe(self, listener):
         self.listeners.remove(listener)
-
 
 class Dispatching(Aspect):
     """Hold the dispatching attributes of a generic function"""
@@ -239,7 +279,8 @@ def rules_for(f):
 def abstract():
     """Declare a function to be abstract"""
     def callback(frame, name, func, old_locals):
-        Dispatching(func)   # Create empty RuleSet and default engine for func
+        # Create empty RuleSet and default engine for func
+        Dispatching(func).engine.changed()   
         return func
     return decorate_assignment(callback)
 
@@ -247,47 +288,84 @@ def abstract():
 class Engine(object):
     """Abstract base for dispatching engines"""
 
+    reset_on_remove = True
+
     def __init__(self, disp):
         self.func = disp.function
-        self.ruleset = disp.rules
-        disp.rules.subscribe(self)
+        self.rules = disp.rules
+        self.rules.subscribe(self)
+        self.registry = {}
     
     def actions_changed(self, added, removed):
-        for r in removed:
-            # force full regeneration if any rules removed
+        if removed and self.reset_on_remove:
             return self.full_reset()
+        for (na, atype, body, sig, seq) in removed:
+            self.remove_method(sig, atype(body,sig,seq))
         for (na, atype, body, sig, seq) in added:
             self.add_method(sig, atype(body,sig,seq))
+        if added:
+            self.changed()
+
+    def changed(self):
+        """Some change to the rules has occurred"""
+
+    def full_reset(self):
+        """Regenerate any code, caches, indexes, etc."""
+
+    def add_method(self, signature, action):
+        """Add a case with the given signature and action"""
+        registry = self.registry
+        if signature in registry:
+            registry[signature] = combine_actions(registry[signature], action)
+        else:
+            registry[signature] = action
+        
+    def remove_method(self, signature, action):
+        """Remove the case with the given signature and action"""
+
+        
+
 
 class TypeEngine(Engine):
     """Simple type-based dispatching"""
 
+    cache = None
+    
     def __init__(self, disp):
         self.registry = {}
         self.static_cache = {}
-        self.cache = {}
         super(TypeEngine, self).__init__(disp)
-        self.generate_code(disp)
 
     def full_reset(self):
         self.registry.clear()
-        self.actions_changed(self.ruleset, ())
+        self.actions_changed(self.rules, ())
 
-    def add_method(self, sig, action):
-        registry = self.registry
-        if sig in self.registry:
-            registry[sig] = combine_actions(action, registry[sig])
-        else:
-            registry[sig] = action
-        self.changed()
-        
     def changed(self):
         if self.cache != self.static_cache:
             self.generate_code(Dispatching(self.func))
 
-    def _snapshot_static(self):
+    def _bootstrap(self):
+        """Bootstrap a self-referential generic function"""
         self.static_cache = self.registry.copy()
         self.changed()
+
+    def add_method(self, signature, action):
+        super(TypeEngine, self).add_method(signature, action)
+        cache = self.static_cache
+        for key in cache.keys():
+            if key!=signature and implies(key, signature):
+                cache[key] = combine_actions(cache[key], action)
+
+
+
+
+
+
+
+
+
+
+
 
     def generate_code(self, disp):
         self.cache = cache = self.static_cache.copy()
@@ -297,7 +375,8 @@ class TypeEngine(Engine):
             try:
                 f = cache[types]
             except KeyError:
-                action = self.ruleset.default_action
+                # guard against re-entrancy looking for the same thing...
+                action = cache[types] = self.rules.default_action
                 for sig in self.registry:
                     if types==sig or implies(types, sig):
                         action = combine_actions(action, self.registry[sig])
@@ -322,13 +401,28 @@ def flatten(v):
     if isinstance(v,basestring): yield v; return
     for i in v:
         for ii in flatten(i): yield ii
+
 def gen_arg(v):
     if isinstance(v,basestring): return Local(v)
     if isinstance(v,list): return tuple(map(gen_arg,v))
 
-when = Method.make_decorator(
-    "when", "Extend a generic function with a new action"
-)
+
+
+def overrides(a1, a2):
+    return False
+
+def combine_actions(a1,a2):
+    """Return a new action for the combination of a1 and a2"""
+    if a1 is None:
+        return a2
+    elif a2 is None:
+        return a1
+    elif overrides(a1,a2):
+        if not overrides(a2,a1):
+            return a1.override(a2)
+    elif overrides(a2,a1):
+        return a2.override(a1)
+    return a1.merge(a2)
 
 def implies(s1,s2):
     """Is s2 always true if s1 is true?"""
@@ -350,6 +444,11 @@ from types import ClassType, InstanceType
 when(implies, (type,      type)     )(issubclass)
 when(implies, (ClassType, ClassType))(issubclass)
 when(implies, (type,      ClassType))(issubclass)
+
+
+
+
+
 when(implies, (ClassType, type))
 def classic_implies_new(s1, s2):
     # A classic class only implies a new-style one if it's ``object``
@@ -357,8 +456,12 @@ def classic_implies_new(s1, s2):
     # isinstance(X,Y) implies issubclass(X.__class__,Y)
     return s2 is object or s2 is InstanceType
 
-when(implies, (Method,Method))
-def method_implies(a1, a2):
+# ok, implies() is now ready to rumble
+Dispatching(implies).engine._bootstrap()
+
+
+when(overrides, (Method,Method))
+def method_overrides(a1, a2):
     if a1.__class__ is a2.__class__:
         return implies(a1.signature, a2.signature)
     raise TypeError("Incompatible action types", a1, a2)
@@ -369,27 +472,12 @@ def NO(s1,s2):  return False
 
 def always_overrides(a,b):
     """instances of `a` always imply `b`; `b` instances never imply `a`"""
-    when(implies, (a, b))(YES)
-    when(implies, (b, a))(NO)
+    when(overrides, (a, b))(YES)
+    when(overrides, (b, a))(NO)
 
 def merge_by_default(t):
     """instances of `t` never imply other instances of `t`"""
-    when(implies, (t, t))(NO)
-
-
-def combine_actions(a1,a2):
-    """Return a new action for the combination of a1 and a2"""
-    if a1 is None:
-        return a2
-    elif a2 is None:
-        return a1
-    elif implies(a1,a2):
-        if not implies(a2,a1):
-            return a1.override(a2)
-    elif implies(a2,a1):
-        return a2.override(a1)
-    return a1.merge(a2)
-
+    when(overrides, (t, t))(NO)
 
 class Around(Method):
     """'Around' Method (takes precedence over regular methods)"""
@@ -399,13 +487,7 @@ around = Around.make_decorator('around')
 always_overrides(Around, Method)
 
 # XXX need to get rid of the need for this!
-when(implies, (Around,Around))(method_implies)
-
-
-
-
-
-
+when(overrides, (Around,Around))(method_overrides)
 
 
 class MethodList(Method):
@@ -469,12 +551,6 @@ class MethodList(Method):
 
 merge_by_default(MethodList)
 
-def disjuncts(ob):
-    """Return a *list* of the logical disjunctions of `ob`"""
-    return [ob]
-
-when(disjuncts, (bool,))(lambda ob: [ob][:ob])
-
 abstract()
 def intersect(c1, c2):
     """Return the logical intersection of two conditions"""
@@ -485,9 +561,15 @@ def intersect_if_implies(next_method, c1, c2):
     elif implies(c2, c1):   return c2
     return next_method(c1, c2)
 
+# These are needed for boolean intersects to work correctly
 when(implies, (bool, bool))(lambda c1, c2: c2 or not c1)
 when(implies, (bool, object))(lambda c1, c2: not c1)
 when(implies, (object, bool))(lambda c1, c2: c2)
+
+
+
+
+
 
 
 class Before(MethodList):
@@ -527,91 +609,50 @@ always_overrides(Before, After)
 always_overrides(Before, Method)
 always_overrides(After, Method)
 
-
-
-
-
-class DispatchError(Exception):
-    """A dispatch error has occurred"""
-
-    def __call__(self,*args,**kw):
-        raise self.__class__(*self.args+(args,kw))  # XXX
-
-    def __repr__(self):
-        # This method is needed so doctests for 2.3/2.4 match 2.5
-        return self.__class__.__name__+repr(self.args)
-
 merge_by_default(DispatchError)
-
-
-class NoApplicableMethods(DispatchError):
-    """No applicable action has been defined for the given arguments"""
-
-    def merge(self, other):
-        return AmbiguousMethods([self,other])
-
 always_overrides(Method, NoApplicableMethods)
+Dispatching(overrides).engine._bootstrap()
 
-RuleSet.default_action = NoApplicableMethods()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-class AmbiguousMethods(DispatchError):
-    """More than one choice of action is possible"""
-
-    def __init__(self, methods, *args):
-        DispatchError.__init__(self, methods, *args)
-        mine = self.methods = []
-        for m in methods:
-            if isinstance(m, AmbiguousMethods):
-                mine.extend(m.methods)
-            else:
-                mine.append(m)
-
-    def merge(self, other):
-        return AmbiguousMethods(self.methods+[other])
-
-    def override(self, other):
-        return self
-    def __repr__(self): return "AmbiguousMethods(%s)" % self.methods
-
-
-when(implies, (AmbiguousMethods, Method))
+when(overrides, (AmbiguousMethods, Method))
 def ambiguous_overrides(a1, a2):
     for m in a1.methods:
-        if implies(m, a2):
+        if overrides(m, a2):
             # if any ambiguous method overrides a2, we can toss it
             return True
     return False
 
-when(implies, (Method, AmbiguousMethods))
+when(overrides, (Method, AmbiguousMethods))
 def override_ambiguous(a1, a2):
     for m in a2.methods:
-        if not implies(a1, m):
+        if not overrides(a1, m):
             return False
     return True     # can only override if it overrides all the ambiguity
 
 # needed to disambiguate the above two methods if combining a pair of AM's:
 merge_by_default(AmbiguousMethods)
 
-# the core is finished loading, snapshot the core rules for implies()
-Dispatching(implies).engine._snapshot_static()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 def dominant_signatures(cases):
     """Return the most-specific ``(signature,body)`` pairs from `cases`

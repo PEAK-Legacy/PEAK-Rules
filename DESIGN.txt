@@ -255,7 +255,7 @@ The default action type (for rules with no specified action type) is
 optional "chained" action that it can fall back to.  All of these values
 are optional, except for the body::
 
-    >>> from peak.rules import Method
+    >>> from peak.rules import Method, overrides
 
     >>> def dummy(*args, **kw):
     ...     print "called with", args, kw
@@ -269,13 +269,13 @@ Calling a ``Method`` invokes the wrapped body::
     >>> meth(1,2,x=3)
     called with (1, 2) {'x': 3}
 
-One ``Method`` implies another if and only if its signature implies the
+One ``Method`` overrides another if and only if its signature implies the
 other's::
 
-    >>> implies(Method.make(dummy,(int,int)), Method.make(dummy,(object,object)))
+    >>> overrides(Method.make(dummy,(int,int)), Method.make(dummy,(object,object)))
     True
 
-    >>> implies(Method.make(dummy,(object,object)), Method.make(dummy,(int,int)))
+    >>> overrides(Method.make(dummy,(object,object)), Method.make(dummy,(int,int)))
     False
 
 
