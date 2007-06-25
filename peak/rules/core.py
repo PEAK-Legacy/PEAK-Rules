@@ -39,6 +39,47 @@ def clone_function(f):
       f.func_code, f.func_globals, f.func_name, f.func_defaults, f.func_closure
     )
 
+[struct()]
+def istype(type, match=True):
+    return type, match
+
+def type_key(arg):
+    if isinstance(arg, (type, ClassType)):
+        return arg
+    elif type(arg) is istype and arg.match:
+        return arg.type
+
+def type_keys(sig):
+    if type(sig) is not tuple:
+        return
+    key = tuple(map(type_key, sig))
+    if None not in key:
+        yield key
+        
+def YES(s1,s2): return True
+def NO(s1,s2):  return False
+
+def always_overrides(a, b):
+    """`a` instances always override `b`s; `b` instances never override `a`s"""
+    a,b = istype(a), istype(b)
+    when(overrides, (a, b))(YES)
+    when(overrides, (b, a))(NO)
+    pairs = {}; to_add = []
+    for adef in rules_for(overrides):
+        sig = adef.signature
+        if type(sig) is not tuple or len(sig)!=2 or adef.body is not YES:
+            continue
+        pairs[sig]=1
+        if sig[0]==b: to_add.append((a, sig[1]))
+        if sig[1]==a: to_add.append((sig[0], b))
+    for (p1,p2) in to_add:
+        if (p1,p2) not in pairs:
+            always_overrides(p1.type, p2.type)
+
+def merge_by_default(t):
+    """instances of `t` never imply other instances of `t`"""
+    when(overrides, (t, t))(NO)
+
 class Method(object):
     """A simple method w/optional chaining"""
 
@@ -346,7 +387,10 @@ class TypeEngine(Engine):
 
     def _bootstrap(self):
         """Bootstrap a self-referential generic function"""
-        self.static_cache = self.registry.copy()
+        cache = self.static_cache
+        for sig, act in self.registry.items():
+            for key in type_keys(sig):
+                cache[key] = act
         self.changed()
 
     def add_method(self, signature, action):
@@ -355,9 +399,6 @@ class TypeEngine(Engine):
         for key in cache.keys():
             if key!=signature and implies(key, signature):
                 cache[key] = combine_actions(cache[key], action)
-
-
-
 
 
 
@@ -378,7 +419,7 @@ class TypeEngine(Engine):
                 # guard against re-entrancy looking for the same thing...
                 action = cache[types] = self.rules.default_action
                 for sig in self.registry:
-                    if types==sig or implies(types, sig):
+                    if sig==types or implies(types, sig):
                         action = combine_actions(action, self.registry[sig])
                 f = cache[types] = action
             return f(*args)
@@ -428,7 +469,7 @@ def implies(s1,s2):
     """Is s2 always true if s1 is true?"""
     return s1==s2
 
-when(implies, (tuple,tuple))
+when(implies, (istype(tuple), istype(tuple)))
 def tuple_implies(s1,s2):
     if type(s1) is not tuple or type(s2) is not tuple:
         return s1==s2
@@ -444,8 +485,8 @@ from types import ClassType, InstanceType
 when(implies, (type,      type)     )(issubclass)
 when(implies, (ClassType, ClassType))(issubclass)
 when(implies, (type,      ClassType))(issubclass)
-
-
+when(implies, (type,      istype)   )(lambda s1,s2: s2.match==(s1 is s2.type))
+when(implies, (istype,    istype)   )(lambda s1,s2: s1.match and s2 is s1.type)
 
 
 
@@ -459,25 +500,11 @@ def classic_implies_new(s1, s2):
 # ok, implies() is now ready to rumble
 Dispatching(implies).engine._bootstrap()
 
-
 when(overrides, (Method,Method))
 def method_overrides(a1, a2):
     if a1.__class__ is a2.__class__:
         return implies(a1.signature, a2.signature)
     raise TypeError("Incompatible action types", a1, a2)
-
-def YES(s1,s2): return True
-def NO(s1,s2):  return False
-
-
-def always_overrides(a,b):
-    """instances of `a` always imply `b`; `b` instances never imply `a`"""
-    when(overrides, (a, b))(YES)
-    when(overrides, (b, a))(NO)
-
-def merge_by_default(t):
-    """instances of `t` never imply other instances of `t`"""
-    when(overrides, (t, t))(NO)
 
 class Around(Method):
     """'Around' Method (takes precedence over regular methods)"""
@@ -486,8 +513,22 @@ around = Around.make_decorator('around')
 
 always_overrides(Around, Method)
 
-# XXX need to get rid of the need for this!
-when(overrides, (Around,Around))(method_overrides)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 class MethodList(Method):
@@ -604,13 +645,13 @@ after  = After.make_decorator('after')
 merge_by_default(After)
 
 always_overrides(Around, Before)
-always_overrides(Around, After)
 always_overrides(Before, After)
-always_overrides(Before, Method)
 always_overrides(After, Method)
 
 merge_by_default(DispatchError)
-always_overrides(Method, NoApplicableMethods)
+when(overrides, (Method, NoApplicableMethods))(YES)
+when(overrides, (NoApplicableMethods, Method))(NO)
+
 Dispatching(overrides).engine._bootstrap()
 
 when(overrides, (AmbiguousMethods, Method))
