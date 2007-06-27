@@ -34,7 +34,7 @@ But this equivalent expression is **not** in DNF::
 
 The criteria used to define generic function methods are likely to look more
 like this, than they are to be in disjunctive normal form.  Therefore, we must
-convert them in order implement the Chambers & Chen dispatch algorithm
+convert them in order to implement the Chambers & Chen dispatch algorithm
 correctly (see Indexing.txt).
 
 We do this using the ``Disjunction`` class to represent overall expressions
@@ -111,6 +111,7 @@ Because ``True`` means "condition that always applies", *everything* implies
 
     >>> implies(object(), True)
     True
+
     >>> implies(True, object())
     False
 
@@ -132,8 +133,10 @@ all other conditions can *sometimes* apply::
 
     >>> implies(object(), False)
     False
+
     >>> implies(True, False)
     False
+
     >>> implies(False, False)
     True
 
@@ -166,7 +169,8 @@ common cases of intersection can be handled automatically.)
 In contrast to both of these functions, the ``disjuncts()`` function takes
 only a single argument, and returns a list of the "disjuncts" (or-ed-together
 conditions) of its argument.  More precisely, it returns a list of conditions
-that, if true, would make the original condition true.
+that each imply the original condition.  That is, if any of the disjuncts were
+true, then the original condition would also be true.
 
 Thus, the ``disjuncts()`` of an arbitrary object will normally be a list
 containing just that object::
@@ -184,7 +188,8 @@ condition can ever imply ``False``::
     []
 
 As a result, "or"-ing ``False`` with other conditions will simply remove the
-``False`` from the resulting predicate.
+``False`` from the resulting predicate, and conditions that can never be true
+are not used for indexing or dispatching.
 
 
 
@@ -263,12 +268,12 @@ every part of the conjunction::
     >>> implies(Conjunction([c,int]), Conjunction([a, int]))
     False
 
-By the way, on a more sophisticated level of reasoning, you could say that
+(By the way, on a more sophisticated level of reasoning, you could say that
 ``Conjunction([str, int])`` should have equalled ``False`` above, since
 there's no way for an object to be both an ``int`` and a ``str`` at the same
 time.  But that would be an excursion into semantics and outside the bounds of
 what PEAK-Rules can "reason" about using only logical implication as defined by
-the ``implies()`` generic function.
+the ``implies()`` generic function.)
 
 ``Conjunction`` objects can be intersected with one another, or with
 additional conditions, and the result is another ``Conjunction`` of the
@@ -331,7 +336,7 @@ disjunctions::
     Disjunction([1, 2, 3, 4])
 
 This is because it uses the ``disjuncts()`` generic function to determine
-whether any of the items it's given are "or"-ed conditions of some kind.  And
+whether any of the items it was given are "or"-ed conditions of some kind.  And
 the ``disjuncts()`` of a ``Disjunction`` are a list of its contents::
 
     >>> disjuncts(Disjunction([1, 2, 3, 4]))
@@ -395,6 +400,13 @@ contents.  In other words::
     ...     Conjunction([str,long]), Conjunction([str, float]),
     ... ])
     True
+
+As you can see, this is the heart of the process that allows expressions like
+``(A or B) and (C or D)`` to be transformed into their disjunctive normal
+form (i.e. ``(A and C) or (A and D) or (B and C) or (B and D)``).
+
+In other words, by using ``Disjunction()`` as an "or" operator and
+``intersect()`` as the "and" operator, we always end up with a DNF result.
 
 
 Object Identity
@@ -584,7 +596,7 @@ original ``!=`` values::
     ... ])
     True
 
-Intersecting two ranges (or a ranges and an ``==`` value) produces a smaller
+Intersecting two ranges (or a range and an ``==`` value) produces a smaller
 range or value, or ``False`` if there is no overlap::
 
     >>> intersect(Range(hi=(27,-1)), Range(lo=(19,1)))
@@ -594,8 +606,7 @@ range or value, or ``False`` if there is no overlap::
     False
 
     >>> intersect(Value(27), Range(lo=(27,-1)))
-    Value(27, True)
-    
+    Value(27, True)    
     >>> intersect(Range(lo=(27,-1)), Value(27))
     Value(27, True)
 
@@ -604,8 +615,6 @@ range or value, or ``False`` if there is no overlap::
     >>> intersect(Range(hi=(27,-1)), Value(27))
     False    
     
-And the intersection of a range and a ``!=`` value
-
 Last, but not least, a range (or value) implies another range or value if it
 lies entirely within it::
 
@@ -630,7 +639,7 @@ But not if it overlaps or lies outside of it::
 Classes and Types
 =================
 
-``Class`` objects represent ``issubclass()`` or ``isinstance()`` tests.
+``Class`` objects represent ``issubclass()`` or ``isinstance()`` sets.
 ``Class(x)`` is a instance/subclass match, while ``Class(x, False)`` is a
 non-match.  Implication and intersection are defined accordingly::
 
@@ -680,8 +689,8 @@ be applied to it::
     >>> from peak.rules.criteria import Test
     >>> x_isa_int = Test("x", Class(int))
 
-(Note that although these examples use strings, actual dispatch expressions will
-be AST-like structures.)
+(Note that although these examples use strings, actual dispatch expressions
+will be AST-like structures.)
 
 The disjuncts of a test is ordinarily a list containing a copy of the test::
 
@@ -734,7 +743,7 @@ were created with::
     Signature([Test('y', Class(...str...)), Test('x', Class(...int...))])
 
 Second, signatures can only contain ``Test`` instances, and they automatically
-combine any tests that apply to the same dispatch signatures::
+``intersect()`` any tests that apply to the same dispatch signatures::
 
     >>> from peak.rules.criteria import Signature
 
@@ -810,8 +819,8 @@ Specifically, a predicate can be any of the following:
 * A ``Disjunction`` containing two or more ``Test`` or ``Signature`` instances
 
 In each case, invoking ``disjuncts()`` on the object in question will return
-a list of objects suitable for constructing dispatch "cases" -- sets of simple
-"and-ed" criteria.
+a list of objects suitable for constructing dispatch "cases" -- i.e., sets of
+simple "and-ed" criteria that can easily be indexed.
 
 The ``tests_for()`` function can then be used to yield the component tests of
 each case signature.  When called on a ``Test``, it yields the given test::
