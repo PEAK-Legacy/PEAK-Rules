@@ -174,7 +174,7 @@ class SMIGenerator:
         self.code = code = CSECode.from_function(func) #, copy_lineno=True)
         self.actions = {}
         self.func = func
-        loop_top, exit, bad_action = Label(), Label(), Label()
+        loop_top, exit, bad_action, fake = Label(), Label(), Label(), Label()
         args, star, dstar, defaults = inspect.getargspec(func)
         actions, self.actions_const = self.make_const({})
         start_node, self.startnode_const = self.make_const(object())
@@ -183,22 +183,22 @@ class SMIGenerator:
         code(start_node, loop_top)
         code.UNPACK_SEQUENCE(2)     # action, argument
         code(
-            Code.ROT_TWO,   # argument, action
-            self.SET_ARG,   # action
             exit.JUMP_IF_FALSE,
             Compare(Code.DUP_TOP, (('in', actions),)),
             bad_action.JUMP_IF_FALSE,
             Code.POP_TOP,
-            exit.SETUP_LOOP, self.WHY_CONTINUE, Code.END_FINALLY,
-            Code.POP_BLOCK, Return(None),  # <- dummy code, will never get here
+            Code.ROT_TWO,   # argument, action
+            self.SET_ARG,   # action
+            fake.SETUP_LOOP, self.WHY_CONTINUE, Code.END_FINALLY,
+            Code.POP_BLOCK, fake, Return(Pass),  # <- all dead code, never runs
         exit,
-            Code.POP_TOP,       # drop action
+            Code.POP_TOP,       # drop action, leaving argument
             Return(
-                Call(self.ARG, map(gen_arg, args),(),
-                               gen_arg(star), gen_arg(dstar))
+                Call(Pass, map(gen_arg, args),(),gen_arg(star), gen_arg(dstar))
             ),
         bad_action,
-            Code.POP_TOP, Call(Const(self.bad_action),(Code.ROT_TWO, self.ARG))
+            Code.POP_TOP,
+            Return(Call(Const(self.bad_action),(Code.ROT_THREE, Code.ROT_TWO)))
         )
         self.NEXT_STATE = loop_top.JUMP_ABSOLUTE
         self.maybe_cache = code.maybe_cache
