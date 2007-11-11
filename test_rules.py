@@ -125,7 +125,7 @@ def additional_tests():
     import doctest
     return doctest.DocFileSuite(
         'DESIGN.txt', 'Indexing.txt', 'AST-Builder.txt',
-        'Code-Generation.txt', 'Aspects.txt', 'Criteria.txt',
+        'Code-Generation.txt', 'Criteria.txt',
         optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE,
     )
 

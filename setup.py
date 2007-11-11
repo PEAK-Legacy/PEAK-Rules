@@ -1,13 +1,11 @@
 #!/usr/bin/env python
 """Distutils setup file"""
-
 import ez_setup
 ez_setup.use_setuptools()
 from setuptools import setup
 
-# Metadata
 PACKAGE_NAME = "PEAK-Rules"
-PACKAGE_VERSION = "0.1"
+PACKAGE_VERSION = "0.3"
 PACKAGES = ['peak', 'peak.rules']
 
 def get_description():
@@ -29,7 +27,10 @@ setup(
     version=PACKAGE_VERSION,
     description="Generic functions and business rules support systems",
     long_description = get_description(),
-    install_requires=['BytecodeAssembler>=0.3.dev-r2234','DecoratorTools>=1.2'],
+    install_requires=[
+        'BytecodeAssembler>=0.3.dev-r2234','DecoratorTools>=1.5',
+        'AddOns>=0.6'
+    ],
     author="Phillip J. Eby",
     author_email="peak@eby-sarna.com",
     license="PSF or ZPL",
@@ -38,4 +39,3 @@ setup(
     packages = PACKAGES,
     namespace_packages = ['peak'],
 )
-
