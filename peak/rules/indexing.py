@@ -1,10 +1,11 @@
 from __future__ import division
 import sys
-from peak.rules.core import Aspect, abstract, Dispatching, Engine, when
+from peak.util.addons import AddOn
+from peak.rules.core import abstract, Dispatching, Engine, when
 from peak.rules.criteria import *
 from peak.rules.criteria import _ExtremeType, sorted, set, frozenset
 
-class Ordering(Aspect):
+class Ordering(AddOn):
     """Track inter-expression ordering constraints"""
 
     def __init__(self, owner, expr):
@@ -33,7 +34,6 @@ class Ordering(Aspect):
                 return True
         else:
             return False
-
 
 
 
@@ -162,7 +162,7 @@ class TreeBuilder(object):
             del remaining[best_expr]
         return best_expr, frozenset(remaining)
 
-class BitmapIndex(Aspect):
+class BitmapIndex(AddOn):
     """Index that computes selectivity and handles basic caching w/bitmaps"""
 
     known_cases = 0

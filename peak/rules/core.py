@@ -4,10 +4,11 @@ __all__ = [
     'DispatchError', 'AmbiguousMethods', 'NoApplicableMethods',
     'abstract', 'when', 'before', 'after', 'around',
     'implies', 'dominant_signatures', 'combine_actions', 'overrides',
-    'always_overrides', 'merge_by_default', 'Aspect', 'intersect', 'disjuncts'
+    'always_overrides', 'merge_by_default', 'intersect', 'disjuncts'
 ]
 from peak.util.decorators import decorate_assignment, decorate, struct
 from peak.util.assembler import Code, Const, Call, Local
+from peak.util.addons import AddOn
 import inspect, new
 try:
     set, frozenset
@@ -19,7 +20,6 @@ empty = frozenset()
 struct()
 def Rule(body, predicate=(), actiontype=None):
     return body, predicate, actiontype
-
 struct()
 def ActionDef(actiontype, body, signature, sequence):
     return actiontype, body, signature, sequence
@@ -203,47 +203,6 @@ class AmbiguousMethods(DispatchError):
 
 
 
-def aspects_for(ob):
-    #try:
-    return ob.__dict__
-    #except (AttributeError, TypeError):
-    #           
-
-class Aspect(object):
-    """Attach extra state to an object"""
-
-    __slots__ = ()
-
-    class __metaclass__(type):
-        def __call__(cls, ob, *key):
-            a = aspects_for(ob)
-            try:
-                return a[cls, key]
-            except KeyError:
-                # Use setdefault() to prevent race conditions
-                ob = a.setdefault((cls, key), type.__call__(cls, ob, *key))
-                return ob
-
-    decorate(classmethod)
-    def exists_for(cls, ob, *key):
-        """Does an aspect of this type for the given key exist?""" 
-        return (cls, key) in aspects_for(ob)
-
-    decorate(classmethod)
-    def delete(cls, ob, *key):
-        """Ensure an aspect of this type for the given key does not exist"""
-        a = aspects_for(ob)
-        try:
-            del a[cls, key]
-        except KeyError:
-            pass
-
-    def __init__(self, owner):
-        pass
-
-
-
-
 class RuleSet(object):
     """An observable, stably-ordered collection of rules"""
 
@@ -298,7 +257,7 @@ class RuleSet(object):
     def unsubscribe(self, listener):
         self.listeners.remove(listener)
 
-class Dispatching(Aspect):
+class Dispatching(AddOn):
     """Hold the dispatching attributes of a generic function"""
 
     def __init__(self, func):
