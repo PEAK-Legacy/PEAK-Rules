@@ -3,7 +3,8 @@ import sys
 from peak.util.addons import AddOn
 from peak.rules.core import abstract, Dispatching, Engine, when
 from peak.rules.criteria import *
-from peak.rules.criteria import _ExtremeType, sorted, set, frozenset
+from peak.rules.criteria import sorted, set, frozenset
+from peak.util.extremes import Min, Max, Extreme
 
 class Ordering(AddOn):
     """Track inter-expression ordering constraints"""
@@ -34,7 +35,6 @@ class Ordering(AddOn):
                 return True
         else:
             return False
-
 
 
 
@@ -355,7 +355,7 @@ def split_ranges(ind, cases):
             low = val
         new = current | inc
         new ^= (new & exc)
-        if d==0 or d<0 and not isinstance(val, _ExtremeType):
+        if d==0 or d<0 and not isinstance(val, Extreme):
             exact[val] = new
         if d:
             current = new
@@ -487,6 +487,7 @@ class _DiffSet(object):
             self.cache = set(self.base) - self.subtract
             self.baselen = len(self.base)
         return len(self.cache)
+
 
 
 

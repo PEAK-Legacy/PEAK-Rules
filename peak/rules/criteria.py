@@ -2,9 +2,10 @@ from peak.rules.core import *
 from peak.util.decorators import struct
 from weakref import ref
 from sys import maxint
+from peak.util.extremes import Min, Max
 __all__ = [
-    'Range', 'Value', 'IsObject', 'Min', 'Max', 'Class', 'Classes', 'tests_for',
-    'NotObjects',  'Conjunction', 'Disjunction', 'Test', 'Signature', 
+    'Range', 'Value', 'IsObject', 'Class', 'Classes', 'tests_for',
+    'NotObjects',  'Conjunction', 'Disjunction', 'Test', 'Signature',
 ]
 
 try:
@@ -35,45 +36,12 @@ except NameError:
             return [v[1] for v in d]
         return d
 
+
+
+
 class Intersection(object):
     """Abstract base for conjunctions and signatures"""
     __slots__ = ()
-
-class _ExtremeType(object):     # Courtesy of PEP 326
-    def __init__(self, cmpr, rep):
-        object.__init__(self)
-        self._cmpr = cmpr
-        self._rep = rep
-
-    def __cmp__(self, other):
-        if isinstance(other, self.__class__) and\
-           other._cmpr == self._cmpr:
-            return 0
-        return self._cmpr
-
-    def __repr__(self):
-        return self._rep
-
-    def __lt__(self,other):
-        return self.__cmp__(other)<0
-
-    def __le__(self,other):
-        return self.__cmp__(other)<=0
-
-    def __gt__(self,other):
-        return self.__cmp__(other)>0
-
-    def __eq__(self,other):
-        return self.__cmp__(other)==0
-
-    def __ge__(self,other):
-        return self.__cmp__(other)>=0
-
-    def __ne__(self,other):
-        return self.__cmp__(other)<>0
-
-Max = _ExtremeType(1, "Max")
-Min = _ExtremeType(-1, "Min")
 
 struct()
 def Range(lo=(Min,-1), hi=(Max,1)):
@@ -110,6 +78,8 @@ def intersect_range(c1, c2):
     if hi<=lo:
         return False
     return Range(lo, hi)
+
+
 when(intersect, (Value, Value))
 def intersect_values(c1, c2):
     if not c1.match or not c2.match:
@@ -145,6 +115,12 @@ def class_implies(c1, c2):
 when(intersect, (Class, Class))(lambda c1,c2: Classes([c1, c2]))
 
 
+
+
+
+
+
+
 struct()
 def Test(expr, criterion):
     return expr, criterion
@@ -160,7 +136,31 @@ def intersect_tests(c1, c2):
     if c1.expr==c2.expr:
         return Test(c1.expr, intersect(c1.criterion, c2.criterion))
     else:
-        return Signature([c1, c2])        
+        return Signature([c1, c2])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class Signature(Intersection, tuple):
     """Represent and-ed Tests, in sequence"""
@@ -193,7 +193,7 @@ class Signature(Intersection, tuple):
                     intersect(Signature(output[:posn]), Disjunction([new])),
                     Signature(output[posn+1:]+list(input))
                 )
-                
+
         if not output:
             return True
         elif len(output)==1:

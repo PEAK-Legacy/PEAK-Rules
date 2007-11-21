@@ -29,7 +29,7 @@ setup(
     long_description = get_description(),
     install_requires=[
         'BytecodeAssembler>=0.3.dev-r2234','DecoratorTools>=1.5',
-        'AddOns>=0.6'
+        'AddOns>=0.6', 'Extremes>=1.1',
     ],
     author="Phillip J. Eby",
     author_email="peak@eby-sarna.com",
