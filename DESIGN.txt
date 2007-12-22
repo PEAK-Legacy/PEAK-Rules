@@ -2,7 +2,7 @@
 The PEAK Rules Core Framework
 =============================
 
-This document is for people who are extending the core framework in some
+NOTE: This document is for people who are extending the core framework in some
 way, e.g. adding custom action types to specialize method combination, or
 creating new kinds of engines or conditions.  It isn't intended to be user
 documentation for the built-in rule facility.
@@ -10,46 +10,29 @@ documentation for the built-in rule facility.
 .. contents:: **Table of Contents**
 
 
----------------------------
-Roadmap and Design Overview
----------------------------
+------------------------
+Overview and Terminology
+------------------------
 
+The PEAK-Rules core framework provides a generic API for creating and
+manipulating generic functions, with a high degree of extensibility.  Almost
+any concept implemented by the core can be replaced by a third-party
+implementation on a function-by-function basis.  In this way, an individual
+library or application can provide for its specific needs, without needing to
+reinvent the entire spectrum of tools.
 
-Planned API
-===========
+The main concepts implemented by the core are:
 
-The ``peak.rules`` package will offer an API that looks something like this:
+Generic functions
+    A function with a "dispatching" add-on, that manages a collection of
+    methods, where each method has a rule to determine its applicability.
+    When a generic function is invoked, a combination of the methods that
+    apply to the invocation (as determined by their rules) is invoked.
 
-``@rules.abstract()``
-    Decorator to mark a function as abstract, meaning that it has no default
-    rule defined.  Various arguments and keyword options will be available to
-    provide optimization hints or set the default method combination policy
-    for the function.
-
-``@rules.when(f, condition=None)``
-    Decorator to extend an existing function (`f`), even if it is not already
-    a generic function.  Yes, that's right, you'll be able to extend any
-    Python function.  The condition will be optional, which means that if you
-    don't specify one, your function will simply replace or wrap the original
-    definition.
-
-``@rules.around()``, ``@rules.before()``, ``@rules.after()``
-    Just like ``@rules.when()``, except using different combination wrappers.
-    As with ``when()``, the condition will be optional and the function doesn't
-    have to have been declared "abstract" ahead of time.
-
-Once a function has been made extensible, the usual ``f.when()`` and other
-decorators will probably be available, but I'm not 100% decided on that as yet.
-Unlike RuleDispatch, PEAK-Rules will have an open-ended method combination
-system that doesn't rely on the generic function itself controlling the
-combination rules.  So it might be cleaner just to always use ``@around(f, c)``
-instead of e.g. ``@f.around(c)``, even though the latter looks a bit more
-pleasant to me.
-
-In addition to these functions, there will probably be some exception classes,
-and maybe a few other specialty classes or functions, including perhaps some
-of the core framework's generic functions.  None of those things are as yet
-well-defined enough to specify here.
+Method combination
+    The ability to compose a set of methods into a single function, with their
+    precedence determined by the type of method and the logical implication
+    relationships of their applicability rules.
 
 
 Development Roadmap
@@ -80,27 +63,27 @@ set of alternative criteria) and others.
 Finally, specialty features such as index customization, thread-safety,
 event-oriented rulesets, and such will be introduced.
 
-There is no defined timeframe for these most of these phases, although I
-anticipate that at least the first one will be finished in June 2006.
-(Actually, the first phase was finished in May '06; then I didn't do hardly
-any work on the thing for nearly a year.  Phase 2 should be done in July '07.)
 
 
 Design Concepts
 ===============
 
+(Note: Criteria, signatures, and predicates are described and tested in detail
+by the ``Criteria.txt`` document.)
+
 Criterion
-    A criterion is a test that returns a boolean for a given value, for example
-    by testing its type.  The simplest criterion is just a class or type object,
-    meaning that the value should be of that type.
+    A criterion is a symbolic representation of a test that returns a boolean
+    for a given value, for example by testing its type.  The simplest criterion
+    is just a class or type object, meaning that the value should be of that
+    type.
 
 Signature
     A condition expressed purely in terms of simple tests "and"ed together,
     using no "or" operations of any kind.  A signature specifies what argument
     expressions are tested, and which criteria should be applied to them.
     The simplest possible signature is a tuple of criteria, with each criterion
-    applied to the corresponding argument in an argument tuple.  An empty tuple
-    matches any possible input.
+    applied to the corresponding argument in an argument tuple.  (An empty tuple
+    matches any possible input.)  Signatures are also described 
 
 Predicate
     One or more signatures "or"ed together.  (Note that this means that
@@ -175,24 +158,25 @@ Method combination is performed using the ``combine_actions()`` API function::
     >>> from peak.rules import combine_actions
 
 ``combine_actions()`` takes two arguments: a pair of actions.  They are
-compared using ``implies()`` to see if one is more specific than the other.
-If so, the more specific action's ``override()`` method is called, passing in
-the less-specific action.  If neither action can override the other, the first
-action's ``merge()`` method is called, passing in the other action.
+compared using the ``overrides()`` generic function to see if one is more
+specific than the other.  If so, the more specific action's ``override()``
+method is called, passing in the less-specific action.  If neither action
+can override the other, the first action's ``merge()`` method is called,
+passing in the other action.
 
 In either case, the result of calling the ``merge()`` or ``override()`` method
 is returned.
 
-So, to define a custom action type for method combination, it needs to support
-``implies()`` operations on its signature(s), and it needs to implement
-``merge()`` and ``override()`` methods.
+So, to define a custom action type for method combination, and it needs to
+implement ``merge()`` and ``override()`` methods, and it must be comparable to
+other method types via the ``overrides()`` generic function.
 
 
 Signature Implication
 =====================
 
 The ``implies()`` function is used to determine the logical implication
-relationship between two signatures or methods.  A signature ``s1`` implies
+relationship between two signatures.  A signature ``s1`` implies a
 signature ``s2`` if ``s2`` will always match an invocation matched by ``s1``.
 (Action implication is based on signature implication; see the `Action Types`_
 section below for more details.)
