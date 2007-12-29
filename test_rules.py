@@ -64,21 +64,21 @@ class MiscTests(unittest.TestCase):
         self.assertEqual(ptr,ptr)
         self.assertEqual(hash(oid),hash(ptr))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    def testRuleSetReentrance(self):
+        from peak.rules.core import Rule, RuleSet
+        rs = RuleSet()
+        log = []
+        class MyListener:
+            def actions_changed(self, added, removed):
+                log.append(1)
+                if self is ml1:
+                    rs.unsubscribe(ml2)
+        ml1, ml2 = MyListener(), MyListener()
+        rs.subscribe(ml1)
+        rs.subscribe(ml2)
+        self.assertEqual(log, [])
+        rs.add(Rule(lambda:None))
+        self.assertEqual(log, [1, 1])
 
 def additional_tests():
     import doctest

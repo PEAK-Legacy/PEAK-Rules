@@ -238,7 +238,7 @@ class RuleSet(object):
     #    self.actions[rule] = sequence, new_actions
     #    self.notify(new_actions-actions, actions-new_actions)
     def _notify(self, added=empty, removed=empty):
-        for listener in self.listeners:
+        for listener in self.listeners[:]:  # must be re-entrant
             listener.actions_changed(added, removed)
 
 
@@ -369,15 +369,14 @@ def abstract():
 
 class Engine(object):
     """Abstract base for dispatching engines"""
-
     reset_on_remove = True
 
     def __init__(self, disp):
-        self.func = disp.function
-        self.rules = disp.rules
-        self.rules.subscribe(self)
+        self.function = disp.function
         self.registry = {}
+        self.rules = disp.rules
         self.__lock__ = disp.get_lock()
+        self.rules.subscribe(self)
 
     synchronized()
     def actions_changed(self, added, removed):
@@ -387,18 +386,18 @@ class Engine(object):
             self._remove_method(sig, atype(body,sig,seq))
         for (na, atype, body, sig, seq) in added:
             self._add_method(sig, atype(body,sig,seq))
-        if added:
+        if added or removed:
             self._changed()
 
     def _changed(self):
         """Some change to the rules has occurred"""
-        Dispatching(self.func).request_regeneration()
+        Dispatching(self.function).request_regeneration()
 
     def _full_reset(self):
         """Regenerate any code, caches, indexes, etc."""
         self.registry.clear()
         self.actions_changed(self.rules, ())
-        Dispatching(self.func).request_regeneration()
+        Dispatching(self.function).request_regeneration()
 
     def _add_method(self, signature, action):
         """Add a case with the given signature and action"""
@@ -407,6 +406,7 @@ class Engine(object):
             registry[signature] = combine_actions(registry[signature], action)
         else:
             registry[signature] = action
+
 
     def _remove_method(self, signature, action):
         """Remove the case with the given signature and action"""
@@ -427,7 +427,7 @@ class TypeEngine(Engine):
 
     def _changed(self):
         if self.cache != self.static_cache:
-            Dispatching(self.func).request_regeneration()
+            Dispatching(self.function).request_regeneration()
 
     def _bootstrap(self):
         """Bootstrap a self-referential generic function"""
@@ -465,15 +465,15 @@ class TypeEngine(Engine):
                 self.__lock__.release()
             return f(*args)
 
-        c = Code.from_function(self.func, copy_lineno=True)
+        c = Code.from_function(self.function, copy_lineno=True)
         types = [
             Call(
                 Const(getattr),
                 (Local(name), Const('__class__'), Call(Const(type),(Local(name),)))
-            ) for name in flatten(inspect.getargspec(self.func)[0])
+            ) for name in flatten(inspect.getargspec(self.function)[0])
         ]
         target = Call(Const(cache.get), (tuple(types), Const(callback)))
-        c.return_(call_thru(self.func, target))
+        c.return_(call_thru(self.function, target))
         return c.code()
 
 def flatten(v):
