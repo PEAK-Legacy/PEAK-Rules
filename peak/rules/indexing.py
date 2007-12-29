@@ -41,7 +41,7 @@ class Ordering(AddOn):
 
 def always_testable(expr):
     """Is `expr` safe to evaluate in any order?"""
-    return False    
+    return False
 
 def define_ordering(ob, seq):
     items = []
@@ -61,7 +61,7 @@ if sys.version<"2.4":
         """Return a bitset encoding the numbers contained in sequence `ints`"""
         b = 0
         for i in ints:
-            if i>31:    
+            if i>31:
                 i = long(i)
             b |= 1<<i   # under 2.3, this breaks when i>31 unless it's a long
         return b
@@ -91,7 +91,6 @@ class TreeBuilder(object):
         key = (cases, exprs)
         if key in self.memo:
             return self.memo[key]
-
         if not exprs:
             node = self.build_leaf(cases)
         else:
@@ -103,7 +102,6 @@ class TreeBuilder(object):
                 node = self.build(cases, rest)
             else:
                 node = self.build_node(best, cases, rest)
-
         self.memo[key] = node
         return node
 
@@ -120,11 +118,13 @@ class TreeBuilder(object):
     def cost(self, expr, remaining_exprs):
         return 1
 
+    def can_precede(self, expr, remaining):
+        return Ordering(self, expr).can_precede(remaining)
 
     def best_expr(self, cases, exprs):
         best_expr = None
         best_spread = None
-
+        can_precede = self.can_precede
         to_do = list(exprs)
         remaining = dict.fromkeys(exprs)
         active_cases = len(cases)
@@ -132,7 +132,7 @@ class TreeBuilder(object):
 
         while to_do:
             expr = to_do.pop()
-            if not Ordering(self, expr).can_precede(remaining):
+            if not can_precede(expr, remaining):
                 # Skip criteria that have unchecked prerequisites
                 skipped.append(expr)
                 continue
@@ -176,7 +176,7 @@ class BitmapIndex(AddOn):
         self.expr = expr
         self.engine = engine
 
-    def add_case(self, case_id, criterion):       
+    def add_case(self, case_id, criterion):
         self._extend_cases(case_id)
         if criterion in self.criteria_seeds:
             seeds, inc, exc = self.criteria_seeds[criterion]
@@ -211,7 +211,7 @@ class BitmapIndex(AddOn):
 
     def seed_bits(self, cases):
         bits = self.criteria_bits
-        return dict([
+        return cases ^ (self.known_cases & cases), dict([
             (seed,
                 (sum([bits[i] for i in inc]) & cases,
                  sum([bits[e] for e in exc]) & cases))
@@ -221,7 +221,7 @@ class BitmapIndex(AddOn):
     def expanded_sets(self):
         return [
             (seed, [list(from_bits(inc)), list(from_bits(exc))])
-            for seed, (inc, exc) in self.seed_bits(self.known_cases).items()
+            for seed, (inc, exc) in self.seed_bits(self.known_cases)[1].items()
         ]
 
 
@@ -251,7 +251,7 @@ class _FixedSubset(object):
     def __len__(self):
         return len(self.parent)-1
 
-        
+
 when(seeds_for, (BitmapIndex, IsObject))
 def seeds_for_pointer(index, criterion):
     idref = id(criterion.ref)
@@ -273,12 +273,12 @@ class _RangeSubset(object):
         off = self.offsets
         if not off:
             for n,k in enumerate(sorted(self.seeds)):
-                off[k] = n                
+                off[k] = n
         return off[self.hi] - off[self.lo]
-        
 
 
-        
+
+
 
 
 
@@ -326,22 +326,21 @@ def seeds_for_value(index, criterion):
 
 
 
-def split_ranges(ind, cases):
-    """Return (exact, ranges) where `exact` is a dict[value]->bits and `ranges`
-    is a sorted list of ``((lo,hi),bits)`` tuples expressing non-inclusive
-    ranges.  `ind` must be a bitmap index filled with ``Range`` and ``Value``
-    criteria, and `cases` must be a bitmap of the cases to be included in the
-    result.
+def split_ranges(dont_cares, bitmap, node=lambda b:b):
+    """Return (exact, ranges) where `exact` is a dict[value]->node and `ranges`
+    is a sorted list of ``((lo,hi),node)`` tuples expressing non-inclusive
+    ranges.  `dont_cares` and `seedmap` should be the return values from
+    a bitmap index's ``seed_bits()`` method.  `node(bits)` should return
+    the value to be used as a node in the output; the default is to just return
+    a bitmap of cases.
     """
     ranges = []
     exact = {}
-    current = cases ^ (ind.known_cases & cases)
-
-    bitmap = ind.seed_bits(cases)
+    current = dont_cares
     for (val,d), (inc, exc) in bitmap.iteritems():
         if d:
             break     # something other than == was used; use full algorithm
-        exact[val] = current | inc
+        exact[val] = node(current | inc)
     else:
         return exact, ranges    # all == criteria, no ranges or !=
 
@@ -351,20 +350,21 @@ def split_ranges(ind, cases):
         if val != low:
             if ranges and ranges[-1][-1]==current:
                 low = ranges.pop()[0][0]
-            ranges.append(((low, val), current))
+            ranges.append(((low, val), node(current)))
             low = val
         new = current | inc
         new ^= (new & exc)
         if d==0 or d<0 and not isinstance(val, Extreme):
-            exact[val] = new
+            exact[val] = node(new)
         if d:
             current = new
 
     if low != Max:
         if ranges and ranges[-1][-1]==current:
             low = ranges.pop()[0][0]
-        ranges.append(((low, Max), current))    
+        ranges.append(((low, Max), node(current)))
     return exact, ranges
+
 
 
 when(seeds_for, (BitmapIndex, Class))
@@ -381,7 +381,7 @@ def seeds_for_class(index, criterion):
     csmap = index.criteria_seeds
     all_seeds = index.all_seeds
     unions = index.extra
-    
+
     for base in mro:
         parents.append(base)
         c = Class(base)
@@ -427,7 +427,7 @@ def seeds_for_classes(index, criterion):
         )
         for c in ex_classes:
             index.extra.setdefault(c, []).append(ex_union)
-        
+
         csmap[cex] = _DiffSet(index.all_seeds, ex_union), [object], ex_classes
 
     if required:
@@ -460,7 +460,7 @@ class _MultiSet(object):
 
     def __len__(self):
         if len(self.all_seeds)==self.lastlen:
-            return self.cachelen        
+            return self.cachelen
         s = reduce(set.intersection, self.required) - self.excluded
         l = self.cachelen = len(s)
         self.lastlen = len(self.all_seeds)
@@ -475,14 +475,14 @@ class _MultiSet(object):
             self.seen = s
         return l
 
-class _DiffSet(object):   
+class _DiffSet(object):
     def __init__(self, base, subtract):
         self.base = base
         self.subtract = subtract
         self.baselen = -1
         self.cache = None
 
-    def __len__(self):        
+    def __len__(self):
         if len(self.base)>self.baselen:
             self.cache = set(self.base) - self.subtract
             self.baselen = len(self.base)

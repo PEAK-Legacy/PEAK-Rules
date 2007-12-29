@@ -689,8 +689,9 @@ selectivity(case_id_list)
     statistics`_ of the index for those cases.
 
 seed_bits(cases)
-    Given a bitmap of cases, return a dictionary mapping seeds to
-    ``(include, exclude)`` bitset pairs.
+    Given a bitmap of cases, return a tuple ``(dontcares, seedmap)``, where
+    ``dontcares`` is a bitset of "don't care" cases, and ``seedmap`` is a
+    dictionary mapping seeds to ``(include, exclude)`` bitset pairs.
 
 expanded_sets()
     Return a list of ``(seed, (inc, exc)`` tuples, where ``inc`` and ``exc``
@@ -802,7 +803,7 @@ And the seed bitmaps reflect this::
     [0]
 
     >>> ind.seed_bits(ind.known_cases)
-    {'x': (1, 0)}
+    (0, {'x': (1, 0)})
 
     >>> dict(ind.expanded_sets())   # expanded form of seed_bits(known_cases)
     {'x': [[0], []]}
@@ -1040,7 +1041,7 @@ Value Map Generation
     >>> from peak.rules.indexing import split_ranges
 
     >>> def dump_ranges(ind, cases):
-    ...     exact, ranges = split_ranges(ind, cases)
+    ...     exact, ranges = split_ranges(*ind.seed_bits(cases))
     ...     for k in exact.keys():
     ...         exact[k] = list(from_bits(exact[k]))
     ...     for n, (k, v) in enumerate(ranges):
