@@ -9,16 +9,8 @@ except NameError:
     from sets import Set as set
 
 __all__ = [
-    'Getattr', 'GetSlice', 'BuildSlice', 'Dict', 'ExprBuilder', 'IfElse',
-    'CSECode',
+    'GetSlice', 'BuildSlice', 'Dict', 'ExprBuilder', 'IfElse', 'CSECode',
 ]
-
-nodetype()
-def Getattr(expr, attr, code=None):
-    if code is None:
-        return fold_args(Getattr, expr, attr)
-    code(expr)
-    return code.LOAD_ATTR(attr)
 
 nodetype()
 def GetSlice(expr, start=Pass, stop=Pass, code=None):
@@ -36,6 +28,14 @@ def GetSlice(expr, start=Pass, stop=Pass, code=None):
         code(stop)
         return code.SLICE_2()
     return code.SLICE_0()
+
+
+
+
+
+
+
+
 
 
 

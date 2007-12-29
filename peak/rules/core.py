@@ -6,8 +6,8 @@ __all__ = [
     'implies', 'dominant_signatures', 'combine_actions', 'overrides',
     'always_overrides', 'merge_by_default', 'intersect', 'disjuncts'
 ]
-from peak.util.decorators import decorate_assignment, decorate, struct
-from peak.util.assembler import Code, Const, Call, Local
+from peak.util.decorators import decorate_assignment, decorate, struct, synchronized
+from peak.util.assembler import Code, Const, Call, Local, Getattr
 from peak.util.addons import AddOn
 import inspect, new
 try:
@@ -27,7 +27,7 @@ def ActionDef(actiontype, body, signature, sequence):
 def disjuncts(ob):
     """Return a *list* of the logical disjunctions of `ob`"""
     # False == no condition is sufficient == no disjuncts
-    if ob is False: return []   
+    if ob is False: return []
     return [ob]
 
 def parse_rule(ruleset, body, predicate, actiontype, localdict, globaldict):
@@ -55,7 +55,7 @@ def type_keys(sig):
     key = tuple(map(type_key, sig))
     if None not in key:
         yield key
-        
+
 def YES(s1,s2): return True
 def NO(s1,s2):  return False
 
@@ -210,79 +210,161 @@ class RuleSet(object):
     default_actiontype = Method
     counter = 0
 
-    def __init__(self):
+    def __init__(self, lock=None):
         self.rules = []
         self.actiondefs = {}
         self.listeners = []
+        if lock is not None:
+            self.__lock__ = lock
 
+    synchronized()
     def add(self, rule):
         sequence = self.counter
         self.counter += 1
         actiondefs = frozenset(self._actions_for(rule, sequence))
         self.rules.append( rule )
         self.actiondefs[rule] = sequence, actiondefs
-        self.notify(added=actiondefs)
+        self._notify(added=actiondefs)
 
+    synchronized()
     def remove(self, rule):
         sequence, actiondefs = self.actiondefs.pop(rule)
         self.rules.remove(rule)
-        self.notify(removed=actiondefs)
+        self._notify(removed=actiondefs)
 
     #def changed(self, rule):
     #    sequence, actions = self.actions[rule]
     #    new_actions = frozenset(self._actions_for(rule, sequence))
     #    self.actions[rule] = sequence, new_actions
     #    self.notify(new_actions-actions, actions-new_actions)
-
-    def notify(self, added=empty, removed=empty):
+    def _notify(self, added=empty, removed=empty):
         for listener in self.listeners:
             listener.actions_changed(added, removed)
 
+
+
+
+    synchronized()
     def __iter__(self):
         for rule in self.rules:
             for actiondef in self.actiondefs[rule][1]:
                 yield actiondef
-
 
     def _actions_for(self, (na, body, predicate, actiontype), sequence):
         actiontype = actiontype or self.default_actiontype
         for signature in disjuncts(predicate):
             yield ActionDef(actiontype, body, signature, sequence)
 
+    synchronized()
     def subscribe(self, listener):
         self.listeners.append(listener)
         if self.rules:
             listener.actions_changed(frozenset(self), empty)
 
+    synchronized()
     def unsubscribe(self, listener):
         self.listeners.remove(listener)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class Dispatching(AddOn):
     """Hold the dispatching attributes of a generic function"""
 
     def __init__(self, func):
         self.function = func
-        self.snapshot()
-        self.rules    = RuleSet()
+        self._regen   = self._regen_code()
+        self.rules    = RuleSet(self.get_lock())
         self.engine   = TypeEngine(self)
+        self.backup   = None
 
-    def snapshot(self):
-        self.clone = clone_function(self.function)
+    synchronized()
+    def get_lock(self):
+        return self.__lock__
+
+    synchronized()
+    def request_regeneration(self):
+        if self.backup is None:
+            self.backup = self.function.func_code
+            self.function.func_code = self._regen
+
+    def _regen_code(self):
+        c = Code.from_function(self.function, copy_lineno=True)
+        c.return_(
+            call_thru(
+                self.function,
+                Call(Getattr(
+                    Call(Const(Dispatching), (Const(self.function),), fold=False),
+                    '_regenerate'
+                ))
+            )
+        )
+        return c.code()
+
+
+
+
+
+
+
+
+
+    synchronized()
+    def _regenerate(self):
+        func = self.function
+        assert self.backup is not None
+        func.func_code = self.backup    # ensure re-entrant calls work
+
+        try:
+            # try to replace the code with new code
+            func.func_code = self.engine._generate_code()
+        except:
+            # failure: we'll try to regen next time we're called
+            func.func_code = self._regen
+            raise
+        else:
+            # success!  get rid of the old backup code and return the function
+            self.backup = None
+            return func
+
 
 def rules_for(f):
     """Return the initialized ruleset for a generic function"""
     if not Dispatching.exists_for(f):
         d = Dispatching(f)
-        d.rules.add(Rule(d.clone))
+        d.rules.add(Rule(clone_function(f)))
     return Dispatching(f).rules
 
 def abstract():
     """Declare a function to be abstract"""
     def callback(frame, name, func, old_locals):
         # Create empty RuleSet and default engine for func
-        Dispatching(func).engine.changed()   
+        Dispatching(func).request_regeneration() #.changed()  # XXX
         return func
     return decorate_assignment(callback)
+
+
+
+
+
+
 
 
 class Engine(object):
@@ -295,54 +377,57 @@ class Engine(object):
         self.rules = disp.rules
         self.rules.subscribe(self)
         self.registry = {}
-    
+        self.__lock__ = disp.get_lock()
+
+    synchronized()
     def actions_changed(self, added, removed):
         if removed and self.reset_on_remove:
-            return self.full_reset()
+            return self._full_reset()
         for (na, atype, body, sig, seq) in removed:
-            self.remove_method(sig, atype(body,sig,seq))
+            self._remove_method(sig, atype(body,sig,seq))
         for (na, atype, body, sig, seq) in added:
-            self.add_method(sig, atype(body,sig,seq))
+            self._add_method(sig, atype(body,sig,seq))
         if added:
-            self.changed()
+            self._changed()
 
-    def changed(self):
+    def _changed(self):
         """Some change to the rules has occurred"""
+        Dispatching(self.func).request_regeneration()
 
-    def full_reset(self):
+    def _full_reset(self):
         """Regenerate any code, caches, indexes, etc."""
+        self.registry.clear()
+        self.actions_changed(self.rules, ())
+        Dispatching(self.func).request_regeneration()
 
-    def add_method(self, signature, action):
+    def _add_method(self, signature, action):
         """Add a case with the given signature and action"""
         registry = self.registry
         if signature in registry:
             registry[signature] = combine_actions(registry[signature], action)
         else:
             registry[signature] = action
-        
-    def remove_method(self, signature, action):
+
+    def _remove_method(self, signature, action):
         """Remove the case with the given signature and action"""
 
-        
+    def _generate_code(self):
+        """Return a code object for the current state of the function"""
+        raise NotImplementedError
 
 
 class TypeEngine(Engine):
     """Simple type-based dispatching"""
 
     cache = None
-    
+
     def __init__(self, disp):
-        self.registry = {}
         self.static_cache = {}
         super(TypeEngine, self).__init__(disp)
 
-    def full_reset(self):
-        self.registry.clear()
-        self.actions_changed(self.rules, ())
-
-    def changed(self):
+    def _changed(self):
         if self.cache != self.static_cache:
-            self.generate_code(Dispatching(self.func))
+            Dispatching(self.func).request_regeneration()
 
     def _bootstrap(self):
         """Bootstrap a self-referential generic function"""
@@ -350,10 +435,10 @@ class TypeEngine(Engine):
         for sig, act in self.registry.items():
             for key in type_keys(sig):
                 cache[key] = act
-        self.changed()
+        self._changed()
 
-    def add_method(self, signature, action):
-        super(TypeEngine, self).add_method(signature, action)
+    def _add_method(self, signature, action):
+        super(TypeEngine, self)._add_method(signature, action)
         cache = self.static_cache
         for key in cache.keys():
             if key!=signature and implies(key, signature):
@@ -364,38 +449,32 @@ class TypeEngine(Engine):
 
 
 
-
-
-
-    def generate_code(self, disp):
+    def _generate_code(self):
         self.cache = cache = self.static_cache.copy()
+
         def callback(*args):
-            # XXX code similar to this could be generated directly...
             types = tuple([getattr(arg,'__class__',type(arg)) for arg in args])
+            self.__lock__.acquire()
             try:
-                f = cache[types]
-            except KeyError:
-                # guard against re-entrancy looking for the same thing...
-                action = cache[types] = self.rules.default_action
+                action = self.rules.default_action
                 for sig in self.registry:
                     if sig==types or implies(types, sig):
                         action = combine_actions(action, self.registry[sig])
                 f = cache[types] = action
+            finally:
+                self.__lock__.release()
             return f(*args)
 
         c = Code.from_function(self.func, copy_lineno=True)
-        args, star, dstar, defaults = inspect.getargspec(self.func)
         types = [
             Call(
                 Const(getattr),
                 (Local(name), Const('__class__'), Call(Const(type),(Local(name),)))
-            ) for name in flatten(args)
+            ) for name in flatten(inspect.getargspec(self.func)[0])
         ]
         target = Call(Const(cache.get), (tuple(types), Const(callback)))
-        c.return_(
-            Call(target, map(gen_arg,args), (), gen_arg(star), gen_arg(dstar))
-        )
-        self.func.func_code = c.code()
+        c.return_(call_thru(self.func, target))
+        return c.code()
 
 def flatten(v):
     if isinstance(v,basestring): yield v; return
@@ -406,6 +485,9 @@ def gen_arg(v):
     if isinstance(v,basestring): return Local(v)
     if isinstance(v,list): return tuple(map(gen_arg,v))
 
+def call_thru(sigfunc, target):
+    args, star, dstar, defaults = inspect.getargspec(sigfunc)
+    return Call(target, map(gen_arg,args), (), gen_arg(star), gen_arg(dstar), fold=False)
 
 
 def overrides(a1, a2):
