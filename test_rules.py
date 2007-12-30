@@ -80,6 +80,88 @@ class MiscTests(unittest.TestCase):
         rs.add(Rule(lambda:None))
         self.assertEqual(log, [1, 1])
 
+    def testAbstract(self):
+        def f1(x,y=None):
+            raise AssertionError("Should never get here")
+        d = Dispatching(f1)
+        log = []
+        d.rules.default_action = lambda *args: log.append(args)
+        f1 = abstract(f1)
+        f1(27,42)
+        self.assertEqual(log, [(27,42)])
+        when(f1, ())(lambda *args: 99)
+        self.assertRaises(AssertionError, abstract, f1)
+
+    def testAbstractRegeneration(self):
+        def f1(x,y=None):
+            raise AssertionError("Should never get here")
+        d = Dispatching(f1)
+        log = []
+        d.rules.default_action = lambda *args: log.append(args)
+        d.request_regeneration()
+        f1 = abstract(f1)
+        self.assertNotEqual(d.backup, f1.func_code)
+        self.assertEqual(f1.func_code, d._regen)
+        f1.func_code = d.backup
+        f1(27,42)
+        self.assertEqual(log, [(27,42)])
+        
+    def testCreateEngine(self):
+        def f1(x,y=None):
+            raise AssertionError("Should never get here")
+        d = Dispatching(f1)
+        old_engine = d.engine
+        self.assertEqual(d.rules.listeners, [old_engine])
+        from peak.rules.core import TypeEngine
+        class MyEngine(TypeEngine): pass
+        d.create_engine(MyEngine)
+        new_engine = d.engine
+        self.assertNotEqual(new_engine, old_engine)
+        self.failUnless(isinstance(new_engine, MyEngine))
+        self.assertEqual(d.rules.listeners, [new_engine])
+
+
+    def testIndexClassicMRO(self):
+        class MyEngine: pass
+        eng = MyEngine()
+        from peak.rules.indexing import BitmapIndex
+        from peak.rules.criteria import Class
+        from types import InstanceType
+        ind = BitmapIndex(eng, 'classes')
+        ind.add_case(0, Class(MyEngine))
+        ind.add_case(1, Class(object))
+        self.assertEqual(
+            dict(ind.expanded_sets()),
+            {MyEngine: [[0],[]], InstanceType: [[],[]], object: [[1],[]]}
+        )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
 def additional_tests():
     import doctest
     return doctest.DocFileSuite(

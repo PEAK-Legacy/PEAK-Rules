@@ -670,10 +670,10 @@ add_case(case_id, criterion)
     seeds).
 
     The ``seeds_for()`` generic function must return a tuple of three sets or
-    sequences.  The first is the set or sequence of all seeds for which the
-    criterion holds true.  The second contains seeds that should be "marked for
-    inclusion" in the bitmaps for that criterion, and the third contains the
-    seeds that should be "marked for exclusion".
+    sequences.  The first is the set or sequence of "applicable seeds", for
+    which the criterion holds true.  The second contains seeds that should be
+    "marked for inclusion" in the bitmaps for that criterion, and the third
+    contains the seeds that should be "marked for exclusion".
 
     For the simplest kinds of indexes, the method can simply return the same
     set or sequence twice, followed by a set or sequence containing a seed that
@@ -682,7 +682,10 @@ add_case(case_id, criterion)
     efficient way than simply listing all the matching seeds.  (Also, the first
     set or sequence is only used for its ``len()`` as a basis for computing
     selectivity; its contents aren't actually used by the ``BitmapIndex``
-    itself.)
+    itself.  Specialized dynamic objects can therefore be used, that simply
+    compute an appropriate length, and optionally update the ``all_seeds`` sets
+    when they notice new seeds there (e.g. due to ``reseed()`` or the addition
+    of new cases and criteria).
 
 selectivity(case_id_list)
     Given a **sorted** sequence of integer case ids, return the `selectivity
@@ -690,8 +693,14 @@ selectivity(case_id_list)
 
 seed_bits(cases)
     Given a bitmap of cases, return a tuple ``(dontcares, seedmap)``, where
-    ``dontcares`` is a bitset of "don't care" cases, and ``seedmap`` is a
-    dictionary mapping seeds to ``(include, exclude)`` bitset pairs.
+    ``dontcares`` is a bitset of "don't care" cases (i.e., cases that must be
+    included in *every* child node), and ``seedmap`` is a dictionary mapping
+    seeds to ``(include, exclude)`` bitset pairs.
+
+reseed(criterion)
+    Ensure that `criterion` is indexed, and recheck the ``len()`` of all
+    "applicable seeds" sets of all indexed criteria, so that dynamic criteria
+    have a chance to update the index.
 
 expanded_sets()
     Return a list of ``(seed, (inc, exc)`` tuples, where ``inc`` and ``exc``
@@ -701,7 +710,8 @@ all_seeds
     A dictionary containing information about all seeds seen by the index.
     The keys are the seeds, and the values are ``(include,exclude)`` tuples of
     sets of criteria, indicating which criteria include or exclude that key,
-    respectively.
+    respectively.  Dynamic criteria should update this dictionary when new
+    seeds are discovered (e.g. via ``reseed()`` or new cases being added).
 
 criteria_bits
     A dictionary mapping each known criterion to a bitset representing the
@@ -1112,7 +1122,7 @@ non-match::
     {<type 'int'>: [[0], [2]], <type 'object'>: [[2], []],
      <class 'myint'>: [[1], []]}
 
-    >>> class other: pass
+    >>> class other(object): pass
     >>> ind.add_case(3, Class(other))
     >>> ind.selectivity([3])
     (4, 1)
@@ -1134,8 +1144,8 @@ Multiple Classes
 the "and" of those criteria.  This is the most complex type of criteria to
 index, because there's no easy way to incrementally update a set intersection::
 
-    >>> class a: pass
-    >>> class b: pass
+    >>> class a(object): pass
+    >>> class b(object): pass
     >>> class c(a,b): pass
     >>> class d(b): pass
     >>> class e(a,d): pass
@@ -1214,4 +1224,38 @@ index, because there's no easy way to incrementally update a set intersection::
     ... }
     True
 
+
+Reseeding
+=========
+
+Due to the nature of multiple inheritance, it's sometimes necessary to re-seed
+an index by adding a new criterion, recomputing selectivity, and then getting
+new seed bits.  Let's test an example by making a new class that inherits from
+``a`` and ``b``::
+
+    >>> class x(a,b): pass
+
+This class isn't in the index, because we just created it.  If it were only
+inheriting from one class, we could safely assume that a lookup of the base
+class would work just as well as looking up the actual class.  However, since
+it inherits from more than one class, we don't know if there are multi-class
+criteria that might apply to it.  (And in fact there are: cases 0 and 2 in our
+index apply to classes that inherit from both ``a`` and ``b``.)
+
+So, to update the index, we use the ``reseed()`` method::
+
+    >>> ind.reseed(Class(x))
+
+It takes a criterion and an optional bitset representing the cases for which a
+new ``seed_bits`` map should be generated.  It updates the index by checking
+the ``len()`` of every "applicable seeds" set, after adding the criterion to
+the appropriate caches.  The result is that the index now includes correct
+information for the new ``x`` class::
+
+    >>> dict(ind.expanded_sets()) == {
+    ...     a: [[], []], b: [[], []], c: [[0, 1], [2]], object: [[6], []],
+    ...     d: [[], [6]], e: [[0, 2, 3], []], f: [[4], []], g: [[5], []],
+    ...     x: [[0, 2], []]
+    ... }
+    True
 

@@ -237,10 +237,10 @@ class RuleSet(object):
     #    new_actions = frozenset(self._actions_for(rule, sequence))
     #    self.actions[rule] = sequence, new_actions
     #    self.notify(new_actions-actions, actions-new_actions)
+
     def _notify(self, added=empty, removed=empty):
         for listener in self.listeners[:]:  # must be re-entrant
             listener.actions_changed(added, removed)
-
 
 
 
@@ -266,41 +266,49 @@ class RuleSet(object):
         self.listeners.remove(listener)
 
 
+def rules_for(f):
+    """Return the initialized ruleset for a generic function"""
+    if not Dispatching.exists_for(f):
+        d = Dispatching(f)
+        d.rules.add(Rule(clone_function(f)))
+    return Dispatching(f).rules
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+def abstract(func=None):
+    """Declare a function to be abstract"""
+    if func is None:
+        return decorate_assignment(
+            lambda f,n,func,old: Dispatching(func).as_abstract()
+        )
+    else:
+        return Dispatching(func).as_abstract()
 
 
 
 
 class Dispatching(AddOn):
     """Hold the dispatching attributes of a generic function"""
+    engine = None
 
     def __init__(self, func):
         self.function = func
         self._regen   = self._regen_code()
         self.rules    = RuleSet(self.get_lock())
-        self.engine   = TypeEngine(self)
         self.backup   = None
+        self.create_engine(TypeEngine)
 
     synchronized()
     def get_lock(self):
         return self.__lock__
 
+    def create_engine(self, engine_type):
+        """Create a new engine of `engine_type`, unsubscribing old"""
+        if self.engine is not None:
+            self.rules.unsubscribe(self.engine)
+        self.engine = engine_type(self)
+            
     synchronized()
     def request_regeneration(self):
+        """Ensure code regeneration occurs on next call of the function"""
         if self.backup is None:
             self.backup = self.function.func_code
             self.function.func_code = self._regen
@@ -318,13 +326,19 @@ class Dispatching(AddOn):
         )
         return c.code()
 
+    synchronized()
+    def as_abstract(self):
+        for action in self.rules:
+            raise AssertionError("Can't make abstract: rules already exist")
 
+        c = Code.from_function(self.function, copy_lineno=True)
+        c.return_(call_thru(self.function, Const(self.rules.default_action)))
 
-
-
-
-
-
+        if self.backup is None:
+            self.function.func_code = c.code()
+        else:
+            self.backup = c.code()
+        return self.function
 
     synchronized()
     def _regenerate(self):
@@ -345,20 +359,6 @@ class Dispatching(AddOn):
             return func
 
 
-def rules_for(f):
-    """Return the initialized ruleset for a generic function"""
-    if not Dispatching.exists_for(f):
-        d = Dispatching(f)
-        d.rules.add(Rule(clone_function(f)))
-    return Dispatching(f).rules
-
-def abstract():
-    """Declare a function to be abstract"""
-    def callback(frame, name, func, old_locals):
-        # Create empty RuleSet and default engine for func
-        Dispatching(func).request_regeneration() #.changed()  # XXX
-        return func
-    return decorate_assignment(callback)
 
 
 

@@ -5,6 +5,7 @@ from peak.rules.core import abstract, Dispatching, Engine, when
 from peak.rules.criteria import *
 from peak.rules.criteria import sorted, set, frozenset
 from peak.util.extremes import Min, Max, Extreme
+from types import InstanceType
 
 class Ordering(AddOn):
     """Track inter-expression ordering constraints"""
@@ -35,7 +36,6 @@ class Ordering(AddOn):
                 return True
         else:
             return False
-
 
 
 
@@ -177,25 +177,31 @@ class BitmapIndex(AddOn):
         self.engine = engine
 
     def add_case(self, case_id, criterion):
+        seeds = self.add_criterion(criterion)
         self._extend_cases(case_id)
+        self.case_seeds[case_id] = seeds
+        bit = to_bits([case_id])
+        if seeds is not self.all_seeds:
+            self.known_cases |= bit
+        self.criteria_bits[criterion] |= bit
+
+    def add_criterion(self, criterion):
+        """Ensure `criterion` is indexed, return its "applicable seeds" set"""
         if criterion in self.criteria_seeds:
             seeds, inc, exc = self.criteria_seeds[criterion]
         else:
-            self.criteria_bits[criterion] = 0
             seeds, inc, exc = self.criteria_seeds[criterion] \
-                            = seeds_for(self, criterion)
-
-        self.case_seeds[case_id] = seeds
-        bit = to_bits([case_id])
-        if seeds is not self.all_seeds: self.known_cases |= bit
-        self.criteria_bits[criterion] |= bit
-
+                            = seeds_for(self, criterion)        
         all_seeds = self.all_seeds
-        for i, seeds in ((0,inc), (1,exc)):
-            for seed in seeds:
+        for i, what_seeds in ((0,inc), (1,exc)):
+            for seed in what_seeds:
                 if seed not in all_seeds:
                     all_seeds[seed] = set(), set()
                 all_seeds[seed][i].add(criterion)
+        self.criteria_bits.setdefault(criterion, 0)
+        return seeds        
+
+
 
     def _extend_cases(self, case_id):
         if case_id >= len(self.case_seeds):
@@ -224,6 +230,19 @@ class BitmapIndex(AddOn):
             for seed, (inc, exc) in self.seed_bits(self.known_cases)[1].items()
         ]
 
+    def reseed(self, criterion):
+        self.add_criterion(criterion)
+        for cri, (all, inc, exc) in self.criteria_seeds.items():
+            len(all)
+
+
+
+
+
+
+
+
+
 
 abstract()
 def seeds_for(index, criterion):
@@ -237,11 +256,6 @@ when(seeds_for, (BitmapIndex, bool))(
     # True->all seeds, False->no seeds
     lambda index, criterion: ([(), index.all_seeds][criterion], [], [])
 )
-
-
-
-
-
 
 
 class _FixedSubset(object):
@@ -258,6 +272,17 @@ def seeds_for_pointer(index, criterion):
     if criterion.match:
         return [idref], [idref], [None]
     return _FixedSubset(index.all_seeds), [None], [idref]
+
+
+
+
+
+
+
+
+
+
+
 
 
 class _RangeSubset(object):
@@ -277,14 +302,6 @@ class _RangeSubset(object):
         return off[self.hi] - off[self.lo]
 
 
-
-
-
-
-
-
-
-
 when(seeds_for, (BitmapIndex, Range))
 def seeds_for_range(index, criterion):
     lo, hi = criterion.lo, criterion.hi
@@ -301,23 +318,6 @@ def seeds_for_value(index, criterion):
         return [v], [v], []
     else:
         return _FixedSubset(index.all_seeds), [(Min, -1)], [v]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -375,7 +375,7 @@ def seeds_for_class(index, criterion):
         mro = cls.__mro__
     else:
         class tmp(cls, object): pass
-        mro = tmp.__mro__[1:]
+        mro = tmp.__mro__[1:-1] + (InstanceType, object)
 
     parents = []
     csmap = index.criteria_seeds
@@ -431,7 +431,7 @@ def seeds_for_classes(index, criterion):
         csmap[cex] = _DiffSet(index.all_seeds, ex_union), [object], ex_classes
 
     if required:
-        required = [csmap[c][0] for c in required] or index.all
+        required = [csmap[c][0] for c in required]
         required = _MultiSet(index, criterion, required, csmap[cex][0].subtract)
         return required, [], ex_classes
 
