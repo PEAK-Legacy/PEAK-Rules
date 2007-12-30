@@ -83,32 +83,28 @@ def from_bits(n):
 class TreeBuilder(object):
     """Template methods for the Chambers&Chen dispatch tree algorithm"""
 
-    def build_root(self, cases, exprs):
-        self.memo = {}
-        return self.build(cases, exprs)
-
-    def build(self, cases, exprs):
+    def build(self, cases, exprs, memo):
         key = (cases, exprs)
-        if key in self.memo:
-            return self.memo[key]
+        if key in memo:
+            return memo[key]
         if not exprs:
-            node = self.build_leaf(cases)
+            node = self.build_leaf(cases, memo)
         else:
             best, rest = self.best_expr(cases, exprs)
             assert len(rest) < len(exprs)
 
             if best is None:
                 # No best expression found, recurse
-                node = self.build(cases, rest)
+                node = self.build(cases, rest, memo)
             else:
-                node = self.build_node(best, cases, rest)
-        self.memo[key] = node
+                node = self.build_node(best, cases, rest, memo)
+        memo[key] = node
         return node
 
-    def build_node(self, expr, cases, remaining_exprs):
+    def build_node(self, expr, cases, remaining_exprs, memo):
         raise NotImplementedError
 
-    def build_leaf(self, cases):
+    def build_leaf(self, cases, memo):
         raise NotImplementedError
 
     def selectivity(self, expression, cases):
@@ -118,13 +114,16 @@ class TreeBuilder(object):
     def cost(self, expr, remaining_exprs):
         return 1
 
-    def can_precede(self, expr, remaining):
-        return Ordering(self, expr).can_precede(remaining)
+
+
+
+
+
+
 
     def best_expr(self, cases, exprs):
         best_expr = None
         best_spread = None
-        can_precede = self.can_precede
         to_do = list(exprs)
         remaining = dict.fromkeys(exprs)
         active_cases = len(cases)
@@ -132,7 +131,7 @@ class TreeBuilder(object):
 
         while to_do:
             expr = to_do.pop()
-            if not can_precede(expr, remaining):
+            if not Ordering(self, expr).can_precede(remaining):
                 # Skip criteria that have unchecked prerequisites
                 skipped.append(expr)
                 continue
@@ -161,6 +160,7 @@ class TreeBuilder(object):
         if best_expr is not None:
             del remaining[best_expr]
         return best_expr, frozenset(remaining)
+
 
 class BitmapIndex(AddOn):
     """Index that computes selectivity and handles basic caching w/bitmaps"""
