@@ -135,23 +135,23 @@ class MiscTests(unittest.TestCase):
             {MyEngine: [[0],[]], InstanceType: [[],[]], object: [[1],[]]}
         )
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    def testEngineArgnames(self):
+        argnames = lambda func: Dispatching(func).engine.argnames
+        self.assertEqual(
+            argnames(lambda a,b,c=None,*d,**e: None), list('abcde')
+        )
+        self.assertEqual(
+            argnames(lambda a,b,c=None,*d: None), list('abcd')
+        )
+        self.assertEqual(
+            argnames(lambda a,b,c=None,**e: None), list('abce')
+        )
+        self.assertEqual(
+            argnames(lambda a,b,c=None: None), list('abc')
+        )
+        self.assertEqual(
+            argnames(lambda a,(b,(c,d)), e: None), list('abcde')
+        )
 
 
 

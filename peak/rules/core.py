@@ -411,14 +411,15 @@ class Dispatching(AddOn):
 class Engine(object):
     """Abstract base for dispatching engines"""
     reset_on_remove = True
-
     def __init__(self, disp):
         self.function = disp.function
         self.registry = {}
         self.rules = disp.rules
         self.__lock__ = disp.get_lock()
         self.rules.subscribe(self)
-
+        self.argnames = list(
+            flatten(filter(None, inspect.getargspec(self.function)[:3]))
+        )
     synchronized()
     def actions_changed(self, added, removed):
         if removed and self.reset_on_remove:
@@ -447,7 +448,6 @@ class Engine(object):
             registry[signature] = combine_actions(registry[signature], action)
         else:
             registry[signature] = action
-
 
     def _remove_method(self, signature, action):
         """Remove the case with the given signature and action"""
