@@ -9,18 +9,18 @@ from types import InstanceType
 
 __all__ = [
     'Ordering', 'BitmapIndex', 'TreeBuilder', 'seeds_for', 'split_ranges',
-    'to_bits', 'from_bits', 'always_testable'
+    'to_bits', 'from_bits',
 ]
-
-def always_testable(expr):
-    """Is `expr` safe to evaluate in any order?"""
-    return False
 
 def define_ordering(ob, seq):
     items = []
     for key in seq:
         Ordering(ob, key).requires(items)
         items.append(key)
+
+
+
+
 
 
 

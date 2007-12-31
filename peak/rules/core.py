@@ -2,7 +2,7 @@ __all__ = [
     'Rule', 'RuleSet', 'Dispatching', 'Engine', 'rules_for',
     'Method', 'Around', 'Before', 'After', 'MethodList',
     'DispatchError', 'AmbiguousMethods', 'NoApplicableMethods',
-    'abstract', 'when', 'before', 'after', 'around', 'istype',
+    'abstract', 'when', 'before', 'after', 'around', 'istype', 'parse_rule',
     'implies', 'dominant_signatures', 'combine_actions', 'overrides',
     'always_overrides', 'merge_by_default', 'intersect', 'disjuncts'
 ]
@@ -52,7 +52,7 @@ def disjuncts(ob):
     if ob is False: return []
     return [ob]
 
-def parse_rule(ruleset, body, predicate, actiontype, localdict, globaldict):
+def parse_rule(engine, predicate, actiontype, body, localdict, globaldict):
     """Hook for pre-processing predicates, e.g. parsing string expressions"""
     return Rule(body, predicate, actiontype)
 
@@ -182,10 +182,10 @@ class Method(object):
             maker = cls.make
 
         def decorate(f, pred=()):
-            rules = rules_for(f)
             def callback(frame, name, func, old_locals):
+                rules = rules_for(f); engine = Dispatching(f).engine
                 rule = parse_rule(
-                    rules, func, pred, maker, frame.f_locals, frame.f_globals
+                    engine, pred, maker, func, frame.f_locals, frame.f_globals
                 )
                 rules.add(rule)
                 if old_locals.get(name) in (f, rules):
@@ -329,7 +329,6 @@ def abstract(func=None):
 class Dispatching(AddOn):
     """Hold the dispatching attributes of a generic function"""
     engine = None
-
     def __init__(self, func):
         self.function = func
         self._regen   = self._regen_code()
@@ -343,10 +342,11 @@ class Dispatching(AddOn):
 
     def create_engine(self, engine_type):
         """Create a new engine of `engine_type`, unsubscribing old"""
-        if self.engine is not None:
+        if self.engine is not None and self.engine in self.rules.listeners:
             self.rules.unsubscribe(self.engine)
         self.engine = engine_type(self)
-            
+        return self.engine
+
     synchronized()
     def request_regeneration(self):
         """Ensure code regeneration occurs on next call of the function"""
@@ -410,24 +410,27 @@ class Dispatching(AddOn):
 
 class Engine(object):
     """Abstract base for dispatching engines"""
+
     reset_on_remove = True
+
     def __init__(self, disp):
         self.function = disp.function
         self.registry = {}
         self.rules = disp.rules
         self.__lock__ = disp.get_lock()
-        self.rules.subscribe(self)
         self.argnames = list(
             flatten(filter(None, inspect.getargspec(self.function)[:3]))
         )
+        self.rules.subscribe(self)
+
     synchronized()
     def actions_changed(self, added, removed):
         if removed and self.reset_on_remove:
             return self._full_reset()
         for (na, atype, body, sig, seq) in removed:
-            self._remove_method(sig, atype(body,sig,seq))
+            self._remove_method(sig, atype, body, seq)
         for (na, atype, body, sig, seq) in added:
-            self._add_method(sig, atype(body,sig,seq))
+            self._add_method(sig, atype, body, seq)
         if added or removed:
             self._changed()
 
@@ -441,20 +444,50 @@ class Engine(object):
         self.actions_changed(self.rules, ())
         Dispatching(self.function).request_regeneration()
 
-    def _add_method(self, signature, action):
+
+
+
+
+
+    def _add_method(self, signature, atype, body, seq):
         """Add a case with the given signature and action"""
         registry = self.registry
+        action = atype(body, signature, seq)
         if signature in registry:
             registry[signature] = combine_actions(registry[signature], action)
         else:
             registry[signature] = action
+        return action
 
-    def _remove_method(self, signature, action):
+    def _remove_method(self, signature, atype, body, seq):
         """Remove the case with the given signature and action"""
+        raise NotImplementedError
 
     def _generate_code(self):
         """Return a code object for the current state of the function"""
         raise NotImplementedError
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 class TypeEngine(Engine):
@@ -478,12 +511,20 @@ class TypeEngine(Engine):
                 cache[key] = act
         self._changed()
 
-    def _add_method(self, signature, action):
-        super(TypeEngine, self)._add_method(signature, action)
+    def _add_method(self, signature, atype, body, seq):
+        action = super(TypeEngine, self)._add_method(signature,atype,body,seq)
         cache = self.static_cache
         for key in cache.keys():
             if key!=signature and implies(key, signature):
                 cache[key] = combine_actions(cache[key], action)
+        return action
+
+
+
+
+
+
+
 
 
 
@@ -755,15 +796,16 @@ def override_ambiguous(a1, a2):
 merge_by_default(AmbiguousMethods)
 
 
-
-
-
-
-
-
-
-
-
+when(parse_rule, (TypeEngine, basestring))
+def parse_string_rule_by_upgrade(
+    engine, predicate, actiontype, body, localdict, globaldict
+):
+    """Upgrade to predicate dispatch engine and do the parse"""
+    from peak.rules.predicates import IndexedEngine
+    return parse_rule(
+        Dispatching(engine.function).create_engine(IndexedEngine),
+        predicate, actiontype, body, localdict, globaldict
+    )
 
 
 

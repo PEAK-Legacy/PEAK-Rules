@@ -339,3 +339,105 @@ with negations simplified away or reduced to match flags on criteria objects::
                  Test(IsInstance(Local('x')), Class(<type 'int'>, False))])
 
 
+Pattern Matching
+----------------
+
+Arbitrary expressions can be pattern matched for conversion into signatures.
+At the moment, the only patterns matched are ``isinstance`` and ``issubclass``
+calls where the second argument is a constant::
+
+    >>> from peak.rules.criteria import Test, Signature, Classes
+
+    >>> pe('isinstance(x,int)')
+    Test(IsInstance(Local('x')), Class(<type 'int'>, True))
+
+    >>> pe('isinstance(x,(str,unicode))') == Disjunction([
+    ...     Test(IsInstance(Local('x')), Class(str)),
+    ...     Test(IsInstance(Local('x')), Class(unicode))
+    ... ])
+    True
+
+    >>> pe('not isinstance(x,(int,(str,unicode)))') == Test(
+    ...     IsInstance(Local('x')), Classes([
+    ...         Class(unicode, False), Class(int, False), Class(str, False)])
+    ... )
+    True
+
+    >>> pe('isinstance(x,(int,(str,unicode)))') == Disjunction([
+    ...     Test(IsInstance(Local('x')), Class(str)),
+    ...     Test(IsInstance(Local('x')), Class(int)),
+    ...     Test(IsInstance(Local('x')), Class(unicode))
+    ... ])
+    True
+    
+    >>> pe('issubclass(x,int)')
+    Test(IsSubclass(Local('x')), Class(<type 'int'>, True))
+
+    >>> pe('issubclass(x,(str,unicode))') == Disjunction([
+    ...     Test(IsSubclass(Local('x')), Class(str)),
+    ...     Test(IsSubclass(Local('x')), Class(unicode))
+    ... ])
+    True
+
+    >>> pe('issubclass(x,(int,(str,unicode)))') == Disjunction([
+    ...     Test(IsSubclass(Local('x')), Class(str)),
+    ...     Test(IsSubclass(Local('x')), Class(int)),
+    ...     Test(IsSubclass(Local('x')), Class(unicode))
+    ... ])
+    True
+    
+    >>> pe('not issubclass(x,(int,(str,unicode)))') == Test(
+    ...     IsSubclass(Local('x')), Classes([
+    ...         Class(unicode, False), Class(int, False), Class(str, False)])
+    ... )
+    True
+    
+
+Upgrading from ``TypeEngine``
+=============================
+
+In order to allow a function to safely upgrade from type-only dispatch to full
+predicate dispatch, it's necessary for predicate engines to support using type
+tuples as signatures (since such tuples may already be registered with the
+function's ``RuleSet``).
+
+To support this, the ``tests_for()`` function takes an optional second
+parameter, representing the engine that "wants" the tests, and whose argument
+names will be used to accomplish the conversion::
+
+    >>> from peak.rules.core import Dispatching, istype, implies
+    >>> from peak.rules.criteria import tests_for
+    >>> engine = Dispatching(implies).engine
+
+    >>> list(tests_for((int,str), engine))
+    [Test(IsInstance(Local('s1')), Class(<type 'int'>, True)),
+     Test(IsInstance(Local('s2')), Class(<type 'str'>, True))]
+
+    >>> list(tests_for((istype(tuple),), engine))
+    [Test(IsInstance(Local('s1')), istype(<type 'tuple'>, True))]
+
+Each element of the type tuple is converted using a second generic function,
+``type_to_test``::
+
+    >>> from peak.rules.predicates import type_to_test
+
+    >>> type_to_test(int, Local('x'), engine)
+    Test(IsInstance(Local('x')), Class(<type 'int'>, True))
+    
+    >>> type_to_test(istype(str), Local('x'), engine)
+    Test(IsInstance(Local('x')), istype(<type 'str'>, True))
+
+    >>> class x: pass
+    >>> type_to_test(x, Local('x'), engine)
+    Test(IsInstance(Local('x')), Class(<class ...x at ...>, True))
+
+If you implement a new kind of class test for use in type tuples, you'll need
+to add the appropriate method(s) to ``type_to_test`` if you want it to also
+work with the predicate engine.
+
+
+Criterion Ordering
+==================
+
+XXX
+

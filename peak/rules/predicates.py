@@ -6,7 +6,7 @@ from indexing import *
 from codegen import SMIGenerator, ExprBuilder, Getitem, IfElse
 from peak.util.decorators import decorate, synchronized
 from types import InstanceType, ClassType
-from ast_builder import build
+from ast_builder import build, parse_expr
 
 __all__ = [
     'IsInstance', 'IsSubclass', 'Truth', 'Identity', 'Comparison',
@@ -210,14 +210,16 @@ class IndexedEngine(Engine, TreeBuilder):
         self.signatures = []
         self.all_exprs = {}
         super(IndexedEngine, self).__init__(disp)
+        self.arguments = dict([(arg,Local(arg)) for arg in self.argnames])
 
-    def _add_method(self, signature, action):
+    def _add_method(self, signature, atype, body, seq):
+        signature = Signature(tests_for(signature, self))
         if signature not in self.registry:
             case_id = len(self.signatures)
             self.signatures.append(signature)
             requires = []
             exprs = self.all_exprs
-            for _t, expr, criterion in tests_for(signature):
+            for _t, expr, criterion in tests_for(signature, self):
                 if expr not in exprs:
                     exprs[expr] = 1
                     #if always_testable(expr):
@@ -225,11 +227,11 @@ class IndexedEngine(Engine, TreeBuilder):
                 #Ordering(self, expr).requires(requires)
                 #requires.append(expr)
                 BitmapIndex(self, expr).add_case(case_id, criterion)
-        super(IndexedEngine, self)._add_method(signature, action)
+        super(IndexedEngine, self)._add_method(signature, atype, body, seq)
 
     def _generate_code(self):
         smig = SMIGenerator(self.function)
-        for expr in self.all_exprs: smig.maybe_cache(expr)
+        #for expr in self.all_exprs: smig.maybe_cache(expr)
         memo = dict(
             [(expr, smig.action_id(self.to_expression(expr)))
                     for expr in self.all_exprs]
@@ -239,7 +241,6 @@ class IndexedEngine(Engine, TreeBuilder):
     def _full_reset(self):
         # Replace the entire engine with a new one
         Dispatching(self.function).create_engine(self.__class__)
-
 
 
 
@@ -366,4 +367,86 @@ def class_node(builder, expr, cases, remaining_exprs, memo):
             cls, builder.build(dontcares|(inc ^ (exc & inc)), remaining_exprs, memo)
         )
     return cache, lookup_fn
+
+abstract()
+def type_to_test(typ, expr, engine):
+    """Convert `typ` to a ``Test()`` of `expr` for `engine`"""
+
+when(type_to_test, (type,))
+when(type_to_test, (ClassType,))
+def std_type_to_test(typ, expr, engine):
+    return Test(IsInstance(expr), Class(typ))
+
+when(type_to_test, (istype,))
+def istype_to_test(typ, expr, engine):
+    return Test(IsInstance(expr), typ)
+
+when(tests_for, (istype(tuple), Engine))
+def tests_for_tuple(ob, engine):
+    for cls, arg in zip(ob, engine.argnames):
+        yield type_to_test(cls, Local(arg), engine)
+
+def always_testable(expr):
+    """Is `expr` safe to evaluate in any order?"""
+    return False
+
+when(always_testable, (IsInstance,))
+when(always_testable, (IsSubclass,))
+when(always_testable, (Identity,))
+when(always_testable, (Truth,))
+when(always_testable, (Comparison,))
+def testable_criterion(expr):
+    return always_testable(expr.expr)
+
+when(always_testable, (Local,))(lambda expr:True)
+when(always_testable, (Const,))(lambda expr:True)
+
+when(parse_rule, (IndexedEngine, basestring))
+def _parse_string(engine, predicate, actiontype, body, localdict, globaldict):
+    b = CriteriaBuilder(engine.arguments, localdict, globaldict, __builtins__)
+    return Rule(body, parse_expr(predicate, b), actiontype)
+
+
+
+
+# === As of this point, it should be possible to compile expressions!
+#
+when(expressionSignature,
+    # matches 'issubclass/isinstance(?, Const)'
+    "expr in Call and expr.func in Const"
+    " and (expr.func.value is issubclass or expr.func.value is isinstance)"
+    " and len(expr.args)==2 and expr.args[1] in Const"
+)
+def convertIsXCall(expr, mode):
+    func, (expr, seq) = expr.func.value, expr.args
+    if func is isinstance:
+        expr = IsInstance(expr)
+    elif func is issubclass:
+        expr = IsSubclass(expr)
+    else:
+        raise AssertionError("Should only be called for isinstance/issubclass")
+
+    seq = [Test(expr, Class(c, mode)) for c in _yield_tuples(seq.value)]
+    if mode:
+        return Disjunction(seq)
+    return reduce(intersect, seq)
+
+
+def _yield_tuples(ob):
+    if type(ob) is tuple:
+        for i1 in ob:
+            for i2 in _yield_tuples(i1):
+                yield i2
+    else:
+        yield ob
+
+
+
+
+
+
+
+
+
+
 
