@@ -1,11 +1,43 @@
 from __future__ import division
 import sys
 from peak.util.addons import AddOn
-from peak.rules.core import abstract, Dispatching, Engine, when
+from peak.rules.core import *
 from peak.rules.criteria import *
-from peak.rules.criteria import sorted, set, frozenset
+from peak.rules.core import sorted, set, frozenset
 from peak.util.extremes import Min, Max, Extreme
 from types import InstanceType
+
+__all__ = [
+    'Ordering', 'BitmapIndex', 'TreeBuilder', 'seeds_for', 'split_ranges',
+    'to_bits', 'from_bits', 'always_testable'
+]
+
+def always_testable(expr):
+    """Is `expr` safe to evaluate in any order?"""
+    return False
+
+def define_ordering(ob, seq):
+    items = []
+    for key in seq:
+        Ordering(ob, key).requires(items)
+        items.append(key)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class Ordering(AddOn):
     """Track inter-expression ordering constraints"""
@@ -39,15 +71,14 @@ class Ordering(AddOn):
 
 
 
-def always_testable(expr):
-    """Is `expr` safe to evaluate in any order?"""
-    return False
 
-def define_ordering(ob, seq):
-    items = []
-    for key in seq:
-        Ordering(ob, key).requires(items)
-        items.append(key)
+
+
+
+
+
+
+
 
 def to_bits(ints):
     """Return a bitset encoding the numbers contained in sequence `ints`"""
@@ -77,6 +108,16 @@ def from_bits(n):
             yield b
         n >>= 1
         b += 1
+
+
+
+
+
+
+
+
+
+
 
 
 

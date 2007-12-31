@@ -1,43 +1,15 @@
 from peak.rules.core import *
+from peak.rules.core import sorted, frozenset, set
 from peak.util.decorators import struct
 from weakref import ref
 from sys import maxint
 from peak.util.extremes import Min, Max
+
 __all__ = [
     'Range', 'Value', 'IsObject', 'Class', 'Classes', 'tests_for',
     'NotObjects',  'Conjunction', 'Disjunction', 'Test', 'Signature',
     'Inequality',
 ]
-
-try:
-    set = set
-    frozenset = frozenset
-except NameError:
-    from sets import Set as set
-    from sets import ImmutableSet
-    class frozenset(ImmutableSet):
-        """Kludge to fix the abomination that is ImmutableSet.__init__"""
-        def __new__(cls, iterable=None):
-            self = ImmutableSet.__new__(cls, iterable)
-            ImmutableSet.__init__(self, iterable)
-            return self
-        def __init__(self, iterable=None):
-            pass    # all immutable initialization should be done by __new__!
-
-try:
-    sorted = sorted
-except NameError:
-    def sorted(seq,key=None):
-        if key:
-            d = [(key(v),v) for v in seq]
-        else:
-            d = list(seq)
-        d.sort()
-        if key:
-            return [v[1] for v in d]
-        return d
-
-
 
 class Intersection(object):
     """Abstract base for conjunctions and signatures"""
@@ -51,6 +23,21 @@ def Range(lo=(Min,-1), hi=(Max,1)):
 struct()
 def Value(value, match=True):
     return value, match
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 when(implies, (Value, Range))(
     # ==Value implies Range if Value is within range
@@ -78,6 +65,19 @@ def intersect_range(c1, c2):
     if hi<=lo:
         return False
     return Range(lo, hi)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 when(intersect, (Value, Value))

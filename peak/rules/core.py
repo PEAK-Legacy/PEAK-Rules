@@ -2,7 +2,7 @@ __all__ = [
     'Rule', 'RuleSet', 'Dispatching', 'Engine', 'rules_for',
     'Method', 'Around', 'Before', 'After', 'MethodList',
     'DispatchError', 'AmbiguousMethods', 'NoApplicableMethods',
-    'abstract', 'when', 'before', 'after', 'around',
+    'abstract', 'when', 'before', 'after', 'around', 'istype',
     'implies', 'dominant_signatures', 'combine_actions', 'overrides',
     'always_overrides', 'merge_by_default', 'intersect', 'disjuncts'
 ]
@@ -11,10 +11,32 @@ from peak.util.assembler import Code, Const, Call, Local, Getattr, TryExcept, Su
 from peak.util.addons import AddOn
 import inspect, new
 try:
-    set, frozenset
+    set = set
+    frozenset = frozenset
 except NameError:
     from sets import Set as set
-    from sets import ImmutableSet as frozenset
+    from sets import ImmutableSet
+    class frozenset(ImmutableSet):
+        """Kludge to fix the abomination that is ImmutableSet.__init__"""
+        def __new__(cls, iterable=None):
+            self = ImmutableSet.__new__(cls, iterable)
+            ImmutableSet.__init__(self, iterable)
+            return self
+        def __init__(self, iterable=None):
+            pass    # all immutable initialization should be done by __new__!
+
+try:
+    sorted = sorted
+except NameError:
+    def sorted(seq,key=None):
+        if key:
+            d = [(key(v),v) for v in seq]
+        else:
+            d = list(seq)
+        d.sort()
+        if key:
+            return [v[1] for v in d]
+        return d
 empty = frozenset()
 
 struct()
@@ -38,6 +60,25 @@ def clone_function(f):
     return new.function(
       f.func_code, f.func_globals, f.func_name, f.func_defaults, f.func_closure
     )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 [struct()]
 def istype(type, match=True):
