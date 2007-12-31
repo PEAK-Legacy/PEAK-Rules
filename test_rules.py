@@ -203,6 +203,47 @@ class MiscTests(unittest.TestCase):
 
 
 
+    def testParseInequalities(self):
+        from peak.rules.predicates import CriteriaBuilder, Comparison, Truth
+        from peak.util.assembler import Compare, Local
+        from peak.rules.criteria import Inequality, Test, Value
+        from peak.rules.ast_builder import parse_expr
+        builder = CriteriaBuilder(
+            dict(x=Local('x'), y=Local('y')), locals(), globals(), __builtins__
+        )
+        def pe(expr):
+            return parse_expr(expr, builder)
+
+        x_cmp_y = lambda op, t=True: Test(
+            Truth(Compare(Local('x'), ((op, Local('y')),))), Value(t)
+        )      
+        x,y = Comparison(Local('x')), Comparison(Local('y'))
+
+        for op, mirror_op, not_op, stdop, not_stdop in [
+            ('>', '<', '<=','>','<='),
+            ('<', '>', '>=','<','>='),
+            ('==','==','!=','==','!='),
+            ('<>','<>','==','!=','=='),
+        ]:
+            fwd_sig = Test(x, Inequality(op, 1))
+            self.assertEqual(pe('x %s 1' % op), fwd_sig)
+            self.assertEqual(pe('1 %s x' % mirror_op), fwd_sig)
+
+            rev_sig = Test(x, Inequality(mirror_op, 1))
+            self.assertEqual(pe('x %s 1' % mirror_op), rev_sig)
+            self.assertEqual(pe('1 %s x' % op), rev_sig)
+
+            not_sig = Test(x, Inequality(not_op, 1))
+            self.assertEqual(pe('not x %s 1' % op), not_sig)
+            self.assertEqual(pe('not x %s 1' % not_op), fwd_sig)
+
+            self.assertEqual(pe('x %s y' % op), x_cmp_y(stdop))
+            self.assertEqual(pe('x %s y' % not_op), x_cmp_y(not_stdop))
+
+            self.assertEqual(pe('not x %s y' % op),x_cmp_y(stdop,False))
+            self.assertEqual(pe('not x %s y' % not_op),x_cmp_y(not_stdop,False))
+
+
 class MockBuilder:
     def __init__(self, test, expr, cases, remaining, seeds, index=None):
         self.test = test

@@ -224,3 +224,118 @@ predicate_node_for(builder, expr, cases, remaining_exprs, memo)
 The return value(s) of this method will be in the ``SMIGenerator.ARG`` local
 variable when the predicate type's bytecode is executed.
 
+
+Predicate Parsing
+=================
+
+The ``CriteriaBuilder`` class can be used to parse Python expressions into
+tests and signatures.  It's initialized using the same arguments as the
+``codegen.ExprBuilder`` class::
+
+    >>> from peak.rules.predicates import CriteriaBuilder, Comparison
+    >>> from peak.rules.criteria import Disjunction, Value, Test, Range, Class
+    >>> from peak.util.assembler import Local
+
+    >>> builder = CriteriaBuilder(
+    ...     dict(x=Local('x'), y=Local('y')), locals(), globals(), __builtins__
+    ... )
+    >>> from peak.rules.ast_builder import parse_expr
+    >>> def pe(expr):
+    ...     return parse_expr(expr, builder)
+
+    >>> pe('x+42 > 23*2')
+    Test(Comparison(Add(Local('x'), Const(42))), Range((46, 1), (Max, 1)))    
+
+
+The ``in`` operator converts constant classes into ``IsInstance`` tests::
+
+    >>> pe('x in int')
+    Test(IsInstance(Local('x')), Class(<type 'int'>, True))
+
+    >>> pe('x not in int')
+    Test(IsInstance(Local('x')), Class(<type 'int'>, False))
+
+Iterable constants into or-ed equality tests::
+
+    >>> pe('x in (1,2,3)') == Disjunction([
+    ...     Test(Comparison(Local('x')), Value(2, True)),
+    ...     Test(Comparison(Local('x')), Value(3, True)),
+    ...     Test(Comparison(Local('x')), Value(1, True))
+    ... ])
+    True
+
+    >>> pe('x not in (1,2,3)') == Test( Comparison(Local('x')), Disjunction([
+    ...     Range((Min, -1), (1, -1)), Range((1, 1), (2, -1))])
+    ... )
+    True
+
+And non-iterable constants into plain expressions::
+
+    >>> pe('x in 27')
+    Test(Truth(Compare(Local('x'), (('in', Const(27)),))), Value(True, True))
+
+    >>> pe('x not in 27')
+    Test(Truth(Compare(Local('x'), (('not in', Const(27)),))), Value(True, True))
+
+
+The ``is`` operator produces identity tests, if either side is a constant::
+
+    >>> pe('x is 42')
+    Test(Identity(Local('x')), IsObject(42, True))
+
+    >>> pe('42 is not x')
+    Test(Identity(Local('x')), IsObject(42, False))
+
+
+And plain expressions when neither side is constant::
+
+    >>> pe('x is y')
+    Test(Truth(Compare(Local('x'), (('is', Local('y')),))), Value(True, True))
+
+    >>> pe('x is not y')
+    Test(Truth(Compare(Local('x'), (('is not', Local('y')),))), Value(True, True))
+
+    >>> pe('not (x is y)')    
+    Test(Truth(Compare(Local('x'), (('is', Local('y')),))), Value(False, True))
+    
+    >>> pe('not (x is not y)')    
+    Test(Truth(Compare(Local('x'), (('is not', Local('y')),))), Value(False, True))
+
+
+Complex logical expressions are always rendered in disjunctive normal form,
+with negations simplified away or reduced to match flags on criteria objects::
+
+    >>> pe('x in int and y in str')
+    Signature([Test(IsInstance(Local('x')), Class(<type 'int'>, True)),
+               Test(IsInstance(Local('y')), Class(<type 'str'>, True))])
+
+    >>> pe('not(x not in int or y not in str)')
+    Signature([Test(IsInstance(Local('x')), Class(<type 'int'>, True)),
+               Test(IsInstance(Local('y')), Class(<type 'str'>, True))])
+
+
+    >>> pe('x in int and (y in str or y in unicode)')
+    Disjunction([Signature([Test(IsInstance(Local('x')),
+                                 Class(<type 'int'>, True)),
+                            Test(IsInstance(Local('y')),
+                                 Class(<type 'str'>, True))]),
+                 Signature([Test(IsInstance(Local('x')),
+                                 Class(<type 'int'>, True)),
+                            Test(IsInstance(Local('y')),
+                                 Class(<type 'unicode'>, True))])])
+
+    >>> pe('not (x in int or y in str)')
+    Signature([Test(IsInstance(Local('x')), Class(<type 'int'>, False)),
+               Test(IsInstance(Local('y')), Class(<type 'str'>, False))])
+
+    >>> pe('not( x not in int and y not in str)') == Disjunction([
+    ...     Test(IsInstance(Local('x')), Class(int)),
+    ...     Test(IsInstance(Local('y')), Class(str))
+    ... ])
+    True
+
+    >>> pe('not( x in int and y in str)')
+    Disjunction([Test(IsInstance(Local('y')), Class(<type 'str'>, False)),
+                 Test(IsInstance(Local('x')), Class(<type 'int'>, False))])
+
+

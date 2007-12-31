@@ -1,12 +1,12 @@
-from core import Engine, abstract, class_or_type_of, when, combine_actions
-from criteria import tests_for, Class
-from indexing import TreeBuilder, BitmapIndex, Ordering, to_bits, from_bits,\
-    always_testable, split_ranges
+from peak.util.assembler import *
+from core import *
+from core import class_or_type_of
+from criteria import *
+from indexing import *
 from codegen import SMIGenerator, ExprBuilder, Getitem, IfElse
 from peak.util.decorators import decorate, synchronized
-from peak.util.assembler import nodetype, Code, Pass, Return, Const, Getattr, \
-    Suite, TryExcept, Label, Call, Compare
-from types import InstanceType
+from types import InstanceType, ClassType
+from ast_builder import build
 
 __all__ = [
     'IsInstance', 'IsSubclass', 'Truth', 'Identity', 'Comparison',
@@ -79,6 +79,129 @@ def Truth(expr, code=None):
     code(SMIGenerator.ARG); code.UNPACK_SEQUENCE(2)
     code(expr, skip.JUMP_IF_TRUE, Code.ROT_THREE, skip, Code.POP_TOP,
          Code.ROT_TWO, Code.POP_TOP)
+
+class CriteriaBuilder:
+    simplify_comparisons = True
+    mode = True
+
+    def __init__(self, arguments, *namespaces):
+        self.expr_builder = ExprBuilder(arguments, *namespaces)
+
+    def mkOp(name):
+        op = getattr(ExprBuilder,name)
+        def method(self, *args):
+            return expressionSignature(op(self.expr_builder, *args), self.mode)
+        return method
+
+    for opname in dir(ExprBuilder):
+        if opname[0].isalpha() and opname[0]==opname[0].upper():
+            locals()[opname] = mkOp(opname)
+
+    def Not(self,expr):
+        try:
+            self.__class__ = NotBuilder
+            return build(self, expr)
+        finally:
+            self.__class__ = CriteriaBuilder
+
+    _mirror_ops = {
+        '>': '<', '>=': '<=', '=>':'<=',
+        '<': '>', '<=': '>=', '=<':'>=',
+        '<>': '<>', '!=': '<>', '==':'==',
+        'is': 'is', 'is not': 'is not'
+    }
+
+    _rev_ops = {
+        '>': '<=', '>=': '<', '=>': '<',
+        '<': '>=', '<=': '>', '=<': '>',
+        '<>': '==', '!=': '==', '==':'!=',
+        'in': 'not in', 'not in': 'in',
+        'is': 'is not', 'is not': 'is'
+    }
+
+
+
+    def Compare(self, initExpr, ((op,other),)):
+        old_op = op
+        left = build(self.expr_builder, initExpr)
+        right = build(self.expr_builder, other)
+
+        if isinstance(left,Const) and op in self._mirror_ops:
+            left, right, op = right, left, self._mirror_ops[op]
+
+        if isinstance(right,Const):
+            if not self.mode:
+                op = self._rev_ops[op]
+
+            if op=='in' or op=='not in':
+                cond = compileIn(left, right.value, op=='in')
+                if cond is not None:
+                    return cond
+            else:
+                if op=='is' or op=='is not':
+                    #if right.value is None:     # XXX this should be smarter
+                    #    left = IsInstance(left)
+                    #    right = Class(NoneType)
+                    #else:
+                        left = Identity(left)
+                        right = IsObject(right.value, op=='is')
+                else:
+                    left = Comparison(left)
+                    right = Inequality(op, right.value)                    
+                return Test(left, right)
+
+        # Both sides involve variables or an un-optimizable constant,
+        #  so it's a generic boolean criterion  :(
+        return expressionSignature(
+            self.expr_builder.Compare(initExpr, ((old_op,other),)), self.mode
+        )
+
+    def And(self, items):
+        return reduce(intersect, [build(self,expr) for expr in items])
+
+    def Or(self, items):
+        return Disjunction([build(self,expr) for expr in items])
+
+class NotBuilder(CriteriaBuilder):
+    mode = False
+
+    def Not(self,expr):
+        try:
+            self.__class__ = CriteriaBuilder
+            return build(self,expr)
+        finally:
+            self.__class__ = NotBuilder
+
+    # Negative logic for and/or
+    And = CriteriaBuilder.Or
+    Or  = CriteriaBuilder.And
+
+
+def expressionSignature(expr, mode):
+    """Return a test that tests `expr` in truth `mode`"""
+    # Default is to simply test the truth of the expression
+    return Test(Truth(expr), Value(mode))    
+
+def compileIn(expr, criterion, truth):
+    """Return a signature or predicate (or None) for 'expr in criterion'"""
+    try:
+        iter(criterion)
+    except TypeError:
+        pass    # treat the in condition as a truth expression
+    else:
+        expr = Comparison(expr)
+        values = [Test(expr, Value(v, truth)) for v in criterion]
+        if truth:
+            return Disjunction(values)
+        else:
+            return reduce(intersect, values)
+
+when(compileIn, (object, type))
+when(compileIn, (object, ClassType))
+def compileInClass(expr, criterion, truth):
+    return Test(IsInstance(expr), Class(criterion, truth))
+
+
 
 class IndexedEngine(Engine, TreeBuilder):
     """A dispatching engine that builds trees using bitmap indexes"""
