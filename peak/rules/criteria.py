@@ -216,9 +216,9 @@ class IsObject(int):
 
     def __eq__(self,other):
         return self is other or (
-            int(self)==int(other)
-            and (not isinstance(other, IsObject) or self.match==other.match)
-        )
+            isinstance(other, IsObject) and self.match==other.match
+            and self.ref is other.ref
+        ) or (isinstance(other,(int,long)) and int(self)==other and self.match)
 
     def __repr__(self):
         return "IsObject(%r, %r)" % (self.ref, self.match)
@@ -298,6 +298,12 @@ around(intersect, (object, Disjunction))(
 around(intersect, (Disjunction, Disjunction))(
     lambda c1, c2: Disjunction([intersect(x,y) for x in c1 for y in c2])
 )
+around(intersect, (Disjunction, Intersection))(
+    lambda c1, c2: Disjunction([intersect(x,c2) for x in c1])
+)
+around(intersect, (Intersection, Disjunction))(
+    lambda c1, c2: Disjunction([intersect(c1,x) for x in c2])
+)
 
 # XXX These rules prevent ambiguity with implies(object, bool) and
 # (bool, object), at the expense of redundancy.  This can be cleaned up later
@@ -311,19 +317,13 @@ when(implies, (Disjunction, bool))(lambda c1, c2: c2)
 # The disjuncts of a Disjunction are a list of its contents:
 when(disjuncts, (Disjunction,))(list)
 
-
 abstract()
-def tests_for(ob):
+def tests_for(ob, engine=None):
     """Yield the tests composing ob, if any"""
 
-when(tests_for, (Test,     ))(lambda ob: iter([ob]))
-when(tests_for, (Signature,))(lambda ob: iter(ob))
-when(tests_for, (bool,     ))(lambda ob: iter([]))
-
-
-
-
-
+when(tests_for, (Test,     ))(lambda ob, e: iter([ob]))
+when(tests_for, (Signature,))(lambda ob, e: iter(ob))
+when(tests_for, (bool,     ))(lambda ob, e: iter([]))
 
 
 class Conjunction(Intersection, frozenset):

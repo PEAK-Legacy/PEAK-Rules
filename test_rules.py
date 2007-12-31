@@ -60,7 +60,7 @@ class MiscTests(unittest.TestCase):
         self.assertEqual(oid,ptr)
         self.assertEqual(hash(oid),hash(ptr))
         del anOb
-        #self.assertNotEqual(oid,ptr)
+        self.assertNotEqual(ptr,"foo")
         self.assertEqual(ptr,ptr)
         self.assertEqual(hash(oid),hash(ptr))
 

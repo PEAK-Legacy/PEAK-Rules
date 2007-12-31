@@ -401,6 +401,14 @@ contents.  In other words::
     ... ])
     True
 
+    >>> intersect(int_or_str, Conjunction([long, float]))
+    Disjunction([Conjunction([<type 'int'>, <type 'long'>, <type 'float'>]),
+                 Conjunction([<type 'str'>, <type 'long'>, <type 'float'>])])
+
+    >>> intersect(Conjunction([int, str]), long_or_float)
+    Disjunction([Conjunction([<type 'int'>, <type 'str'>, <type 'long'>]),
+                 Conjunction([<type 'int'>, <type 'str'>, <type 'float'>])])
+
 As you can see, this is the heart of the process that allows expressions like
 ``(A or B) and (C or D)`` to be transformed into their disjunctive normal
 form (i.e. ``(A and C) or (A and D) or (B and C) or (B and D)``).
