@@ -6,6 +6,7 @@ from peak.util.extremes import Min, Max
 __all__ = [
     'Range', 'Value', 'IsObject', 'Class', 'Classes', 'tests_for',
     'NotObjects',  'Conjunction', 'Disjunction', 'Test', 'Signature',
+    'Inequality',
 ]
 
 try:
@@ -35,7 +36,6 @@ except NameError:
         if key:
             return [v[1] for v in d]
         return d
-
 
 
 
@@ -138,21 +138,21 @@ def intersect_tests(c1, c2):
     else:
         return Signature([c1, c2])
 
+inequalities = {
+    '>':  lambda v: Range(lo=(v, 1)),
+    '>=': lambda v: Range(lo=(v,-1)),
+    '<':  lambda v: Range(hi=(v,-1)),
+    '<=': lambda v: Range(hi=(v, 1)),
+    '!=': lambda v: Value(v, False),
+    '==': lambda v: Value(v, True),
+}
 
+inequalities['=<'] = inequalities['<=']
+inequalities['=>'] = inequalities['>=']
+inequalities['<>'] = inequalities['!=']
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+def Inequality(op, value):
+    return inequalities[op](value)
 
 
 

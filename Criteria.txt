@@ -565,54 +565,66 @@ a value and a "direction".  The direction is an integer (either -1 or 1) that
 indicates whether the edge is on the low or high side of the target value.
 Thus, a tuple ``(27, -1)`` means "the low edge of 27", while ``(99, 1)``
 means "the high edge of 99".  In this way, any simple inequality or range
-can be represented by a pair of edges::
-
-    >>> from peak.rules.criteria import Range, Min, Max
-
-    >>> Range(lo=(27, -1))      # >=27 : below 27 ... above Max
-    Range((27, -1), (Max, 1))
-
-    >>> Range(lo=(27, 1))       # > 27 : above 27 ... above Max
-    Range((27, 1), (Max, 1))
-
-    >>> Range(hi=(99, -1))      # < 99 : below Min ... below 99
-    Range((Min, -1), (99, -1))
-
-    >>> Range(hi=(99,1))        # <=99 : below Min ... above 99
-    Range((Min, -1), (99, 1))
-
-Notice that if we omit the high or low, it's replaced with "below ``Min``" or
-"above ``Max``", as appropriate.  (The ``Min`` and ``Max`` values are special
-objects that compare below or above any other object.)
+can be represented by a pair of edges.
 
 Thus, the intersection of two different ``!=`` values produces a disjunction of
 three ``Range()`` objects, representing the intervals that "surround" the
 original ``!=`` values::
 
+    >>> from peak.rules.criteria import Range
+
     >>> intersect(Value(27, False), Value(42, False)) == Disjunction([
-    ...     Range((Min, -1), (27, -1)),     # below Min ... below 27
-    ...     Range((27,   1), (42, -1)),     # above  27 ... below 42
-    ...     Range((42,   1), (Max, 1)),     # above  42 ... above Max
+    ...     Range(hi=(27, -1)),     # below Min ... below 27
+    ...     Range((27,1), (42,-1)), # above  27 ... below 42
+    ...     Range(lo=(42, 1)),      # above  42 ... above Max
     ... ])
     True
+
+Notice that if we omit the ``hi`` or ``lo``, end of the range, it's replaced
+with "below ``Min``" or "above ``Max``", as appropriate.  (The ``Min`` and
+``Max`` values are special objects that compare below or above any other
+object.)
+
+When creating range and value objects, it can be useful to use the
+``Inequality`` constructor, which takes a comparison operator and a value::
+
+    >>> from peak.rules.criteria import Inequality
+
+    >>> Inequality('>=', 27)    # >=27 : below 27 ... above Max
+    Range((27, -1), (Max, 1))
+
+    >>> Inequality('>', 27)     # > 27 : above 27 ... above Max
+    Range((27, 1), (Max, 1))
+
+    >>> Inequality('<', 99)     # < 99 : below Min ... below 99
+    Range((Min, -1), (99, -1))
+
+    >>> Inequality('<=',99)     # <=99 : below Min ... above 99
+    Range((Min, -1), (99, 1))
+
+    >>> Inequality('==', 66)
+    Value(66, True)
+
+    >>> Inequality('!=', 77)
+    Value(77, False)
 
 Intersecting two ranges (or a range and an ``==`` value) produces a smaller
 range or value, or ``False`` if there is no overlap::
 
-    >>> intersect(Range(hi=(27,-1)), Range(lo=(19,1)))
+    >>> intersect(Inequality('<', 27), Inequality(">",19))
     Range((19, 1), (27, -1))
 
-    >>> intersect(Range(lo=(27,-1)), Range(hi=(19,1)))
+    >>> intersect(Inequality('>=', 27), Inequality("<=",19))
     False
 
-    >>> intersect(Value(27), Range(lo=(27,-1)))
+    >>> intersect(Value(27), Inequality('>=', 27))
     Value(27, True)    
-    >>> intersect(Range(lo=(27,-1)), Value(27))
+    >>> intersect(Inequality('<=', 27), Value(27))
     Value(27, True)
 
-    >>> intersect(Value(27), Range(hi=(27,-1)))
+    >>> intersect(Value(27), Inequality('<',27))
     False
-    >>> intersect(Range(hi=(27,-1)), Value(27))
+    >>> intersect(Inequality('>',27), Value(27))
     False    
     
 Last, but not least, a range (or value) implies another range or value if it
