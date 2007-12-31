@@ -7,7 +7,7 @@ __all__ = [
     'always_overrides', 'merge_by_default', 'intersect', 'disjuncts'
 ]
 from peak.util.decorators import decorate_assignment, decorate, struct, synchronized
-from peak.util.assembler import Code, Const, Call, Local, Getattr
+from peak.util.assembler import Code, Const, Call, Local, Getattr, TryExcept, Suite
 from peak.util.addons import AddOn
 import inspect, new
 try:
@@ -451,7 +451,6 @@ class TypeEngine(Engine):
 
     def _generate_code(self):
         self.cache = cache = self.static_cache.copy()
-
         def callback(*args):
             types = tuple([getattr(arg,'__class__',type(arg)) for arg in args])
             self.__lock__.acquire()
@@ -466,12 +465,8 @@ class TypeEngine(Engine):
             return f(*args)
 
         c = Code.from_function(self.function, copy_lineno=True)
-        types = [
-            Call(
-                Const(getattr),
-                (Local(name), Const('__class__'), Call(Const(type),(Local(name),)))
-            ) for name in flatten(inspect.getargspec(self.function)[0])
-        ]
+        types = [class_or_type_of(Local(name))
+                    for name in flatten(inspect.getargspec(self.function)[0])]
         target = Call(Const(cache.get), (tuple(types), Const(callback)))
         c.return_(call_thru(self.function, target))
         return c.code()
@@ -489,6 +484,11 @@ def call_thru(sigfunc, target):
     args, star, dstar, defaults = inspect.getargspec(sigfunc)
     return Call(target, map(gen_arg,args), (), gen_arg(star), gen_arg(dstar), fold=False)
 
+def class_or_type_of(expr):
+    return Suite([expr, TryExcept(
+        Suite([Getattr(Code.DUP_TOP, '__class__'), Code.ROT_TWO, Code.POP_TOP]),
+        [(Const(AttributeError), Call(Const(type), (Code.ROT_TWO,)))]
+    )])
 
 def overrides(a1, a2):
     return False

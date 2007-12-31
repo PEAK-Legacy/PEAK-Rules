@@ -28,7 +28,7 @@ setup(
     description="Generic functions and business rules support systems",
     long_description = get_description(),
     install_requires=[
-        'BytecodeAssembler>=0.3.dev-r2451','DecoratorTools>=1.7dev-r2450',
+        'BytecodeAssembler>=0.3.dev-r2459','DecoratorTools>=1.7dev-r2450',
         'AddOns>=0.6', 'Extremes>=1.1',
     ],
     author="Phillip J. Eby",

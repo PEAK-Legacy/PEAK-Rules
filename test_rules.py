@@ -161,12 +161,176 @@ class MiscTests(unittest.TestCase):
 
 
 
+
+    def testIndexedEngine(self):
+        from peak.rules.predicates import IndexedEngine, Comparison
+        from peak.rules.criteria import Range, Value, Test, Signature
+        from peak.util.assembler import Local
+        from peak.util.extremes import Min, Max
+        abstract()
+        def classify(age): pass
+        Dispatching(classify).create_engine(IndexedEngine)
+        def setup(r, f):
+            when(classify, Signature([Test(Comparison(Local('age')), r)]))(f)
+        setup(Range(hi=( 2,-1)), lambda age:"infant")
+        setup(Range(hi=(13,-1)), lambda age:"preteen")
+        setup(Range(hi=( 5,-1)), lambda age:"preschooler")
+        setup(Range(hi=(20,-1)), lambda age:"teenager")
+        setup(Range(lo=(20,-1)), lambda age:"adult")
+        setup(Range(lo=(55,-1)), lambda age:"senior")
+        setup(Value(16), lambda age:"sweet sixteen")
+
+        self.assertEqual(classify(0),"infant")
+        self.assertEqual(classify(25),"adult")
+        self.assertEqual(classify(17),"teenager")
+        self.assertEqual(classify(13),"teenager")
+        self.assertEqual(classify(12.99),"preteen")
+        self.assertEqual(classify(4),"preschooler")
+        self.assertEqual(classify(55),"senior")
+        self.assertEqual(classify(54.9),"adult")
+        self.assertEqual(classify(14.5),"teenager")
+        self.assertEqual(classify(16),"sweet sixteen")
+        self.assertEqual(classify(16.5),"teenager")
+        self.assertEqual(classify(99),"senior")
+        self.assertEqual(classify(Min),"infant")
+        self.assertEqual(classify(Max),"senior")
+
+
+
+
+
+
+
+
+
+class MockBuilder:
+    def __init__(self, test, expr, cases, remaining, seeds, index=None):
+        self.test = test
+        self.args = expr, cases, remaining, {}
+        self.seeds = seeds
+        self.index = index
+
+    def test_func(self, func):
+        return func(self, *self.args)
+
+    def build(self, cases, remaining_exprs, memo):
+        self.test.failUnless(memo is self.args[-1])
+        self.test.assertEqual(self.args[-2], remaining_exprs)
+        return cases
+
+    def seed_bits(self, expr, cases):
+        self.test.assertEqual(self.args[1], cases)
+        if self.index is not None:
+            return self.index.seed_bits(cases)
+        return self.seeds
         
+    def reseed(self, expr, criterion):
+        self.test.assertEqual(self.args[0], expr)
+        self.index.reseed(criterion)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class NodeBuildingTests(unittest.TestCase):
+
+    def build(self, func, dontcare, seeds, index=None):
+        seedbits = dontcare, seeds
+        builder = MockBuilder(
+            self, 'expr', 'cases', 'remaining', seedbits, index
+        )
+        return builder.test_func(func)
+
+    def testTruthNode(self):
+        from peak.rules.predicates import truth_node
+        node = self.build(truth_node, 27,
+            {(True,0): (128,0), (False,0): (64,0)})
+        self.assertEqual(node, (27|128, 27|64))
+
+    def testIdentityNode(self):
+        from peak.rules.predicates import identity_node
+        node = self.build(identity_node, 27,
+            {9127: (128,0), 6499: (64,0), None: (0,0)})
+        self.assertEqual(node, {None:27, 9127:27|128, 6499: 27|64})
+
+    def testRangeNode(self):
+        from peak.rules.indexing import BitmapIndex, to_bits
+        from peak.rules.predicates import range_node
+        from peak.rules.criteria import Range, Value, Min, Max
+        ind = BitmapIndex(self, 'expr')
+        ind.add_case(0, Value(19))
+        ind.add_case(1, Value(23))
+        ind.add_case(2, Value(23, False))
+        ind.add_case(3, Range(lo=(57,1)))
+        ind.add_case(4, Range(lo=(57,-1)))
+        dontcare, seeds = ind.seed_bits(to_bits(range(6)))
+        exact, ranges = self.build(range_node, dontcare, seeds)
+        self.assertEqual(exact,
+            {19:to_bits([0, 2, 5]), 23:to_bits([1,5]), 57:to_bits([2,4,5])})
+        self.assertEqual(ranges,
+            [((Min,57), to_bits([2,5])),  ((57,Max), to_bits([2,3,4,5]))])
+
+
+
+
+    def testClassNode(self):
+        from peak.rules.indexing import BitmapIndex, to_bits
+        from peak.rules.predicates import class_node
+        from peak.rules.criteria import Class, Classes
+        from types import InstanceType
+        ind = BitmapIndex(self, 'expr')
+        class a: pass
+        class b: pass
+        class c(a,b): pass
+        class x(a,b,object): pass
+
+        ind.add_case(0, Class(InstanceType))
+        ind.add_case(1, Classes([Class(a), Class(b), Class(c,False)]))
+        ind.add_case(2, Class(object))
+        ind.add_case(3, Classes([Class(a), Class(b)]))
+        ind.add_case(4, Class(a))
+        ind.selectivity(range(6))
+        cases = to_bits(range(6))
+        builder = MockBuilder(
+            self, 'expr', cases, 'remaining', ind.seed_bits(cases), ind
+        )
+        cache, lookup = builder.test_func(class_node,)
+        self.assertEqual(cache, {})
+        data = [
+            (object, to_bits([2,5])),
+            (InstanceType, to_bits([0,2,5])),
+            (a, to_bits([0,2,4,5])),
+            (b, to_bits([0,2,5])),
+            (c, to_bits([0,2,3,4,5])),
+            (x, to_bits([0,1,2,3,4,5]))
+        ]
+        for k, v in data:
+            self.assertEqual(lookup(k), v)
+        self.assertEqual(cache, dict(data))
+        
+        
+
+
+
+
+
 def additional_tests():
     import doctest
     return doctest.DocFileSuite(
         'DESIGN.txt', 'Indexing.txt', 'AST-Builder.txt',
-        'Code-Generation.txt', 'Criteria.txt',
+        'Code-Generation.txt', 'Criteria.txt', 'Predicates.txt',
         optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE,
     )
 
