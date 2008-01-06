@@ -98,11 +98,11 @@ class CriteriaBuilder:
             locals()[opname] = mkOp(opname)
 
     def Not(self,expr):
+        self.mode = not self.mode
         try:
-            self.__class__ = NotBuilder
             return build(self, expr)
         finally:
-            self.__class__ = CriteriaBuilder
+            self.mode = not self.mode
 
     _mirror_ops = {
         '>': '<', '>=': '<=', '=>':'<=',
@@ -157,24 +157,18 @@ class CriteriaBuilder:
         )
 
     def And(self, items):
-        return reduce(intersect, [build(self,expr) for expr in items])
+        return and_([build(self,expr) for expr in items], self.mode)
 
     def Or(self, items):
-        return Disjunction([build(self,expr) for expr in items])
+        return or_([build(self,expr) for expr in items], self.mode)
 
-class NotBuilder(CriteriaBuilder):
-    mode = False
+def and_(items, mode=True):
+    if mode: return reduce(intersect, items, True)   
+    return Disjunction(items)
 
-    def Not(self,expr):
-        try:
-            self.__class__ = CriteriaBuilder
-            return build(self,expr)
-        finally:
-            self.__class__ = NotBuilder
-
-    # Negative logic for and/or
-    And = CriteriaBuilder.Or
-    Or  = CriteriaBuilder.And
+def or_(items, mode=True):
+    if mode: return Disjunction(items)
+    return reduce(intersect, items, True)
 
 
 def expressionSignature(expr, mode):
@@ -190,16 +184,22 @@ def compileIn(expr, criterion, truth):
         pass    # treat the in condition as a truth expression
     else:
         expr = Comparison(expr)
-        values = [Test(expr, Value(v, truth)) for v in criterion]
-        if truth:
-            return Disjunction(values)
-        else:
-            return reduce(intersect, values)
+        return or_([Test(expr, Value(v, truth)) for v in criterion], truth)
 
 when(compileIn, (object, type))
 when(compileIn, (object, ClassType))
 def compileInClass(expr, criterion, truth):
     return Test(IsInstance(expr), Class(criterion, truth))
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -241,7 +241,6 @@ class IndexedEngine(Engine, TreeBuilder):
     def _full_reset(self):
         # Replace the entire engine with a new one
         Dispatching(self.function).create_engine(self.__class__)
-
 
 
 
@@ -427,9 +426,7 @@ def convertIsXCall(expr, mode):
         raise AssertionError("Should only be called for isinstance/issubclass")
 
     seq = [Test(expr, Class(c, mode)) for c in _yield_tuples(seq.value)]
-    if mode:
-        return Disjunction(seq)
-    return reduce(intersect, seq)
+    return or_(seq, mode)
 
 
 def _yield_tuples(ob):
@@ -439,6 +436,8 @@ def _yield_tuples(ob):
                 yield i2
     else:
         yield ob
+
+
 
 
 
