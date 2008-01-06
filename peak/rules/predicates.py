@@ -39,32 +39,31 @@ def IsInstance(expr, code=None):
     return IsSubclass(class_or_type_of(expr), code)
 
 
+_unpack = lambda c: c.UNPACK_SEQUENCE(2)
+subclass_check = TryExcept(
+    Suite([
+        Code.DUP_TOP, SMIGenerator.ARG, _unpack, Code.ROT_THREE,
+        Code.POP_TOP, Code.BINARY_SUBSCR, Code.ROT_TWO, Code.POP_TOP
+    ]), [(Const(KeyError), Suite([
+        SMIGenerator.ARG, _unpack, Code.POP_TOP, Call(Code.ROT_TWO, (Pass,)),
+    ]))]
+)
+
 nodetype()
 def IsSubclass(expr, code=None):
     if code is None: return expr,
-    unpack = lambda c: c.UNPACK_SEQUENCE(2)
-    code(
-        expr, TryExcept(
-            Suite([
-                Code.DUP_TOP, SMIGenerator.ARG, unpack, Code.ROT_THREE,
-                Code.POP_TOP, Code.BINARY_SUBSCR, Code.ROT_TWO, Code.POP_TOP
-            ]), [(Const(KeyError), Suite([
-                SMIGenerator.ARG, unpack, Code.POP_TOP, Call(Code.ROT_TWO, (Pass,)),
-            ]))]
-        )
-    )
+    code(expr, subclass_check)
+
+identity_check = IfElse(
+    Getitem(SMIGenerator.ARG, Code.ROT_TWO),
+    Compare(Code.DUP_TOP, [('in', SMIGenerator.ARG)]),
+    Suite([Code.POP_TOP, Getitem(SMIGenerator.ARG, None)])
+)
 
 nodetype()
 def Identity(expr, code=None):
     if code is None: return expr,
-    code(
-        Call(Const(id), (expr,), fold=False),
-        IfElse(
-            Getitem(SMIGenerator.ARG, Code.ROT_TWO),
-            Compare(Code.DUP_TOP, [('in', SMIGenerator.ARG)]),
-            Suite([Code.POP_TOP, Getitem(SMIGenerator.ARG, None)])
-        )
-    )
+    code(Call(Const(id), (expr,), fold=False), identity_check)
 
 nodetype()
 def Comparison(expr, code=None):
@@ -79,6 +78,7 @@ def Truth(expr, code=None):
     code(SMIGenerator.ARG); code.UNPACK_SEQUENCE(2)
     code(expr, skip.JUMP_IF_TRUE, Code.ROT_THREE, skip, Code.POP_TOP,
          Code.ROT_TWO, Code.POP_TOP)
+
 
 class CriteriaBuilder:
     simplify_comparisons = True
