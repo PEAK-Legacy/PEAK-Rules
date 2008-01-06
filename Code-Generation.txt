@@ -711,4 +711,38 @@ because ``(a+b)`` occurs more than once under the parent expression::
             >>  106 BINARY_MULTIPLY     
                 107 RETURN_VALUE        
 
+Finally, it's important to note that only subexpressions that increase the
+stack size by exactly 1 are considered for caching::
+
+    >>> from peak.util.assembler import Suite, Code
+    >>> c = CSECode()
+    >>> s = Suite([a, b])
+    >>> ss = Suite([s, s])
+    >>> c.maybe_cache(ss)
+    >>> c.return_(ss)
+    >>> dis(c.code())
+      0           0 LOAD_FAST                0 (a)
+                  3 LOAD_FAST                1 (b)
+                  6 LOAD_FAST                0 (a)
+                  9 LOAD_FAST                1 (b)
+                 12 RETURN_VALUE
+
+    >>> c = CSECode()
+    >>> s = Suite([a, b, Code.POP_TOP, Code.POP_TOP, Code.POP_TOP])
+    >>> ss = Suite([a, s, a, s])
+    >>> c.maybe_cache(ss)
+    >>> c(ss)
+    >>> dis(c.code())
+      0           0 LOAD_FAST                0 (a)
+                  3 LOAD_FAST                0 (a)
+                  6 LOAD_FAST                1 (b)
+                  9 POP_TOP
+                 10 POP_TOP
+                 11 POP_TOP
+                 12 LOAD_FAST                0 (a)
+                 15 LOAD_FAST                0 (a)
+                 18 LOAD_FAST                1 (b)
+                 21 POP_TOP
+                 22 POP_TOP
+                 23 POP_TOP
 

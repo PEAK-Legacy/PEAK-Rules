@@ -271,17 +271,17 @@ class CSETracker(Code):
             ts.append(ob)
             ts.append(0)
             try:
+                before = self.stack_size
                 scall(ob)
             finally:
                 count = ts.pop()
                 ts.pop()
-            if count and callable(ob):
+            if count and callable(ob) and self.stack_size==before+1:
                 # Only consider non-leaf callables for caching
                 top = tuple(ts[-2:])
                 if self.cse_depends.setdefault(ob, top) != top:
                     if ob not in self.to_cache:
                         self.to_cache.append(ob)
-
 
 
 

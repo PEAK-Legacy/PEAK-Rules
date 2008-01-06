@@ -231,7 +231,7 @@ class IndexedEngine(Engine, TreeBuilder):
 
     def _generate_code(self):
         smig = SMIGenerator(self.function)
-        #for expr in self.all_exprs: smig.maybe_cache(expr)
+        for expr in self.all_exprs: smig.maybe_cache(expr)
         memo = dict(
             [(expr, smig.action_id(self.to_expression(expr)))
                     for expr in self.all_exprs]
@@ -390,7 +390,7 @@ def always_testable(expr):
     """Is `expr` safe to evaluate in any order?"""
     return False
 
-when(always_testable, (IsInstance,))
+'''when(always_testable, (IsInstance,))
 when(always_testable, (IsSubclass,))
 when(always_testable, (Identity,))
 when(always_testable, (Truth,))
@@ -399,7 +399,7 @@ def testable_criterion(expr):
     return always_testable(expr.expr)
 
 when(always_testable, (Local,))(lambda expr:True)
-when(always_testable, (Const,))(lambda expr:True)
+when(always_testable, (Const,))(lambda expr:True)'''
 
 when(parse_rule, (IndexedEngine, basestring))
 def _parse_string(engine, predicate, actiontype, body, localdict, globaldict):
