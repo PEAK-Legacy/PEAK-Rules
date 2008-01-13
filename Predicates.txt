@@ -207,7 +207,7 @@ that it first obtains the ``__class__`` or ``type()`` of its target::
                  90 END_FINALLY
 
 
-Defining New Expression Types
+Defining New Predicate Types
 -----------------------------
 
 A predicate type must be a ``peak.util.assembler.nodetype``, capable of
@@ -216,13 +216,19 @@ context (see the `Code Generation`_ manual), so ``SMIGenerator.ARG`` will
 contain a lookup node.
 
 Each predicate type must be usable with the ``predicates.predicate_node_for``
-function:
+function, and the ``predicates.always_testable`` function:
 
 predicate_node_for(builder, expr, cases, remaining_exprs, memo)
-    Return a dispatch tree node argument appropriate for the expr.
+    Return a dispatch tree node argument appropriate for the expr.  The return
+    value(s) of this function will be in the ``SMIGenerator.ARG`` local
+    variable when the predicate type's bytecode is executed.
 
-The return value(s) of this method will be in the ``SMIGenerator.ARG`` local
-variable when the predicate type's bytecode is executed.
+always_testable(expr)
+    Return true if the expression can always be tested, regardless of its
+    position among the signature condition(s).  Most predicate types should
+    just implement this by calling ``always_testable()`` recursively on their
+    target expression, and in fact all of the built-in predicate types do this.
+    For more details, see the section on `Order Independence`_ below.
 
 
 Predicate Parsing
@@ -439,5 +445,105 @@ work with the predicate engine.
 Criterion Ordering
 ==================
 
-XXX
+Criterion ordering for a predicate dispatch engine is defined by the ordering
+of the tests in its signatures.  Any test expression that is not defined as
+``always_testable``, must not be computed until after any test expressions
+to its left have been tested.  But tests whose expression is just a local
+variable (i.e., a plain function argument), do not have such restrictions::
+
+    >>> from peak.rules.predicates import IndexedEngine
+    >>> from peak.rules import abstract, when
+    >>> from peak.rules.indexing import Ordering
+    >>> from peak.rules.codegen import Add
+
+    >>> def f(a,b): pass
+    >>> f = abstract(f)
+    >>> m = when(f, "isinstance(a, int) and a+b==42")(lambda a,b: None)
+    >>> engine = Dispatching(f).engine
+    >>> list(Ordering(engine, IsInstance(Local('a'))).constraints)
+    [frozenset([])]
+    >>> list(Ordering(engine, Comparison(Add(Local('a'),Local('b')))).constraints)
+    [frozenset([IsInstance(Local('a'))])]
+
+
+    >>> def f(a,b): pass
+    >>> f = abstract(f)
+    >>> m = when(f, "isinstance(b, str) and a+b==42 and isinstance(a, int)")(
+    ...     lambda a,b: None
+    ... )
+    >>> engine = Dispatching(f).engine
+    >>> list(Ordering(engine, IsInstance(Local('a'))).constraints)
+    [frozenset([])]
+    >>> list(Ordering(engine, IsInstance(Local('b'))).constraints)
+    [frozenset([])]
+    >>> list(Ordering(engine, Comparison(Add(Local('a'),Local('b')))).constraints)
+    [frozenset([IsInstance(Local('b'))])]
+
+    >>> def f(a,b): pass
+    >>> f = abstract(f)
+    >>> m = when(f, "isinstance(a, int) and isinstance(b, str) and a+b==42")(
+    ...     lambda a,b: None
+    ... )
+    >>> engine = Dispatching(f).engine
+    >>> list(Ordering(engine, IsInstance(Local('a'))).constraints)
+    [frozenset([])]
+    >>> list(Ordering(engine, IsInstance(Local('b'))).constraints)
+    [frozenset([])]
+    >>> list(Ordering(engine, Comparison(Add(Local('a'),Local('b')))).constraints)
+    [frozenset([IsInstance(Local('a')), IsInstance(Local('b'))])]
+
+
+Order Independence
+------------------
+
+The determination of whether a test expression can be used in an order-
+independent way, is via the ``always_testable()`` function::
+
+    >>> from peak.rules.predicates import always_testable
+
+In general, only locals and constants can have their tests applied independent
+of signature ordering::
+
+    >>> always_testable(Local('x'))
+    True
+
+    >>> always_testable(Const(99))
+    True
+    
+    >>> always_testable(Add(Local('a'),Local('b')))
+    False
+
+And predicate test expressions are evaluated according to their tested
+expression::
+
+    >>> always_testable(IsInstance(Local('x')))
+    True
+    >>> always_testable(IsInstance(Add(Local('a'),Local('b'))))
+    False
+
+    >>> always_testable(IsSubclass(Local('x')))
+    True
+    >>> always_testable(IsSubclass(Add(Local('a'),Local('b'))))
+    False
+
+    >>> always_testable(Comparison(Local('x')))
+    True
+    >>> always_testable(Comparison(Add(Local('a'),Local('b'))))
+    False
+
+    >>> always_testable(Identity(Local('x')))
+    True
+    >>> always_testable(Identity(Add(Local('a'),Local('b'))))
+    False
+
+    >>> always_testable(Truth(Local('x')))
+    True
+    >>> always_testable(Truth(Add(Local('a'),Local('b'))))
+    False
+
+If you create a new predicate type, be sure to define a method for
+``always_testable`` that will recursively invoke ``always_testable`` on the
+predicate's target expression.  If you don't do this, then your predicate
+type will always be treated as order-dependent, even if its target expression
+is a local or constant.
 

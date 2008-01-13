@@ -122,9 +122,9 @@ class CriteriaBuilder:
 
 
     def Compare(self, initExpr, ((op,other),)):
-        old_op = op
-        left = build(self.expr_builder, initExpr)
-        right = build(self.expr_builder, other)
+        old_op = [op, '!='][op=='<>']
+        left = initExpr = build(self.expr_builder, initExpr)
+        right = other = build(self.expr_builder, other)
 
         if isinstance(left,Const) and op in self._mirror_ops:
             left, right, op = right, left, self._mirror_ops[op]
@@ -153,7 +153,7 @@ class CriteriaBuilder:
         # Both sides involve variables or an un-optimizable constant,
         #  so it's a generic boolean criterion  :(
         return expressionSignature(
-            self.expr_builder.Compare(initExpr, ((old_op,other),)), self.mode
+            Compare(initExpr, ((old_op, other),)), self.mode
         )
 
     def And(self, items):
@@ -222,10 +222,10 @@ class IndexedEngine(Engine, TreeBuilder):
             for _t, expr, criterion in tests_for(signature, self):
                 if expr not in exprs:
                     exprs[expr] = 1
-                    #if always_testable(expr):
-                    #    Ordering(self, expr).requires([])
-                #Ordering(self, expr).requires(requires)
-                #requires.append(expr)
+                    if always_testable(expr):
+                        Ordering(self, expr).requires([])
+                Ordering(self, expr).requires(requires)
+                requires.append(expr)
                 BitmapIndex(self, expr).add_case(case_id, criterion)
         super(IndexedEngine, self)._add_method(signature, atype, body, seq)
 
@@ -389,7 +389,7 @@ def always_testable(expr):
     """Is `expr` safe to evaluate in any order?"""
     return False
 
-'''when(always_testable, (IsInstance,))
+when(always_testable, (IsInstance,))
 when(always_testable, (IsSubclass,))
 when(always_testable, (Identity,))
 when(always_testable, (Truth,))
@@ -398,7 +398,7 @@ def testable_criterion(expr):
     return always_testable(expr.expr)
 
 when(always_testable, (Local,))(lambda expr:True)
-when(always_testable, (Const,))(lambda expr:True)'''
+when(always_testable, (Const,))(lambda expr:True)
 
 when(parse_rule, (IndexedEngine, basestring))
 def _parse_string(engine, predicate, actiontype, body, localdict, globaldict):
