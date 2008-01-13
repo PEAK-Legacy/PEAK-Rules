@@ -244,6 +244,170 @@ class MiscTests(unittest.TestCase):
             self.assertEqual(pe('not x %s y' % not_op),x_cmp_y(not_stdop,False))
 
 
+class RuleDispatchTests(unittest.TestCase):
+
+    def testSimplePreds(self):
+        from peak.rules import dispatch
+
+        [dispatch.generic()]
+        def classify(age):
+            """Stereotype for age"""
+
+        def defmethod(gf,s,func):
+            gf.when(s)(func)
+
+        defmethod(classify,'not not age<2', lambda age:"infant")
+        defmethod(classify,'age<13', lambda age:"preteen")
+        defmethod(classify,'age<5',  lambda age:"preschooler")
+        defmethod(classify,'20>age', lambda age:"teenager")
+        defmethod(classify,'not age<20',lambda age:"adult")
+        defmethod(classify,'age>=55',lambda age:"senior")
+        defmethod(classify,'age==16',lambda age:"sweet sixteen")
+        self.assertEqual(classify(25),"adult")
+        self.assertEqual(classify(17),"teenager")
+        self.assertEqual(classify(13),"teenager")
+        self.assertEqual(classify(12.99),"preteen")
+        self.assertEqual(classify(0),"infant")
+        self.assertEqual(classify(4),"preschooler")
+        self.assertEqual(classify(55),"senior")
+        self.assertEqual(classify(54.9),"adult")
+        self.assertEqual(classify(14.5),"teenager")
+        self.assertEqual(classify(16),"sweet sixteen")
+        self.assertEqual(classify(16.5),"teenager")
+        self.assertEqual(classify(99),"senior")
+        self.assertEqual(classify(dispatch.strategy.Min),"infant")
+        self.assertEqual(classify(dispatch.strategy.Max),"senior")
+
+
+
+
+
+
+
+
+    def testKwArgHandling(self):
+        from peak.rules import dispatch
+        [dispatch.generic()]
+        def f(**fiz): """Test of kw handling"""
+
+        [f.when("'x' in fiz")]
+        def f(**fiz): return "x"
+
+        [f.when("'y' in fiz")]
+        def f(**fiz): return "y"
+
+        self.assertEqual(f(x=1),"x")
+        self.assertEqual(f(y=1),"y")
+        self.assertRaises(dispatch.AmbiguousMethod, f, x=1, y=1)
+
+    def testVarArgHandling(self):
+        from peak.rules import dispatch
+        [dispatch.generic()]
+        def f(*fiz): """Test of vararg handling"""
+
+        [f.when("'x' in fiz")]
+        def f(*fiz): return "x"
+
+        [f.when("'y' in fiz")]
+        def f(*fiz): return "y"
+
+        self.assertEqual(f("foo","x"),"x")
+        self.assertEqual(f("bar","q","y"),"y")
+        self.assertEqual(f("bar","q","y"),"y")
+        self.assertEqual(f("y","q",),"y")
+        self.assertRaises(dispatch.AmbiguousMethod, f, "x","y")
+
+    def test_NoApplicableMethods_is_raised(self):
+        from peak.rules import dispatch
+        [dispatch.generic()]
+        def demo_func(number):
+            pass
+        demo_func.when("number < 10")(lambda x: 0)
+        self.assertEqual(demo_func(3),0)
+        self.assertRaises(dispatch.NoApplicableMethods, demo_func, 33)
+
+    def testSingles(self):
+        from peak.rules import dispatch        
+
+        [dispatch.on('t')]
+        def gm (t) : pass
+
+        [gm.when(object)]
+        def gm (t) : return 'default'
+
+        [gm.when(int)]
+        def gm2 (t) : return 'int'
+
+        self.assertEqual(gm(42),"int")
+        self.assertEqual(gm("x"),"default")
+        self.assertEqual(gm(42.0),"default")
+
+
+    def testSubclassDispatch(self):
+        from peak.rules import dispatch        
+
+        [dispatch.generic()]
+        def gm (t) : pass
+
+        [gm.when(dispatch.strategy.default)]
+        def gm (t) : return 'default'
+
+        [gm.when('issubclass(t,int)')]
+        def gm2 (t) : return 'int'
+
+        self.assertEqual(gm(int),"int")
+        self.assertEqual(gm(object),"default")
+        self.assertEqual(gm(float),"default")
+
+
+
+
+
+
+
+
+
+    def testTrivialities(self):
+        from peak.rules import dispatch        
+
+        [dispatch.on('x')]
+        def f1(x,*y,**z): "foo bar"
+
+        [dispatch.on('x')]
+        def f2(x,*y,**z): "baz spam"
+
+        for f,doc in (f1,"foo bar"),(f2,"baz spam"):
+            self.assertEqual(f.__doc__, doc)
+
+            # Empty generic should raise NoApplicableMethods
+            self.assertRaises(dispatch.NoApplicableMethods, f, 1, 2, 3)
+            self.assertRaises(dispatch.NoApplicableMethods, f, "x", y="z")
+
+            # Must have at least one argument to do dispatching
+            self.assertRaises(TypeError, f)
+            self.assertRaises(TypeError, f, foo="bar")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class MockBuilder:
     def __init__(self, test, expr, cases, remaining, seeds, index=None):
         self.test = test
