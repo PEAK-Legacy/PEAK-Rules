@@ -153,11 +153,11 @@ class MiscTests(unittest.TestCase):
             argnames(lambda a,(b,(c,d)), e: None), list('abcde')
         )
 
-
-
-
-
-
+    def test_istype_implies(self):
+        self.failUnless(implies(istype(object), object))
+        self.failUnless(implies(istype(int), object))
+        self.failIf(implies(istype(object, False), object))
+        self.failIf(implies(istype(int, False), object))
 
 
 

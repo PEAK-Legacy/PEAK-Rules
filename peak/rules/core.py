@@ -610,7 +610,7 @@ when(implies, (ClassType, ClassType))(issubclass)
 when(implies, (type,      ClassType))(issubclass)
 when(implies, (type,      istype)   )(lambda s1,s2: s2.match==(s1 is s2.type))
 when(implies, (istype,    istype)   )(lambda s1,s2: s1.match and s2 is s1.type)
-
+when(implies, (istype,type))(lambda s1,s2: s1.match and issubclass(s1.type,s2))
 
 
 when(implies, (ClassType, type))
