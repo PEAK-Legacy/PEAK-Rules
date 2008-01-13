@@ -807,7 +807,7 @@ def parse_string_rule_by_upgrade(
         predicate, actiontype, body, localdict, globaldict
     )
 
-
+when(rules_for, type(After.sorted))(lambda f: rules_for(f.im_func))
 
 
 

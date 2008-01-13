@@ -46,6 +46,7 @@ def make_module():
         m.__dict__.update(v)
         m.__all__ = list(v)
         sys.modules.setdefault(m.__name__, m)
+        sys.modules.setdefault('peak.rules.'+m.__name__, m)        
         return m
     return decorate_assignment(callback)
 
@@ -63,7 +64,6 @@ def strategy():
     default = ()
     from peak.util.extremes import Min, Max
     return locals()
-
 
 
 
