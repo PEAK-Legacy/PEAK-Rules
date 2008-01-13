@@ -6,8 +6,8 @@ __all__ = [
     'implies', 'dominant_signatures', 'combine_actions', 'overrides',
     'always_overrides', 'merge_by_default', 'intersect', 'disjuncts'
 ]
-from peak.util.decorators import decorate_assignment, decorate, struct, synchronized
-from peak.util.assembler import Code, Const, Call, Local, Getattr, TryExcept, Suite
+from peak.util.decorators import decorate_assignment, decorate, struct, synchronized, frameinfo, decorate_class
+from peak.util.assembler import Code, Const, Call, Local, Getattr, TryExcept, Suite, with_name
 from peak.util.addons import AddOn
 import inspect, new
 try:
@@ -42,6 +42,7 @@ empty = frozenset()
 struct()
 def Rule(body, predicate=(), actiontype=None):
     return body, predicate, actiontype
+
 struct()
 def ActionDef(actiontype, body, signature, sequence):
     return actiontype, body, signature, sequence
@@ -52,17 +53,16 @@ def disjuncts(ob):
     if ob is False: return []
     return [ob]
 
-def parse_rule(engine, predicate, actiontype, body, localdict, globaldict):
+def parse_rule(engine, predicate, actiontype, body, localdict, globaldict, cls):
     """Hook for pre-processing predicates, e.g. parsing string expressions"""
+    if cls is not None and type(predicate) is tuple:
+        predicate = (cls,) + predicate        
     return Rule(body, predicate, actiontype)
 
 def clone_function(f):
     return new.function(
       f.func_code, f.func_globals, f.func_name, f.func_defaults, f.func_closure
     )
-
-
-
 
 
 
@@ -175,31 +175,31 @@ class Method(object):
         if doc is None:
             doc = "Extend a generic function with a method of type ``%s``" \
                   % cls.__name__
-
         if cls is Method:
             maker = None   # allow gf's to use something else instead of Method
         else:
             maker = cls.make
-
         def decorate(f, pred=()):
             def callback(frame, name, func, old_locals):
-                rules = rules_for(f); engine = Dispatching(f).engine
-                rule = parse_rule(
-                    engine, pred, maker, func, frame.f_locals, frame.f_globals
-                )
-                rules.add(rule)
+                rules = rules_for(f)
+                engine = Dispatching(f).engine
+                kind, module, locals_, globals_ = frameinfo(frame)
+                def register_for_class(cls):
+                    rules.add(parse_rule(
+                        engine, pred, maker, func, locals_, globals_, cls
+                    ))
+                    return cls
+
+                if kind=='class':
+                    # 'when()' in class body; defer adding the method
+                    decorate_class(register_for_class, frame=frame)
+                else:
+                    register_for_class(None)
                 if old_locals.get(name) in (f, rules):
                     return f    # prevent overwriting if name is the same
                 return func
             return decorate_assignment(callback)
-
-        try:
-            decorate.__name__ = name
-        except TypeError:
-            decorate = new.function(
-                decorate.func_code, decorate.func_globals, name,
-                decorate.func_defaults, decorate.func_closure
-            )
+        decorate = with_name(decorate, name)
         decorate.__doc__ = doc
         return decorate
 
@@ -798,17 +798,16 @@ merge_by_default(AmbiguousMethods)
 
 when(parse_rule, (TypeEngine, basestring))
 def parse_string_rule_by_upgrade(
-    engine, predicate, actiontype, body, localdict, globaldict
+    engine, predicate, actiontype, body, localdict, globaldict, cls
 ):
     """Upgrade to predicate dispatch engine and do the parse"""
     from peak.rules.predicates import IndexedEngine
     return parse_rule(
         Dispatching(engine.function).create_engine(IndexedEngine),
-        predicate, actiontype, body, localdict, globaldict
+        predicate, actiontype, body, localdict, globaldict, cls
     )
 
 when(rules_for, type(After.sorted))(lambda f: rules_for(f.im_func))
-
 
 
 

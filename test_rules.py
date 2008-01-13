@@ -1,4 +1,4 @@
-import unittest
+import unittest, sys
 from peak.rules import *
 
 x2 = lambda a: a*2
@@ -194,6 +194,47 @@ class MiscTests(unittest.TestCase):
         self.assertEqual(classify(99),"senior")
         self.assertEqual(classify(Min),"infant")
         self.assertEqual(classify(Max),"senior")
+
+
+
+
+
+
+
+
+
+    def testClassBodyRules(self):
+        from peak.rules.core import ActionDef, Local
+        from peak.rules.criteria import Signature, Test, Class
+        from peak.rules.predicates import IsInstance, Truth
+
+        abstract()
+        def f1(a): pass
+
+        abstract()
+        def f2(b): pass
+
+        class T:
+            f1=sys._getframe(1).f_locals['f1']  # ugh
+            when(f1)
+            def f1_(a): pass
+
+            f2=sys._getframe(1).f_locals['f2']
+            when(f2, 'b')
+            def f2_(b): pass
+
+        self.assertEqual(
+            list(rules_for(f1)), [ActionDef(Method, T.f1_.im_func, (T,), 0)]
+        )
+        self.assertEqual(
+            list(rules_for(f2)), [ActionDef(
+                Method, T.f2_.im_func, Signature([
+                    Test(IsInstance(Local('b')), Class(T)),
+                    Test(Truth(Local('b')), True)
+                ]), 0)
+            ]
+        )
+
 
 
 
@@ -532,7 +573,7 @@ class NodeBuildingTests(unittest.TestCase):
 
 
 def additional_tests():
-    import sys, doctest
+    import doctest
     files = [
         'README.txt', 'DESIGN.txt', 'Indexing.txt', 'AST-Builder.txt',
         'Code-Generation.txt', 'Criteria.txt', 'Predicates.txt',

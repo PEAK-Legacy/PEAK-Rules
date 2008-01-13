@@ -305,12 +305,12 @@ XXX
 
 We can now use these decorators to implement a generic function::
 
+    >>> @abstract()
+    ... def getPrice(product,customer=None,options=()):
+    ...     """Get this product's price"""
+
     >>> class Product:
-    ...     @abstract()
-    ...     def getPrice(product,customer=None,options=()):
-    ...         """Get this product's price"""
-    ...
-    ...     @add_when(getPrice, ())
+    ...     @add_when(getPrice)
     ...     def __addBasePrice(product,customer,options):
     ...         """Always include the product's base price"""
     ...         return product.base_price
@@ -318,31 +318,37 @@ We can now use these decorators to implement a generic function::
     >>> shoes = Product()
     >>> shoes.base_price = 42
 
-    >>> shoes.getPrice()
+    >>> getPrice(shoes)
     42
 
 And then we can create some pricing rules::
 
-    >>> @add_when(Product.getPrice, "'blue suede' in options")
+    >>> @add_when(getPrice, "'blue suede' in options")
     ... def blueSuedeUpcharge(product,customer,options):
     ...     return 24
     ...
 
-    >>> @discount_when(Product.getPrice, 
+    >>> @discount_when(getPrice, 
     ...    "customer=='Elvis' and 'blue suede' in options and product is shoes"
     ... )
     ... def ElvisGetsTenPercentOff(product,customer,options):
     ...     return .1
 
+    >>> @add_when(getPrice)
+    ... def everything_else_is_free(product, customer, options):
+    ...     return 0
+
 And try them out::
 
-    >>> shoes.getPrice()
+    >>> getPrice("something")
+    0
+    >>> getPrice(shoes)
     42
-    >>> shoes.getPrice(options=['blue suede'])
+    >>> getPrice(shoes, options=['blue suede'])
     66
-    >>> print shoes.getPrice('Elvis',options=['blue suede'])
+    >>> print getPrice(shoes, 'Elvis',options=['blue suede'])
     59.4
-    >>> shoes.getPrice('Elvis')     # no suede, no discount!
+    >>> getPrice(shoes, 'Elvis')     # no suede, no discount!
     42
 
 
