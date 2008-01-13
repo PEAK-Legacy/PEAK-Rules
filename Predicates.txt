@@ -278,10 +278,10 @@ Iterable constants into or-ed equality tests::
 And non-iterable constants into plain expressions::
 
     >>> pe('x in 27')
-    Test(Truth(Compare(Local('x'), (('in', Const(27)),))), Value(True, True))
+    Test(Truth(Compare(Local('x'), (('in', Const(27)),))), True)
 
     >>> pe('x not in 27')
-    Test(Truth(Compare(Local('x'), (('not in', Const(27)),))), Value(True, True))
+    Test(Truth(Compare(Local('x'), (('not in', Const(27)),))), True)
 
 
 The ``is`` operator produces identity tests, if either side is a constant::
@@ -296,16 +296,16 @@ The ``is`` operator produces identity tests, if either side is a constant::
 And plain expressions when neither side is constant::
 
     >>> pe('x is y')
-    Test(Truth(Compare(Local('x'), (('is', Local('y')),))), Value(True, True))
+    Test(Truth(Compare(Local('x'), (('is', Local('y')),))), True)
 
     >>> pe('x is not y')
-    Test(Truth(Compare(Local('x'), (('is not', Local('y')),))), Value(True, True))
+    Test(Truth(Compare(Local('x'), (('is not', Local('y')),))), True)
 
     >>> pe('not (x is y)')    
-    Test(Truth(Compare(Local('x'), (('is', Local('y')),))), Value(False, True))
+    Test(Truth(Compare(Local('x'), (('is', Local('y')),))), False)
     
     >>> pe('not (x is not y)')    
-    Test(Truth(Compare(Local('x'), (('is not', Local('y')),))), Value(False, True))
+    Test(Truth(Compare(Local('x'), (('is not', Local('y')),))), False)
 
 
 Complex logical expressions are always rendered in disjunctive normal form,

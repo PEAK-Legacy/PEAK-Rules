@@ -174,7 +174,7 @@ def or_(items, mode=True):
 def expressionSignature(expr, mode):
     """Return a test that tests `expr` in truth `mode`"""
     # Default is to simply test the truth of the expression
-    return Test(Truth(expr), Value(mode))    
+    return Test(Truth(expr), mode)
 
 def compileIn(expr, criterion, truth):
     """Return a signature or predicate (or None) for 'expr in criterion'"""
@@ -300,8 +300,8 @@ when(predicate_node_for, (IndexedEngine, Truth))
 def truth_node(builder, expr, cases, remaining_exprs, memo):
     dont_cares, seedmap = builder.seed_bits(expr, cases)
     return (    # True/false tuple for Truth
-        builder.build(seedmap[True, 0][0] | dont_cares, remaining_exprs, memo),
-        builder.build(seedmap[False, 0][0] | dont_cares, remaining_exprs, memo)
+        builder.build(seedmap[True][0] | dont_cares, remaining_exprs, memo),
+        builder.build(seedmap[False][0] | dont_cares, remaining_exprs, memo)
     )
 
 when(predicate_node_for, (IndexedEngine, Identity))

@@ -294,8 +294,8 @@ def seeds_for(index, criterion):
     """
 
 when(seeds_for, (BitmapIndex, bool))(
-    # True->all seeds, False->no seeds
-    lambda index, criterion: ([(), index.all_seeds][criterion], [], [])
+    # logical truth:
+    lambda index, criterion: ([criterion], [criterion], [not criterion])
 )
 
 
@@ -356,7 +356,7 @@ def seeds_for_value(index, criterion):
     if v not in index.all_seeds:
         index.extra.clear()   # ensure offsets are rebuilt on next selectivity()
     if criterion.match:
-        return [v], [v], []
+        return [v], [v], [(Min, -1)]
     else:
         return _FixedSubset(index.all_seeds), [(Min, -1)], [v]
 
@@ -379,11 +379,11 @@ def split_ranges(dont_cares, bitmap, node=lambda b:b):
     exact = {}
     current = dont_cares
     for (val,d), (inc, exc) in bitmap.iteritems():
-        if d:
+        if d and not (val is Min and d==-1 and not inc):
             break     # something other than == was used; use full algorithm
         exact[val] = node(current | inc)
     else:
-        return exact, ranges    # all == criteria, no ranges or !=
+        return exact, [((Min, Max), node(dont_cares))]
 
     low = Min
 

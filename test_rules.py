@@ -215,7 +215,7 @@ class MiscTests(unittest.TestCase):
             return parse_expr(expr, builder)
 
         x_cmp_y = lambda op, t=True: Test(
-            Truth(Compare(Local('x'), ((op, Local('y')),))), Value(t)
+            Truth(Compare(Local('x'), ((op, Local('y')),))), t
         )      
         x,y = Comparison(Local('x')), Comparison(Local('y'))
 
@@ -297,7 +297,7 @@ class NodeBuildingTests(unittest.TestCase):
     def testTruthNode(self):
         from peak.rules.predicates import truth_node
         node = self.build(truth_node, 27,
-            {(True,0): (128,0), (False,0): (64,0)})
+            {True: (128,0), False: (64,0)})
         self.assertEqual(node, (27|128, 27|64))
 
     def testIdentityNode(self):
@@ -368,14 +368,14 @@ class NodeBuildingTests(unittest.TestCase):
 
 
 def additional_tests():
-    import doctest
-    return doctest.DocFileSuite(
-        'DESIGN.txt', 'Indexing.txt', 'AST-Builder.txt',
+    import sys, doctest
+    files = [
+        'README.txt', 'DESIGN.txt', 'Indexing.txt', 'AST-Builder.txt',
         'Code-Generation.txt', 'Criteria.txt', 'Predicates.txt',
-        optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE,
+    ][sys.version<'2.4':]   # skip README.txt on 2.3 due to @ syntax
+    return doctest.DocFileSuite(
+        optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE, *files
     )
-
-
 
 
 

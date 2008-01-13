@@ -861,27 +861,6 @@ and the number of branches increases::
     >>> ind.selectivity([1,2])
     (2, 2)
 
-Regardless of the types of criteria being tested, ``seeds_for()`` always
-ensures that a criterion of ``True`` matches all seeds, and a criterion of
-``False`` matches no seeds::
-
-    >>> ind.add_case(3, True)
-    >>> ind.selectivity([3])
-    (2, 2)
-
-    >>> ind.add_case(4, False)
-    >>> ind.selectivity([4])
-    (2, 0)
-
-Also, ``BitmapIndex`` pretends that ``True`` cases are unknown to it::
-
-    >>> list(from_bits(ind.known_cases))
-    [0, 1, 2, 4]
-    
-This means that dispatch node builders don't need to have any special case
-handling for ``True``; it will simply appear to them as though the applicable
-cases didn't have any requirements for the indexed expression.
-
 
 -----------------
 Indexing Criteria
@@ -1033,7 +1012,7 @@ seeds in the index, minus one::
     (9, 1)
 
     >>> sorted(ind.expanded_sets())
-    [((Min, -1), [[4], []]), ((1, -1), [[0], []]),
+    [((Min, -1), [[4], [5]]), ((1, -1), [[0], []]),
      ((5, -1), [[1], []]), ((7, -1), [[2, 3], []]), ((7, 0), [[5], [4]]),
      ((7, 1), [[], [3]]), ((20, 1), [[], [1]]), ((23, 1), [[], [0]]),
      ((24, 1), [[], [2]])]
@@ -1063,19 +1042,19 @@ Value Map Generation
 
     >>> ind = BitmapIndex(eng, 'q')
     >>> dump_ranges(ind, ind.known_cases)
-    ({}, [])
+    ({}, [((Min, Max), [])])
 
     >>> ind.add_case(0, Value(19))
     >>> dump_ranges(ind, ind.known_cases)
-    ({19: [0]}, [])    
+    ({Min: [], 19: [0]}, [((Min, Max), [])])
 
     >>> ind.add_case(1, Value(23))
     >>> dump_ranges(ind, ind.known_cases)
-    ({19: [0], 23: [1]}, [])    
+    ({Min: [], 19: [0], 23: [1]}, [((Min, Max), [])])
 
     >>> ind.add_case(2, Value(23, False))
     >>> dump_ranges(ind, ind.known_cases)
-    ({19: [0, 2], 23: [1]}, [((Min, Max), [2])])    
+    ({19: [0, 2], 23: [1]}, [((Min, Max), [2])])
 
     >>> ind.add_case(3, Range(lo=(57,1)))
     >>> dump_ranges(ind, ind.known_cases)
@@ -1127,7 +1106,7 @@ non-match::
     (4, 2)
 
     >>> dict(ind.expanded_sets()) == {
-    ...     int: [[0], [2]], object: [[2], []], other: [[3], []],   
+    ...     int: [[0], [2]], object: [[2], []], other: [[3], []],
     ...     myint: [[1], []]
     ... }
     True
@@ -1161,7 +1140,7 @@ index, because there's no easy way to incrementally update a set intersection::
 
     >>> ind.add_case(1, Class(c))
     >>> ind.selectivity([0])    # c
-    (4, 1)   
+    (4, 1)
     >>> ind.selectivity([1])
     (4, 1)
     >>> dict(ind.expanded_sets()) == {
@@ -1187,7 +1166,7 @@ index, because there's no easy way to incrementally update a set intersection::
     >>> ind.selectivity([2])
     (6, 1)
     >>> ind.selectivity([3])
-    (6, 1)   
+    (6, 1)
     >>> dict(ind.expanded_sets()) == {
     ...     a: [[], []], b: [[], []], c: [[0, 1], [2]], object: [[], []],
     ...     d: [[], []], e: [[0, 2, 3], []]
@@ -1211,7 +1190,7 @@ index, because there's no easy way to incrementally update a set intersection::
     (8, 4)
     >>> ind.selectivity([2])    # still just 'e'
     (8, 1)
-    
+
     >>> ind.add_case(6, Classes([Class(d, False), Class(e, False)]))
     >>> ind.selectivity([6])    # all but d, e, f
     (8, 5)
@@ -1255,4 +1234,21 @@ information for the new ``x`` class::
     ...     x: [[0, 2], []]
     ... }
     True
+
+
+Truth
+=====
+
+``seeds_for()`` treats boolean criteria as logical truth::
+
+    >>> ind = BitmapIndex(eng, "z")
+
+    >>> ind.add_case(0, True)
+    >>> ind.selectivity([0])
+    (2, 1)
+
+    >>> ind.add_case(1, False)
+    >>> ind.selectivity([0,1])
+    (2, 2)
+
 
