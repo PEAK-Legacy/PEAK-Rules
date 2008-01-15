@@ -179,7 +179,7 @@ class Method(object):
             maker = None   # allow gf's to use something else instead of Method
         else:
             maker = cls.make
-        def decorate(f, pred=()):
+        def decorate(f, pred=(), depth=2, frame=None):
             def callback(frame, name, func, old_locals):
                 rules = rules_for(f)
                 engine = Dispatching(f).engine
@@ -198,7 +198,7 @@ class Method(object):
                 if old_locals.get(name) in (f, rules):
                     return f    # prevent overwriting if name is the same
                 return func
-            return decorate_assignment(callback)
+            return decorate_assignment(callback, depth, frame)
         decorate = with_name(decorate, name)
         decorate.__doc__ = doc
         return decorate
