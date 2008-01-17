@@ -40,12 +40,8 @@ except NameError:
 empty = frozenset()
 
 struct()
-def Rule(body, predicate=(), actiontype=None):
-    return body, predicate, actiontype
-
-struct()
-def ActionDef(actiontype, body, signature, sequence):
-    return actiontype, body, signature, sequence
+def Rule(body, predicate=(), actiontype=None, sequence=0):
+    return body, predicate, actiontype, sequence
 
 def disjuncts(ob):
     """Return a *list* of the logical disjunctions of `ob`"""
@@ -63,6 +59,10 @@ def clone_function(f):
     return new.function(
       f.func_code, f.func_globals, f.func_name, f.func_defaults, f.func_closure
     )
+
+
+
+
 
 
 
@@ -106,9 +106,9 @@ def always_overrides(a, b):
     when(overrides, (a, b))(YES)
     when(overrides, (b, a))(NO)
     pairs = {}; to_add = []
-    for adef in rules_for(overrides):
-        sig = adef.signature
-        if type(sig) is not tuple or len(sig)!=2 or adef.body is not YES:
+    for rule in rules_for(overrides):
+        sig = rule.predicate
+        if type(sig) is not tuple or len(sig)!=2 or rule.body is not YES:
             continue
         pairs[sig]=1
         if sig[0]==b: to_add.append((a, sig[1]))
@@ -291,10 +291,10 @@ class RuleSet(object):
             for actiondef in self.actiondefs[rule][1]:
                 yield actiondef
 
-    def _actions_for(self, (na, body, predicate, actiontype), sequence):
+    def _actions_for(self, (na, body, predicate, actiontype, seq), sequence):
         actiontype = actiontype or self.default_actiontype
         for signature in disjuncts(predicate):
-            yield ActionDef(actiontype, body, signature, sequence)
+            yield Rule(body, signature, actiontype, sequence)
 
     synchronized()
     def subscribe(self, listener):
@@ -427,10 +427,10 @@ class Engine(object):
     def actions_changed(self, added, removed):
         if removed and self.reset_on_remove:
             return self._full_reset()
-        for (na, atype, body, sig, seq) in removed:
-            self._remove_method(sig, atype, body, seq)
-        for (na, atype, body, sig, seq) in added:
-            self._add_method(sig, atype, body, seq)
+        for rule in removed:
+            self._remove_method(rule.predicate, rule)
+        for rule in added:
+            self._add_method(rule.predicate, rule)
         if added or removed:
             self._changed()
 
@@ -449,18 +449,18 @@ class Engine(object):
 
 
 
-    def _add_method(self, signature, atype, body, seq):
-        """Add a case with the given signature and action"""
+    def _add_method(self, signature, rule):
+        """Add a case for the given signature and rule"""
         registry = self.registry
-        action = atype(body, signature, seq)
+        action = rule.actiontype(rule.body, signature, rule.sequence)
         if signature in registry:
             registry[signature] = combine_actions(registry[signature], action)
         else:
             registry[signature] = action
         return action
 
-    def _remove_method(self, signature, atype, body, seq):
-        """Remove the case with the given signature and action"""
+    def _remove_method(self, signature, rule):
+        """Remove the case for the given signature and rule"""
         raise NotImplementedError
 
     def _generate_code(self):
@@ -511,8 +511,8 @@ class TypeEngine(Engine):
                 cache[key] = act
         self._changed()
 
-    def _add_method(self, signature, atype, body, seq):
-        action = super(TypeEngine, self)._add_method(signature,atype,body,seq)
+    def _add_method(self, signature, rule):
+        action = super(TypeEngine, self)._add_method(signature, rule)
         cache = self.static_cache
         for key in cache.keys():
             if key!=signature and implies(key, signature):

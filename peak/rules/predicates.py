@@ -212,7 +212,7 @@ class IndexedEngine(Engine, TreeBuilder):
         super(IndexedEngine, self).__init__(disp)
         self.arguments = dict([(arg,Local(arg)) for arg in self.argnames])
 
-    def _add_method(self, signature, atype, body, seq):
+    def _add_method(self, signature, rule):
         signature = Signature(tests_for(signature, self))
         if signature not in self.registry:
             case_id = len(self.signatures)
@@ -227,7 +227,7 @@ class IndexedEngine(Engine, TreeBuilder):
                 Ordering(self, expr).requires(requires)
                 requires.append(expr)
                 BitmapIndex(self, expr).add_case(case_id, criterion)
-        super(IndexedEngine, self)._add_method(signature, atype, body, seq)
+        return super(IndexedEngine, self)._add_method(signature, rule)
 
     def _generate_code(self):
         smig = SMIGenerator(self.function)

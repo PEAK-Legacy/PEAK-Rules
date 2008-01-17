@@ -204,7 +204,7 @@ class MiscTests(unittest.TestCase):
 
 
     def testClassBodyRules(self):
-        from peak.rules.core import ActionDef, Local
+        from peak.rules.core import Local
         from peak.rules.criteria import Signature, Test, Class
         from peak.rules.predicates import IsInstance, Truth
 
@@ -224,14 +224,14 @@ class MiscTests(unittest.TestCase):
             def f2_(b): pass
 
         self.assertEqual(
-            list(rules_for(f1)), [ActionDef(Method, T.f1_.im_func, (T,), 0)]
+            list(rules_for(f1)), [Rule(T.f1_.im_func, (T,), Method, 0)]
         )
         self.assertEqual(
-            list(rules_for(f2)), [ActionDef(
-                Method, T.f2_.im_func, Signature([
+            list(rules_for(f2)), [Rule(
+                T.f2_.im_func, Signature([
                     Test(IsInstance(Local('b')), Class(T)),
                     Test(Truth(Local('b')), True)
-                ]), 0)
+                ]), Method, 0)
             ]
         )
 
