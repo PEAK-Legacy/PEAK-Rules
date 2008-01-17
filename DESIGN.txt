@@ -535,7 +535,7 @@ predicate and action type default to ``()`` and ``None`` if not specified::
 
     >>> from peak.rules import Rule
     >>> def dummy(): pass
-    >>> r = Rule(dummy)
+    >>> r = Rule(dummy, sequence=0)
     >>> r
     Rule(<function dummy ...>, (), None, 0)
 
@@ -561,10 +561,10 @@ Iterating over a ruleset yields its actions::
 And rules can be added and removed with the ``add()`` and ``remove()``
 methods::
 
-    >>> r = Rule(dummy)
+    >>> r = Rule(dummy, sequence=42)
     >>> rs.add(r)
     >>> list(rs)
-    [Rule(<function dummy ...>, (), <...Method...>, 0)]
+    [Rule(<function dummy ...>, (), <...Method...>, 42)]
 
     >>> rs.remove(r)
     >>> list(rs)
@@ -587,10 +587,10 @@ be used to create action objects.)
     >>> rs.subscribe(do)
 
     >>> rs.add(r)
-    Add: Rule(<function dummy ...>, (), <...Method...>, 1)
+    Add: Rule(<function dummy ...>, (), <...Method...>, 42)
 
     >>> rs.remove(r)
-    Remove: Rule(<function dummy ...>, (), <...Method...>, 1)
+    Remove: Rule(<function dummy ...>, (), <...Method...>, 42)
 
     >>> rs.unsubscribe(do)
 
@@ -601,7 +601,7 @@ operation of the ``actions_changed()`` method::
 
     >>> rs.add(r)
     >>> rs.subscribe(do)
-    Add: Rule(<function dummy ...>, (), <...Method...>, 2)
+    Add: Rule(<function dummy ...>, (), <...Method...>, 42)
 
 Unsubscribing, however, does not send any removal messages::
 

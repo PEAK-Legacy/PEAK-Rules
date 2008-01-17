@@ -204,7 +204,7 @@ class MiscTests(unittest.TestCase):
 
 
     def testClassBodyRules(self):
-        from peak.rules.core import Local
+        from peak.rules.core import Local, Rule
         from peak.rules.criteria import Signature, Test, Class
         from peak.rules.predicates import IsInstance, Truth
 
@@ -214,6 +214,10 @@ class MiscTests(unittest.TestCase):
         abstract()
         def f2(b): pass
 
+        # This is to verify that the rules have sequence numbers by definition
+        # order, not reverse definition order, inside a class.
+        num = Rule(None).sequence
+        
         class T:
             f1=sys._getframe(1).f_locals['f1']  # ugh
             when(f1)
@@ -224,20 +228,16 @@ class MiscTests(unittest.TestCase):
             def f2_(b): pass
 
         self.assertEqual(
-            list(rules_for(f1)), [Rule(T.f1_.im_func, (T,), Method, 0)]
+            list(rules_for(f1)), [Rule(T.f1_.im_func, (T,), Method, num+1)]
         )
         self.assertEqual(
             list(rules_for(f2)), [Rule(
                 T.f2_.im_func, Signature([
                     Test(IsInstance(Local('b')), Class(T)),
                     Test(Truth(Local('b')), True)
-                ]), Method, 0)
+                ]), Method, num+2)
             ]
         )
-
-
-
-
 
 
 

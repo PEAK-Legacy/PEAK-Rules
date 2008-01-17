@@ -409,13 +409,13 @@ when(always_testable, (Const,))(lambda expr:True)
 
 
 when(parse_rule, (IndexedEngine, basestring))
-def _parse_string(engine, predicate, actiontype, body, localdict, globaldict, cls):
-    b = CriteriaBuilder(engine.arguments, localdict, globaldict, __builtins__)
+def _parse_string(engine, predicate, ctx, cls):
+    b = CriteriaBuilder(engine.arguments, ctx.localdict, ctx.globaldict, __builtins__)
     expr = parse_expr(predicate, b)
     if cls is not None and engine.argnames:
         cls = type_to_test(cls, engine.arguments[engine.argnames[0]], engine)
         expr = intersect(cls, expr)
-    return Rule(body, expr, actiontype)
+    return Rule(ctx.body, expr, ctx.actiontype, ctx.sequence)
 
 # === As of this point, it should be possible to compile expressions!
 #

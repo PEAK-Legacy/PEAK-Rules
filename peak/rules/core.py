@@ -9,7 +9,7 @@ __all__ = [
 from peak.util.decorators import decorate_assignment, decorate, struct, synchronized, frameinfo, decorate_class
 from peak.util.assembler import Code, Const, Call, Local, Getattr, TryExcept, Suite, with_name
 from peak.util.addons import AddOn
-import inspect, new
+import inspect, new, itertools
 try:
     set = set
     frozenset = frozenset
@@ -39,9 +39,22 @@ except NameError:
         return d
 empty = frozenset()
 
+next_sequence = itertools.count().next
+
 struct()
-def Rule(body, predicate=(), actiontype=None, sequence=0):
+def Rule(body, predicate=(), actiontype=None, sequence=None):
+    if sequence is None:
+        sequence = next_sequence()
     return body, predicate, actiontype, sequence
+
+struct()
+def ParseContext(
+    body, actiontype=None, localdict=(), globaldict=(), sequence=None
+):
+    """Hold information needed to parse a predicate"""
+    if sequence is None:
+        sequence = next_sequence()
+    return body, actiontype, dict(localdict), dict(globaldict), sequence
 
 def disjuncts(ob):
     """Return a *list* of the logical disjunctions of `ob`"""
@@ -49,29 +62,16 @@ def disjuncts(ob):
     if ob is False: return []
     return [ob]
 
-def parse_rule(engine, predicate, actiontype, body, localdict, globaldict, cls):
+def parse_rule(engine, predicate, context, cls):
     """Hook for pre-processing predicates, e.g. parsing string expressions"""
     if cls is not None and type(predicate) is tuple:
         predicate = (cls,) + predicate        
-    return Rule(body, predicate, actiontype)
+    return Rule(context.body, predicate, context.actiontype, context.sequence)
 
 def clone_function(f):
     return new.function(
       f.func_code, f.func_globals, f.func_name, f.func_defaults, f.func_closure
     )
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -184,10 +184,9 @@ class Method(object):
                 rules = rules_for(f)
                 engine = Dispatching(f).engine
                 kind, module, locals_, globals_ = frameinfo(frame)
+                context = ParseContext(func, maker, locals_, globals_)
                 def register_for_class(cls):
-                    rules.add(parse_rule(
-                        engine, pred, maker, func, locals_, globals_, cls
-                    ))
+                    rules.add(parse_rule(engine, pred, context, cls))
                     return cls
 
                 if kind=='class':
@@ -202,6 +201,7 @@ class Method(object):
         decorate = with_name(decorate, name)
         decorate.__doc__ = doc
         return decorate
+
 
 when = Method.make_decorator(
     "when", "Extend a generic function with a new action"
@@ -260,16 +260,14 @@ class RuleSet(object):
 
     synchronized()
     def add(self, rule):
-        sequence = self.counter
-        self.counter += 1
-        actiondefs = frozenset(self._actions_for(rule, sequence))
+        actiondefs = frozenset(self._actions_for(rule))
         self.rules.append( rule )
-        self.actiondefs[rule] = sequence, actiondefs
+        self.actiondefs[rule] = actiondefs
         self._notify(added=actiondefs)
 
     synchronized()
     def remove(self, rule):
-        sequence, actiondefs = self.actiondefs.pop(rule)
+        actiondefs = self.actiondefs.pop(rule)
         self.rules.remove(rule)
         self._notify(removed=actiondefs)
 
@@ -285,16 +283,18 @@ class RuleSet(object):
 
 
 
+
+
     synchronized()
     def __iter__(self):
         for rule in self.rules:
-            for actiondef in self.actiondefs[rule][1]:
+            for actiondef in self.actiondefs[rule]:
                 yield actiondef
 
-    def _actions_for(self, (na, body, predicate, actiontype, seq), sequence):
+    def _actions_for(self, (na, body, predicate, actiontype, seq)):
         actiontype = actiontype or self.default_actiontype
         for signature in disjuncts(predicate):
-            yield Rule(body, signature, actiontype, sequence)
+            yield Rule(body, signature, actiontype, seq)
 
     synchronized()
     def subscribe(self, listener):
@@ -797,17 +797,17 @@ merge_by_default(AmbiguousMethods)
 
 
 when(parse_rule, (TypeEngine, basestring))
-def parse_string_rule_by_upgrade(
-    engine, predicate, actiontype, body, localdict, globaldict, cls
-):
+def parse_string_rule_by_upgrade(engine, predicate, context, cls):
     """Upgrade to predicate dispatch engine and do the parse"""
     from peak.rules.predicates import IndexedEngine
     return parse_rule(
         Dispatching(engine.function).create_engine(IndexedEngine),
-        predicate, actiontype, body, localdict, globaldict, cls
+        predicate, context, cls
     )
 
 when(rules_for, type(After.sorted))(lambda f: rules_for(f.im_func))
+
+
 
 
 
