@@ -330,20 +330,20 @@ class ExprBuilder:
     """Expression builder returning bytecode-able AST nodes"""
 
     def __init__(self,arguments,*namespaces):
-        self.arguments = arguments
-        self.namespaces = namespaces
+        self.bindings = [
+            dict([(k,Const(v)) for k,v in ns.iteritems()]) for ns in namespaces
+        ]
+        self.push(arguments); self.push()
 
-    def Const(self,value):
-        return Const(value)
+    def push(self, ns={}): self.bindings.insert(0, {}); self.bind(ns)
+    def bind(self, ns): self.bindings[0].update(ns)
+    def pop(self): return self.bindings.pop(0)        
+
+    def Const(self,value): return Const(value)
 
     def Name(self,name):
-        if name in self.arguments:
-            return self.arguments[name]
-
-        for ns in self.namespaces:
-            if name in ns:
-                return Const(ns[name])
-
+        for ns in self.bindings:
+            if name in ns: return ns[name]
         raise NameError(name)
 
     def Subscript(self, left, right):

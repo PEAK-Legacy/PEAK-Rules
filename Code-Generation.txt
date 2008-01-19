@@ -45,7 +45,7 @@ And, for convenience, we'll define a short function to parse and output an
 expression's AST using this builder instance::
 
     >>> def pe(expr):
-    ...     print parse_expr(expr, builder)
+    ...     return parse_expr(expr, builder)
 
 
 Names and Constants
@@ -77,6 +77,61 @@ And unfound names produce a compile-time error::
     Traceback (most recent call last):
       ...
     NameError: fubar
+
+
+Namespaces and Binding
+======================
+
+An ``ExprBuilder`` object's ``bindings`` attribute is a list of dictionaries,
+mapping names to the desired outputs::
+
+    >>> builder.bindings
+    [{}, {'a': Local('a'), 'c': Local('c'), 'b': Local('b'), 'e': Local('e'),
+          'd': Local('d'), 'g': Local('g'), 'f': Local('f')},
+          {...}, {...}, {...}]
+
+You can add more bindings temporarily with the ``.push()`` method, then
+remove them with ``.pop()``::
+
+    >>> builder.push({'q': pe('42')})
+
+    >>> builder.Name('q')
+    Const(42)
+
+    >>> builder.pop()
+    {'q': Const(42)}
+
+    >>> builder.Name('q')
+    Traceback (most recent call last):
+      ...
+    NameError: q
+
+If you omit the argument to ``.push()``, it just adds an empty namespace to
+the bindings::
+
+    >>> builder.push()
+    >>> builder.bindings
+    [{}, {}, {'a': Local('a'), 'c': Local('c'), 'b': Local('b'),
+              'e': Local('e'), 'd': Local('d'), 'g': Local('g'),
+              'f': Local('f')}, {...}, {...}, {...}]
+
+Which you can then modify using ``.bind()``::
+
+    >>> builder.bind({'x': pe('99')})
+    >>> builder.bindings
+    [{'x': Const(99)}, {}, {'a': Local('a'), 'c': Local('c'), 'b': Local('b'),
+                            'e': Local('e'), 'd': Local('d'), 'g': Local('g'),
+                            'f': Local('f')}, {...}, {...}, {...}]
+
+And finally remove with ``.pop()``::
+
+    >>> builder.pop()
+    {'x': Const(99)}
+
+    >>> builder.bindings
+    [{}, {'a': Local('a'), 'c': Local('c'), 'b': Local('b'), 'e': Local('e'),
+          'd': Local('d'), 'g': Local('g'), 'f': Local('f')},
+          {...}, {...}, {...}]
 
 
 Operators
@@ -333,7 +388,7 @@ for the interpreter function::
 
     >>> def interpreter(input):
     ...     return input
-    
+
     >>> smig = SMIGenerator(interpreter)
 
 To generate the interpreter function, you call the ``generate()`` method with
@@ -406,7 +461,7 @@ code targets will return the same ID each time::
 
     >>> pass_id == smig.action_id(SetInput())
     False
-        
+
 Whenever you add new actions, you must regenerate the interpreter function
 in order to be able to use them in the dispatch tree.  So we'll regenerate
 our input function, this time using the ``set_input`` action::
@@ -518,26 +573,26 @@ expressions, with an added number to ensure uniqueness::
                   6 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
                   9 LOAD_FAST                0 ($CSECache)
                  12 JUMP_IF_TRUE             8 (to 23)
-                 15 POP_TOP             
+                 15 POP_TOP
                  16 BUILD_MAP                0
-                 19 DUP_TOP             
+                 19 DUP_TOP
                  20 STORE_FAST               0 ($CSECache)
             >>   23 COMPARE_OP               6 (in)
                  26 JUMP_IF_FALSE           11 (to 40)
-                 29 POP_TOP             
+                 29 POP_TOP
                  30 LOAD_FAST                0 ($CSECache)
                  33 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
-                 36 BINARY_SUBSCR       
+                 36 BINARY_SUBSCR
                  37 JUMP_FORWARD            16 (to 56)
-            >>   40 POP_TOP             
+            >>   40 POP_TOP
                  41 LOAD_FAST                1 (a)
                  44 LOAD_FAST                2 (b)
-                 47 BINARY_ADD          
-                 48 DUP_TOP             
+                 47 BINARY_ADD
+                 48 DUP_TOP
                  49 LOAD_FAST                0 ($CSECache)
                  52 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
-                 55 STORE_SUBSCR        
-            >>   56 RETURN_VALUE        
+                 55 STORE_SUBSCR
+            >>   56 RETURN_VALUE
 
 While the ``cache()`` method marks an expression as definitely cacheable, the
 ``maybe_cache()`` method allows the code object to decide for itself whether
@@ -567,31 +622,31 @@ passed to ``maybe_cache()`` twice -- once by itself, and once as a child of
                   6 LOAD_CONST               1 ("Div(Add(Local('a'), Local('b')), Mul(Local('c'), Local('d'))) #1")
                   9 LOAD_FAST                0 ($CSECache)
                  12 JUMP_IF_TRUE             8 (to 23)
-                 15 POP_TOP             
+                 15 POP_TOP
                  16 BUILD_MAP                0
-                 19 DUP_TOP             
+                 19 DUP_TOP
                  20 STORE_FAST               0 ($CSECache)
             >>   23 COMPARE_OP               6 (in)
                  26 JUMP_IF_FALSE           11 (to 40)
-                 29 POP_TOP             
+                 29 POP_TOP
                  30 LOAD_FAST                0 ($CSECache)
                  33 LOAD_CONST               1 ("Div(Add(Local('a'), Local('b')), Mul(Local('c'), Local('d'))) #1")
-                 36 BINARY_SUBSCR       
+                 36 BINARY_SUBSCR
                  37 JUMP_FORWARD            24 (to 64)
-            >>   40 POP_TOP             
+            >>   40 POP_TOP
                  41 LOAD_FAST                1 (a)
                  44 LOAD_FAST                2 (b)
-                 47 BINARY_ADD          
+                 47 BINARY_ADD
                  48 LOAD_FAST                3 (c)
                  51 LOAD_FAST                4 (d)
-                 54 BINARY_MULTIPLY     
-                 55 BINARY_DIVIDE       
-                 56 DUP_TOP             
+                 54 BINARY_MULTIPLY
+                 55 BINARY_DIVIDE
+                 56 DUP_TOP
                  57 LOAD_FAST                0 ($CSECache)
                  60 LOAD_CONST               1 ("Div(Add(Local('a'), Local('b')), Mul(Local('c'), Local('d'))) #1")
-                 63 STORE_SUBSCR        
+                 63 STORE_SUBSCR
             >>   64 LOAD_CONST               2 (3)
-                 67 BINARY_MODULO       
+                 67 BINARY_MODULO
                  68 RETURN_VALUE
 
 In the next example, we compute ``(a+b)*(a+b)`` after inspecting
@@ -610,48 +665,48 @@ we detect that ``(a+b)`` is used more than once, so it is cached::
                   6 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
                   9 LOAD_FAST                0 ($CSECache)
                  12 JUMP_IF_TRUE             8 (to 23)
-                 15 POP_TOP             
+                 15 POP_TOP
                  16 BUILD_MAP                0
-                 19 DUP_TOP             
+                 19 DUP_TOP
                  20 STORE_FAST               0 ($CSECache)
             >>   23 COMPARE_OP               6 (in)
                  26 JUMP_IF_FALSE           11 (to 40)
-                 29 POP_TOP             
+                 29 POP_TOP
                  30 LOAD_FAST                0 ($CSECache)
                  33 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
-                 36 BINARY_SUBSCR       
+                 36 BINARY_SUBSCR
                  37 JUMP_FORWARD            16 (to 56)
-            >>   40 POP_TOP             
+            >>   40 POP_TOP
                  41 LOAD_FAST                1 (a)
                  44 LOAD_FAST                2 (b)
-                 47 BINARY_ADD          
-                 48 DUP_TOP             
+                 47 BINARY_ADD
+                 48 DUP_TOP
                  49 LOAD_FAST                0 ($CSECache)
                  52 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
-                 55 STORE_SUBSCR        
+                 55 STORE_SUBSCR
             >>   56 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
                  59 LOAD_FAST                0 ($CSECache)
                  62 JUMP_IF_TRUE             8 (to 73)
-                 65 POP_TOP             
+                 65 POP_TOP
                  66 BUILD_MAP                0
-                 69 DUP_TOP             
+                 69 DUP_TOP
                  70 STORE_FAST               0 ($CSECache)
             >>   73 COMPARE_OP               6 (in)
                  76 JUMP_IF_FALSE           11 (to 90)
-                 79 POP_TOP             
+                 79 POP_TOP
                  80 LOAD_FAST                0 ($CSECache)
                  83 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
-                 86 BINARY_SUBSCR       
+                 86 BINARY_SUBSCR
                  87 JUMP_FORWARD            16 (to 106)
-            >>   90 POP_TOP             
+            >>   90 POP_TOP
                  91 LOAD_FAST                1 (a)
                  94 LOAD_FAST                2 (b)
-                 97 BINARY_ADD          
-                 98 DUP_TOP             
+                 97 BINARY_ADD
+                 98 DUP_TOP
                  99 LOAD_FAST                0 ($CSECache)
                 102 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
-                105 STORE_SUBSCR        
-            >>  106 BINARY_MULTIPLY     
+                105 STORE_SUBSCR
+            >>  106 BINARY_MULTIPLY
                 107 RETURN_VALUE
 
 And in this example, we also compute ``(a+b)*(a+b)``, but this time only
@@ -667,49 +722,49 @@ because ``(a+b)`` occurs more than once under the parent expression::
                   6 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
                   9 LOAD_FAST                0 ($CSECache)
                  12 JUMP_IF_TRUE             8 (to 23)
-                 15 POP_TOP             
+                 15 POP_TOP
                  16 BUILD_MAP                0
-                 19 DUP_TOP             
+                 19 DUP_TOP
                  20 STORE_FAST               0 ($CSECache)
             >>   23 COMPARE_OP               6 (in)
                  26 JUMP_IF_FALSE           11 (to 40)
-                 29 POP_TOP             
+                 29 POP_TOP
                  30 LOAD_FAST                0 ($CSECache)
                  33 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
-                 36 BINARY_SUBSCR       
+                 36 BINARY_SUBSCR
                  37 JUMP_FORWARD            16 (to 56)
-            >>   40 POP_TOP             
+            >>   40 POP_TOP
                  41 LOAD_FAST                1 (a)
                  44 LOAD_FAST                2 (b)
-                 47 BINARY_ADD          
-                 48 DUP_TOP             
+                 47 BINARY_ADD
+                 48 DUP_TOP
                  49 LOAD_FAST                0 ($CSECache)
                  52 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
-                 55 STORE_SUBSCR        
+                 55 STORE_SUBSCR
             >>   56 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
                  59 LOAD_FAST                0 ($CSECache)
                  62 JUMP_IF_TRUE             8 (to 73)
-                 65 POP_TOP             
+                 65 POP_TOP
                  66 BUILD_MAP                0
-                 69 DUP_TOP             
+                 69 DUP_TOP
                  70 STORE_FAST               0 ($CSECache)
             >>   73 COMPARE_OP               6 (in)
                  76 JUMP_IF_FALSE           11 (to 90)
-                 79 POP_TOP             
+                 79 POP_TOP
                  80 LOAD_FAST                0 ($CSECache)
                  83 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
-                 86 BINARY_SUBSCR       
+                 86 BINARY_SUBSCR
                  87 JUMP_FORWARD            16 (to 106)
-            >>   90 POP_TOP             
+            >>   90 POP_TOP
                  91 LOAD_FAST                1 (a)
                  94 LOAD_FAST                2 (b)
-                 97 BINARY_ADD          
-                 98 DUP_TOP             
+                 97 BINARY_ADD
+                 98 DUP_TOP
                  99 LOAD_FAST                0 ($CSECache)
                 102 LOAD_CONST               1 ("Add(Local('a'), Local('b')) #1")
-                105 STORE_SUBSCR        
-            >>  106 BINARY_MULTIPLY     
-                107 RETURN_VALUE        
+                105 STORE_SUBSCR
+            >>  106 BINARY_MULTIPLY
+                107 RETURN_VALUE
 
 Finally, it's important to note that only subexpressions that increase the
 stack size by exactly 1 are considered for caching::
