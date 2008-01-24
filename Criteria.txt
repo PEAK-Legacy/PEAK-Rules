@@ -265,7 +265,9 @@ every part of the conjunction::
 
     >>> implies(Conjunction([c,d]), Conjunction([a, int]))
     True
-    >>> implies(Conjunction([c,int]), Conjunction([a, int]))
+    >>> implies(Conjunction([c, int]), Conjunction([a, int]))
+    True
+    >>> implies(Conjunction([a, int]), Conjunction([c, int]))
     False
 
 (By the way, on a more sophisticated level of reasoning, you could say that

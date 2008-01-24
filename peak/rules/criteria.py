@@ -351,7 +351,6 @@ class Conjunction(Intersection, frozenset):
         return frozenset.__new__(cls, output)
 
 around(implies, (Intersection, object))
-around(implies, (Intersection, Intersection))
 def set_implies(c1, c2):
     for c in c1:
         if implies(c, c2):
@@ -360,6 +359,7 @@ def set_implies(c1, c2):
         return False
 
 around(implies, (object, Intersection))
+around(implies, (Intersection, Intersection))
 def ob_implies_set(c1, c2):
     for c in c2:
         if not implies(c1, c):
