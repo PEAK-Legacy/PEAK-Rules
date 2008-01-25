@@ -1035,7 +1035,8 @@ Value Map Generation
     ...     return exact, ranges
 
     >>> dump_ranges(ind, ind.known_cases)
-    ({1: [0, 4], 5: [0, 1, 4], 7: [0, 1, 2, 3, 5]},
+    ({1: [0, 4], 5: [0, 1, 4], 7: [0, 1, 2, 3, 5], 20: [0, 1, 2, 4],
+      23: [0, 2, 4], 24: [2, 4]},
      [((Min, 1), [4]), ((1, 5), [0, 4]), ((5, 7), [0, 1, 4]),
       ((7, 20), [0, 1, 2, 4]), ((20, 23), [0, 2, 4]), ((23, 24), [2, 4]),
       ((24, Max), [4])])
@@ -1058,7 +1059,7 @@ Value Map Generation
 
     >>> ind.add_case(3, Range(lo=(57,1)))
     >>> dump_ranges(ind, ind.known_cases)
-    ({19: [0, 2], 23: [1]}, [((Min, 57), [2]), ((57, Max), [2, 3])])
+    ({57: [2], 19: [0, 2], 23: [1]}, [((Min, 57), [2]), ((57, Max), [2, 3])])
 
     >>> ind.add_case(4, Range(lo=(57,-1)))
     >>> dump_ranges(ind, ind.known_cases)

@@ -395,11 +395,13 @@ def split_ranges(dont_cares, bitmap, node=lambda b:b):
             low = val
         new = current | inc
         new ^= (new & exc)
-        if d==0 or d<0 and not isinstance(val, Extreme):
-            exact[val] = node(new)
+        if not isinstance(val, Extreme):
+            if d==0 or d<0:
+                exact[val] = node(new)
+            #elif val not in exact:
+            #    exact[val] = node(current)
         if d:
             current = new
-
     if low != Max:
         if ranges and ranges[-1][-1]==current:
             low = ranges.pop()[0][0]
