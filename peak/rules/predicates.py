@@ -446,6 +446,7 @@ def _yield_tuples(ob):
     else:
         yield ob
 
-
-
+when(disjuncts, "ob in Test and ob.expr in Truth and ob.criterion in bool")(
+    lambda ob: [ob]
+)
 

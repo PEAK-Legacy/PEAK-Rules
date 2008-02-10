@@ -19,7 +19,7 @@ And we will test them using code objects:
 
     >>> from peak.util.assembler import Code, Const
     >>> from dis import dis
-    
+
 Truth
 -----
 
@@ -41,7 +41,18 @@ and selects the appropriate sub-node from a ``(true_node, false_node)`` tuple::
 The generated code unpacks the 2-tuple, and then does a bit of stack
 manipulation to select the correct subnode.
 
-                 
+The ``disjuncts()`` of a Truth test are always the Test itself::
+
+    >>> from peak.rules import disjuncts
+    >>> from peak.rules.criteria import Test
+
+    >>> list(disjuncts(Test(Truth(88), True)))
+    [Test(Truth(88), True)]
+
+    >>> list(disjuncts(Test(Truth(88), False)))
+    [Test(Truth(88), False)]
+
+
 Identity
 --------
 
@@ -145,7 +156,7 @@ cache::
                  47 JUMP_FORWARD             2 (to 52)
             >>   50 POP_TOP
                  51 END_FINALLY
-                 
+
 
 IsInstance
 ----------
@@ -250,7 +261,7 @@ tests and signatures.  It's initialized using the same arguments as the
     ...     return parse_expr(expr, builder)
 
     >>> pe('x+42 > 23*2')
-    Test(Comparison(Add(Local('x'), Const(42))), Range((46, 1), (Max, 1)))    
+    Test(Comparison(Add(Local('x'), Const(42))), Range((46, 1), (Max, 1)))
 
 
 The ``in`` operator converts constant classes into ``IsInstance`` tests::
@@ -301,10 +312,10 @@ And plain expressions when neither side is constant::
     >>> pe('x is not y')
     Test(Truth(Compare(Local('x'), (('is not', Local('y')),))), True)
 
-    >>> pe('not (x is y)')    
+    >>> pe('not (x is y)')
     Test(Truth(Compare(Local('x'), (('is', Local('y')),))), False)
-    
-    >>> pe('not (x is not y)')    
+
+    >>> pe('not (x is not y)')
     Test(Truth(Compare(Local('x'), (('is not', Local('y')),))), False)
 
 
@@ -345,6 +356,15 @@ with negations simplified away or reduced to match flags on criteria objects::
                  Test(IsInstance(Local('x')), Class(<type 'int'>, False))])
 
 
+And arbitrary expressions are handled as truth tests::
+
+    >>> pe('x')
+    Test(Truth(Local('x')), True)
+
+    >>> pe('not x')
+    Test(Truth(Local('x')), False)
+
+
 Pattern Matching
 ----------------
 
@@ -375,7 +395,7 @@ calls where the second argument is a constant::
     ...     Test(IsInstance(Local('x')), Class(unicode))
     ... ])
     True
-    
+
     >>> pe('issubclass(x,int)')
     Test(IsSubclass(Local('x')), Class(<type 'int'>, True))
 
@@ -391,13 +411,13 @@ calls where the second argument is a constant::
     ...     Test(IsSubclass(Local('x')), Class(unicode))
     ... ])
     True
-    
+
     >>> pe('not issubclass(x,(int,(str,unicode)))') == Test(
     ...     IsSubclass(Local('x')), Classes([
     ...         Class(unicode, False), Class(int, False), Class(str, False)])
     ... )
     True
-    
+
 
 Upgrading from ``TypeEngine``
 =============================
@@ -429,7 +449,7 @@ Each element of the type tuple is converted using a second generic function,
 
     >>> type_to_test(int, Local('x'), engine)
     Test(IsInstance(Local('x')), Class(<type 'int'>, True))
-    
+
     >>> type_to_test(istype(str), Local('x'), engine)
     Test(IsInstance(Local('x')), istype(<type 'str'>, True))
 
@@ -509,7 +529,7 @@ of signature ordering::
 
     >>> always_testable(Const(99))
     True
-    
+
     >>> always_testable(Add(Local('a'),Local('b')))
     False
 

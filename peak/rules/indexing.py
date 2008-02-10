@@ -408,8 +408,6 @@ def split_ranges(dont_cares, bitmap, node=lambda b:b):
         ranges.append(((low, Max), node(current)))
     return exact, ranges
 
-
-
 when(seeds_for, (BitmapIndex, Class))
 def seeds_for_class(index, criterion):
 
