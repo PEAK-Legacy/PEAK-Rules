@@ -398,8 +398,8 @@ def split_ranges(dont_cares, bitmap, node=lambda b:b):
         if not isinstance(val, Extreme):
             if d==0 or d<0:
                 exact[val] = node(new)
-            #elif val not in exact:
-            #    exact[val] = node(current)
+            elif val not in exact:
+                exact[val] = node(current)
         if d:
             current = new
     if low != Max:
