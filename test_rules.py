@@ -195,11 +195,11 @@ class MiscTests(unittest.TestCase):
         self.assertEqual(classify(Min),"infant")
         self.assertEqual(classify(Max),"senior")
 
-
-
-
-
-
+    def testSignatureOfTruthTests(self):
+        from peak.rules.predicates import Truth        
+        from peak.rules.criteria import Test, Signature
+        # this line used to fail with a recursion error:
+        Signature([Test(Truth(99), True), Test(Truth(88), False)])
 
 
 

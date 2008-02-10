@@ -41,7 +41,7 @@ and selects the appropriate sub-node from a ``(true_node, false_node)`` tuple::
 The generated code unpacks the 2-tuple, and then does a bit of stack
 manipulation to select the correct subnode.
 
-The ``disjuncts()`` of a Truth Test (or Truth Signature) are the Test itself::
+The ``disjuncts()`` of a Truth Test is the Test itself::
 
     >>> from peak.rules import disjuncts
     >>> from peak.rules.criteria import Test, Signature
@@ -51,11 +51,6 @@ The ``disjuncts()`` of a Truth Test (or Truth Signature) are the Test itself::
 
     >>> disjuncts(Test(Truth(88), False))
     [Test(Truth(88), False)]
-
-    >>> Signature([Test(Truth(99), True), Test(Truth(88), False)])
-
-(These proofs are needed a ``Test`` of a non-``Truth`` expression with
-boolean value would ordinarily have different disjuncts.)
 
 
 Identity
