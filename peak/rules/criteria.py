@@ -186,7 +186,7 @@ class Signature(Intersection, tuple):
                 posn = index[new.expr] = len(output)
                 output.append(new)
 
-            d = disjuncts(new.criterion)
+            d = disjuncts(new)
             if len(d) != 1:
                 del output[index[new.expr]]
                 return intersect(
