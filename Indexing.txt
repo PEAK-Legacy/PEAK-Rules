@@ -761,12 +761,6 @@ branches)::
     >>> eng = DemoEngine()
     >>> ind = BitmapIndex(eng, "some expression")
 
-    >>> ind.engine is eng
-    True
-
-    >>> ind.expr
-    'some expression'
-
     >>> ind.selectivity([])
     (0, 0)
 

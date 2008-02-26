@@ -214,8 +214,6 @@ class BitmapIndex(AddOn):
         self.criteria_bits = {}     # cri  -> case bits
         self.case_seeds = []        # case -> seed set
         self.criteria_seeds = {}    # cri  -> seeds, inc_seeds, exc_seeds
-        self.expr = expr
-        self.engine = engine
 
     def add_case(self, case_id, criterion):
         seeds = self.add_criterion(criterion)
@@ -241,6 +239,8 @@ class BitmapIndex(AddOn):
                 all_seeds[seed][i].add(criterion)
         self.criteria_bits.setdefault(criterion, 0)
         return seeds        
+
+
 
 
 
