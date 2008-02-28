@@ -357,6 +357,7 @@ are invoked afterward::
 
     >>> def primary(*args,**kw):
     ...     print "primary method called"
+    ...     return 99
 
     >>> b = Before.make(dummy).override(Method.make(primary))
     >>> a = After.make(dummy).override(Method.make(primary))
@@ -364,10 +365,12 @@ are invoked afterward::
     >>> b(23)
     called with (23,) {}
     primary method called
+    99
 
     >>> a(42)
     primary method called
     called with (42,) {}
+    99
 
 Notice that to create a ``MethodList`` with only one method, you must use the
 ``make()`` classmethod.  ``Method`` also has this classmethod, but it has the
@@ -385,6 +388,7 @@ The combination of before, after, primary, and around methods is as shown::
     called with (17,) {}
     primary method called
     called with (17,) {}
+    99
 
 ``Around`` methods take precedence over all other method types, so the around
 method's tail is a ``Before`` that wraps the ``After`` that wraps the primary

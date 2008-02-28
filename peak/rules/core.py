@@ -747,7 +747,6 @@ class Before(MethodList):
 before = Before.make_decorator('before')
 merge_by_default(Before)
 
-
 class After(MethodList):
     """Method(s) to be called after the primary method(s)"""
 
@@ -763,6 +762,7 @@ class After(MethodList):
         retval = self.tail(*args, **kw)
         for sig, body in self.sorted():
             body(*args, **kw)
+        return retval
 
 after  = After.make_decorator('after')
 merge_by_default(After)
