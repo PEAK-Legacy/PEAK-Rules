@@ -46,6 +46,10 @@ checking, so if you mess up your rules, it may not be obvious where or how you
 did.  User documentation is also lacking, although there are extensive doctests
 describing most of its internals.
 
+Source distribution snapshots are generated daily, but you can also update
+directly from the `development version`_ in SVN.
+
+.. _development version: svn://svn.eby-sarna.com/svnroot/PEAK-Rules#egg=PEAK_Rules-dev
 .. _toc:
 
 .. contents:: **Table of Contents**

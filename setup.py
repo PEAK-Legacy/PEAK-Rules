@@ -34,7 +34,7 @@ setup(
     author_email="peak@eby-sarna.com",
     license="PSF or ZPL",
     url="http://pypi.python.org/pypi/PEAK-Rules",
-    download_url = "svn://svn.eby-sarna.com/svnroot/PEAK-Rules#egg=PEAK_Rules-dev",
+    download_url = "http://peak.telecommunity.com/snapshots/",
     test_suite = 'test_rules',
     packages = PACKAGES,
     namespace_packages = ['peak'],
