@@ -41,9 +41,14 @@ code needs to run under 2.3.  Also, note that with PEAK-Rules, *any* function
 can be generic: you don't have to predeclare a function as generic.  (The
 ``abstract`` decorator is used to declare a function with no *default* method.)
 
+PEAK-Rules is still under development; it lacks much in the way of error
+checking, so if you mess up your rules, it may not be obvious where or how you
+did.  User documentation is also lacking, although there are extensive doctests
+describing most of its internals.
+
 .. _toc:
 
-.. contents: **Table of Contents**
+.. contents:: **Table of Contents**
 
 -----------------
 Developer's Guide

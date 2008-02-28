@@ -3,9 +3,8 @@
 import ez_setup
 ez_setup.use_setuptools()
 from setuptools import setup
-
 PACKAGE_NAME = "PEAK-Rules"
-PACKAGE_VERSION = "0.3"
+PACKAGE_VERSION = "0.5a1"
 PACKAGES = ['peak', 'peak.rules']
 
 def get_description():
@@ -34,7 +33,8 @@ setup(
     author="Phillip J. Eby",
     author_email="peak@eby-sarna.com",
     license="PSF or ZPL",
-    #url="http://peak.telecommunity.com/DevCenter/PEAK-Rules",
+    url="http://pypi.python.org/pypi/PEAK-Rules",
+    download_url = "svn://svn.eby-sarna.com/svnroot/PEAK-Rules#egg=PEAK_Rules-dev",
     test_suite = 'test_rules',
     packages = PACKAGES,
     namespace_packages = ['peak'],
