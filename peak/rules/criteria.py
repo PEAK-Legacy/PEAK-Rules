@@ -342,6 +342,8 @@ class Conjunction(Intersection, frozenset):
                     break
                 elif implies(new, old):
                     output.remove(old)
+                elif mutually_exclusive(new, old):
+                    return False
             else:
                 output.append(new)
         if not output:
@@ -353,8 +355,7 @@ class Conjunction(Intersection, frozenset):
 around(implies, (Intersection, object))
 def set_implies(c1, c2):
     for c in c1:
-        if implies(c, c2):
-            return True
+        if implies(c, c2): return True
     else:
         return False
 
@@ -362,8 +363,7 @@ around(implies, (object, Intersection))
 around(implies, (Intersection, Intersection))
 def ob_implies_set(c1, c2):
     for c in c2:
-        if not implies(c1, c):
-            return False
+        if not implies(c1, c): return False
     else:
         return True
 
@@ -377,20 +377,20 @@ def intersect_type_class(c1, c2):
     if not c2.match: return Classes([c1,c2])
     return False
 
-# No implication?  Then the intersection is an empty set
-when(intersect, (istype,istype))(lambda c1, c2: False)
+when(intersect, (istype,istype))
+def intersect_type_type(c1, c2):
+    # This is only called if there's no implication
+    if c1.match or c2.match:
+        return False    # so unless both are False matches, it's an empty set
+    return Classes([c1, c2])
 
+def mutually_exclusive(c1, c2):
+    """Is the intersection of c1 and c2 known to be always false?"""
+    return False
 
-
-
-
-
-
-
-
-
-
-
+when(mutually_exclusive, (istype, istype))(
+    lambda c1, c2: c1.match != c2.match and c1.type==c2.type
+)
 
 
 
@@ -432,8 +432,9 @@ class Classes(Conjunction):
     if __debug__:
         def __init__(self, input):
             for item in self:
-                assert isinstance(item, Class), \
-                    "Classes() items must be ``criteria.Class`` instances"
+                assert isinstance(item, (Class, istype)), (
+                    "Classes() items must be ``criteria.Class``" 
+                    " or ``istype`` instances")
 
 class NotObjects(Conjunction):
     """Collection of and-ed "is not" conditions"""
@@ -442,7 +443,6 @@ class NotObjects(Conjunction):
             for item in self:
                 assert isinstance(item, IsObject) and not item.match, \
                     "NotObjects() items must be false ``IsObject`` instances"
-
 
 
 

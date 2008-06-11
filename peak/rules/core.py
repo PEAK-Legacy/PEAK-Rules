@@ -594,8 +594,6 @@ def implies(s1,s2):
 
 when(implies, (istype(tuple), istype(tuple)))
 def tuple_implies(s1,s2):
-    if type(s1) is not tuple or type(s2) is not tuple:
-        return s1==s2
     if len(s2)>len(s1):
         return False    # shorter tuple can't imply longer tuple
     for t1,t2 in zip(s1,s2):
@@ -612,6 +610,8 @@ when(implies, (type,      istype)   )(lambda s1,s2: s2.match==(s1 is s2.type))
 when(implies, (istype,    istype)   )(lambda s1,s2:
     s1==s2 or (s1.type is not s2.type and s1.match and not s2.match))
 when(implies, (istype,type))(lambda s1,s2: s1.match and issubclass(s1.type,s2))
+
+
 
 when(implies, (ClassType, type))
 def classic_implies_new(s1, s2):

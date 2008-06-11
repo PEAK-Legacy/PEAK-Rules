@@ -741,6 +741,12 @@ input tests, or ``False`` (meaning no overlap)::
     >>> intersect(istype(int), istype(str))
     False
 
+Unless both are exclusion tests on different types, in which case their
+intersection is a ``Classes()`` conjunction::
+
+    >>> intersect(istype(str, False), istype(int, False))
+    Classes([istype(<type 'str'>, False), istype(<type 'int'>, False)])
+
 An ``istype(x)`` implies ``Class(y)`` only if x is y or a subtype thereof::
 
     >>> implies(istype(int), Class(str))
@@ -812,8 +818,21 @@ the exact type test, or ``False``::
 But when it's intersected with a type exclusion test, the result is a
 ``Classes`` conjunction::
 
-XXX
+    >>> intersect(istype(int, False), Class(str))
+    Classes([istype(<type 'int'>, False), Class(<type 'str'>, True)])
 
+    >>> s = intersect(Class(str), istype(int, False))
+    >>> s
+    Classes([istype(<type 'int'>, False), Class(<type 'str'>, True)])
+
+    >>> intersect(s, istype(int))
+    False
+
+    >>> intersect(s, istype(int, False)) == s
+    True
+
+    >>> intersect(s, istype(str))
+    istype(<type 'str'>, True)
 
 
 
