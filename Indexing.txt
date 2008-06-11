@@ -77,12 +77,12 @@ Ordering Constraints
 
 Inter-expression ordering constraints ensure that evaluation is not reordered
 in such a way as to test expressions before their guards.  Support for tracking
-these guards is provided by the ``Ordering`` aspect of an engine::
+these guards is provided by the ``Ordering`` add-on of an engine::
 
     >>> from peak.rules.indexing import Ordering
     >>> def f(): """An object to attach some orderings to"""
 
-``Ordering`` aspects have two methods for managing inter-expression
+``Ordering`` add-ons have two methods for managing inter-expression
 constraints: ``requires()`` and ``can_precede()``.
 
 The ``requires()`` method adds a "constraint": a set of expressions that must
@@ -651,14 +651,14 @@ long integers::
     [32, 33, 34]
 
 
-The ``BitmapIndex`` Aspect
+The ``BitmapIndex`` Add-on
 ==========================
 
-The ``BitmapIndex`` aspect provides basic support for indexing cases
+The ``BitmapIndex`` add-on provides basic support for indexing cases
 identified by sequential integers.  Indexes are keyed by expression and attach
-to an "engine", which can be any object that supports aspects.
+to an "engine", which can be any object that supports add-ons.
 
-The ``BitmapIndex`` aspect provides these methods and attributes:
+The ``BitmapIndex`` add-on provides these methods and attributes:
 
 add_case(case_id, criterion)
     Given an integer `case_id`, update ``all_seeds`` by calling the
