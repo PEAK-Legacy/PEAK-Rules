@@ -249,7 +249,7 @@ The ``CriteriaBuilder`` class can be used to parse Python expressions into
 tests and signatures.  It's initialized using the same arguments as the
 ``codegen.ExprBuilder`` class::
 
-    >>> from peak.rules.predicates import CriteriaBuilder, Comparison
+    >>> from peak.rules.predicates import CriteriaBuilder, Comparison, istype
     >>> from peak.rules.criteria import Disjunction, Value, Test, Range, Class
     >>> from peak.util.assembler import Local
 
@@ -264,13 +264,27 @@ tests and signatures.  It's initialized using the same arguments as the
     Test(Comparison(Add(Local('x'), Const(42))), Range((46, 1), (Max, 1)))
 
 
-The ``in`` operator converts constant classes into ``IsInstance`` tests::
+The ``in`` operator converts constant classes and ``istype()`` expressions into
+``IsInstance`` tests::
 
     >>> pe('x in int')
     Test(IsInstance(Local('x')), Class(<type 'int'>, True))
 
     >>> pe('x not in int')
     Test(IsInstance(Local('x')), Class(<type 'int'>, False))
+
+    >>> pe('x in istype(int)')
+    Test(IsInstance(Local('x')), istype(<type 'int'>, True))
+    
+    >>> pe('x not in istype(int)')
+    Test(IsInstance(Local('x')), istype(<type 'int'>, False))
+
+    >>> pe('x in istype(int, False)')
+    Test(IsInstance(Local('x')), istype(<type 'int'>, False))
+    
+    >>> pe('x not in istype(int, False)')
+    Test(IsInstance(Local('x')), istype(<type 'int'>, True))
+
 
 Iterable constants into or-ed equality tests::
 
@@ -370,7 +384,8 @@ Pattern Matching
 
 Arbitrary expressions can be pattern matched for conversion into signatures.
 At the moment, the only patterns matched are ``isinstance`` and ``issubclass``
-calls where the second argument is a constant::
+calls where the second argument is a constant, and ``type(x) is y`` expressions
+where `y` is a constant::
 
     >>> from peak.rules.criteria import Test, Signature, Classes
 
@@ -382,6 +397,12 @@ calls where the second argument is a constant::
     ...     Test(IsInstance(Local('x')), Class(unicode))
     ... ])
     True
+
+    >>> pe('type(x) is int')
+    Test(IsInstance(Local('x')), istype(<type 'int'>, True))
+
+    >>> pe('str is not type(x)')
+    Test(IsInstance(Local('x')), istype(<type 'str'>, False))
 
     >>> pe('not isinstance(x,(int,(str,unicode)))') == Test(
     ...     IsInstance(Local('x')), Classes([
@@ -431,7 +452,7 @@ To support this, the ``tests_for()`` function takes an optional second
 parameter, representing the engine that "wants" the tests, and whose argument
 names will be used to accomplish the conversion::
 
-    >>> from peak.rules.core import Dispatching, istype, implies
+    >>> from peak.rules.core import Dispatching, implies
     >>> from peak.rules.criteria import tests_for
     >>> engine = Dispatching(implies).engine
 

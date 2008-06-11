@@ -658,8 +658,8 @@ But not if it overlaps or lies outside of it::
     False
 
 
-Classes and Types
-=================
+Classes Tests
+=============
 
 ``Class`` objects represent ``issubclass()`` or ``isinstance()`` sets.
 ``Class(x)`` is a instance/subclass match, while ``Class(x, False)`` is a
@@ -699,6 +699,122 @@ set::
 
 ``Classes`` is a subclass of ``Conjunction``, so all the standard
 rules of intersection and implication apply.
+
+
+Exact-Type and Type-Exclusion Tests
+===================================
+
+Exact type tests are expressed using ``istype(x)``, and type exclusion tests
+are represented as ``istype(x, False)``::
+
+    >>> from peak.rules import istype
+
+One ``istype()`` test implies another only if they're equal::
+
+    >>> implies(istype(int), istype(int))
+    True
+
+    >>> implies(istype(int, False), istype(int, False))
+    True
+
+    >>> implies(istype(int, False), istype(int))
+    False
+
+Or if the first is an exact match, and the second is an exclusion test for
+a different type::
+
+    >>> implies(istype(int), istype(str, False))
+    True
+
+Thus, the intersection of two ``istype()`` tests will be either one of the
+input tests, or ``False`` (meaning no overlap)::
+
+    >>> intersect(istype(int), istype(int))
+    istype(<type 'int'>, True)
+
+    >>> intersect(istype(int), istype(str, False))
+    istype(<type 'int'>, True)
+
+    >>> intersect(istype(int, False), istype(int, False))
+    istype(<type 'int'>, False)
+
+    >>> intersect(istype(int), istype(str))
+    False
+
+An ``istype(x)`` implies ``Class(y)`` only if x is y or a subtype thereof::
+
+    >>> implies(istype(int), Class(str))
+    False
+
+    >>> implies(istype(int), Class(object))
+    True
+
+And it implies ``Class(y, False)`` only if x is *not* y or a subtype thereof::
+
+    >>> implies(istype(int), Class(str, False))
+    True
+
+    >>> implies(istype(int), Class(object, False))
+    False
+
+But ``istype(x, False)`` implies nothing about any ``Class`` test, since it
+refers to exactly one type, while the ``Class`` may refer to infinitely many
+types::
+
+    >>> implies(istype(int, False), Class(int, False))
+    False
+
+    >>> implies(istype(int, False), Class(object))
+    False
+
+Meanwhile, ``Class(x)`` tests can only imply ``istype(y, False)``, where y
+is a *superclass* of x::
+
+    >>> implies(Class(int), istype(int))
+    False
+
+    >>> implies(Class(int), istype(object))
+    False    
+
+    >>> implies(Class(int), istype(object, False))
+    True
+
+And ``Class(x, False)`` cannot imply anything about any ``istype()`` test,
+whether true or false::
+
+    >>> implies(Class(int, False), istype(int))
+    False
+
+    >>> implies(Class(int, False), istype(int, False))
+    False
+
+When ``Class()`` is intersected with an exact type test, the result is either
+the exact type test, or ``False``::
+
+    >>> intersect(Class(int), istype(int))
+    istype(<type 'int'>, True)
+
+    >>> intersect(istype(int), Class(int))
+    istype(<type 'int'>, True)
+
+    >>> intersect(Class(int), istype(object))
+    False
+
+    >>> intersect(istype(object), Class(int))
+    False
+
+    >>> intersect(Class(int, False), istype(object))
+    istype(<type 'object'>, True)
+
+    >>> intersect(istype(object), Class(int, False))
+    istype(<type 'object'>, True)
+
+But when it's intersected with a type exclusion test, the result is a
+``Classes`` conjunction::
+
+XXX
+
+
 
 
 --------------------

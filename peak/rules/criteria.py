@@ -114,12 +114,12 @@ def class_implies(c1, c2):
 
 when(intersect, (Class, Class))(lambda c1,c2: Classes([c1, c2]))
 
-
-
-
-
-
-
+when(implies, (istype, Class))(lambda c1,c2:
+    c1.match and c2.match == issubclass(c1.type, c2.cls)
+)
+when(implies, (Class, istype))(lambda c1,c2:
+    c1.match and not c2.match and c1.cls is not c2.type and issubclass(c1.cls, c2.type)
+)
 
 struct()
 def Test(expr, criterion):
@@ -366,6 +366,47 @@ def ob_implies_set(c1, c2):
             return False
     else:
         return True
+
+when(intersect, (istype,Class))
+def intersect_type_class(c1, c2):
+    if not c1.match: return Classes([c1,c2])
+    return False
+
+when(intersect, (Class, istype))
+def intersect_type_class(c1, c2):
+    if not c2.match: return Classes([c1,c2])
+    return False
+
+# No implication?  Then the intersection is an empty set
+when(intersect, (istype,istype))(lambda c1, c2: False)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Intersecting an intersection with something else should return a set of the
 # same type as the leftmost intersection.  These methods are declared @around

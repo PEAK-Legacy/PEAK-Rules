@@ -299,10 +299,19 @@ when(seeds_for, (BitmapIndex, bool))(
 )
 
 
-class _FixedSubset(object):
-    __slots__ = 'parent'
-    def __init__(self, parent):
+class _ExclusionSet(object):
+    __slots__ = 'parent', 'exclude'
+
+    def __init__(self, parent, exclude):
         self.parent = parent
+        self.exclude = exclude
+
+    def __iter__(self):
+        exclude = self.exclude
+        for item in self.parent:
+            if item!=exclude:
+                yield item
+
     def __len__(self):
         return len(self.parent)-1
 
@@ -312,16 +321,7 @@ def seeds_for_pointer(index, criterion):
     idref = id(criterion.ref)
     if criterion.match:
         return [idref], [idref], [None]
-    return _FixedSubset(index.all_seeds), [None], [idref]
-
-
-
-
-
-
-
-
-
+    return _ExclusionSet(index.all_seeds, idref), [None], [idref]
 
 
 
@@ -358,7 +358,7 @@ def seeds_for_value(index, criterion):
     if criterion.match:
         return [v], [v], [(Min, -1)]
     else:
-        return _FixedSubset(index.all_seeds), [(Min, -1)], [v]
+        return _ExclusionSet(index.all_seeds, v), [(Min, -1)], [v]
 
 
 
@@ -426,13 +426,11 @@ def seeds_for_class(index, criterion):
     for base in mro:
         parents.append(base)
         c = Class(base)
-        if c not in csmap:
-            csmap[c] = set(
-                # ancestors aren't always parents of things past them in mro
-                [p for p in parents if issubclass(p, base)]
-            ), set([base]), []
-        else:
-            csmap[c][0].add(cls)
+        if base is not cls:
+            index.add_criterion(c).add(cls)
+            #all_seeds[base][0].add(c)  XXX
+        elif c not in csmap:
+            csmap[c] = set([cls]), set([cls]), []
 
         if base not in all_seeds:
             all_seeds[base] = set(), set()
@@ -441,11 +439,13 @@ def seeds_for_class(index, criterion):
             for s in unions[base]: s.add(cls)
 
     if not criterion.match:
-        return _DiffSet(
-            index.all_seeds, csmap[Class(cls)][0]
-        ), [object], [cls]
+        c = Class(cls)
+        return _DiffSet(index.all_seeds, csmap[c][0]), [object], [cls] #csmap[c][1] XXX
 
     return csmap[criterion]
+
+
+
 
 
 
@@ -479,15 +479,15 @@ def seeds_for_classes(index, criterion):
     return csmap[cex]
 
 
-
-
-
-
-
-
-
-
-
+'''XXX when(seeds_for, (BitmapIndex, istype))
+def seeds_for_istype(index, criterion):
+    cls = Class(criterion.type)
+    if criterion.match:
+        return [cls], [cls], []
+    else:
+        es = _ExclusionSet(index.all_seeds, cls)
+        return es, es, []
+'''
 
 
 class _MultiSet(object):
@@ -516,6 +516,21 @@ class _MultiSet(object):
             self.seen = s
         return l
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class _DiffSet(object):
     def __init__(self, base, subtract):
         self.base = base
@@ -524,10 +539,36 @@ class _DiffSet(object):
         self.cache = None
 
     def __len__(self):
-        if len(self.base)>self.baselen:
+        if len(self.base) != self.baselen:
             self.cache = set(self.base) - self.subtract
             self.baselen = len(self.base)
         return len(self.cache)
+
+    def __iter__(self):
+        if len(self.base) != self.baselen:
+            len(self)   # recache
+        return iter(self.cache)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

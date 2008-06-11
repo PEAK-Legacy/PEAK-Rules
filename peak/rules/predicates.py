@@ -137,18 +137,10 @@ class CriteriaBuilder:
                 cond = compileIn(left, right.value, op=='in')
                 if cond is not None:
                     return cond
+            elif op=='is' or op=='is not':
+                return compileIs(left, right.value, op=='is')
             else:
-                if op=='is' or op=='is not':
-                    #if right.value is None:     # XXX this should be smarter
-                    #    left = IsInstance(left)
-                    #    right = Class(NoneType)
-                    #else:
-                        left = Identity(left)
-                        right = IsObject(right.value, op=='is')
-                else:
-                    left = Comparison(left)
-                    right = Inequality(op, right.value)                    
-                return Test(left, right)
+                return Test(Comparison(left), Inequality(op, right.value))
 
         # Both sides involve variables or an un-optimizable constant,
         #  so it's a generic boolean criterion  :(
@@ -161,6 +153,14 @@ class CriteriaBuilder:
 
     def Or(self, items):
         return or_([build(self,expr) for expr in items], self.mode)
+
+
+def compileIs(expr, criterion, truth):
+    """Return a signature or predicate (or None) for 'expr is criterion'"""
+    #if criterion is None:     # XXX this should be smarter
+    #    return Test(IsInstance(expr), Class(NoneType, truth)
+    #else:
+    return Test(Identity(expr), IsObject(criterion, truth))
 
 def and_(items, mode=True):
     if mode: return reduce(intersect, items, True)   
@@ -191,11 +191,11 @@ when(compileIn, (object, ClassType))
 def compileInClass(expr, criterion, truth):
     return Test(IsInstance(expr), Class(criterion, truth))
 
-
-
-
-
-
+when(compileIn, (object, istype))
+def compileInIsType(expr, criterion, truth):
+    if not truth:
+        criterion = istype(criterion.type, not criterion.match)
+    return Test(IsInstance(expr), criterion)
 
 
 
@@ -332,7 +332,6 @@ def class_node(builder, expr, cases, remaining_exprs, memo):
     dontcares, seedmap = builder.seed_bits(expr, cases)
     cache = {}
     bitcache = {}
-    defaults = (0, 0)
 
     def build_map(cls):
         bases = cls.__bases__
@@ -362,9 +361,10 @@ def class_node(builder, expr, cases, remaining_exprs, memo):
             inc, exc = bitcache[cls]
         except KeyError:
             inc, exc = build_map(cls)
-        return cache.setdefault(
-            cls, builder.build(dontcares|(inc ^ (exc & inc)), remaining_exprs, memo)
-        )
+        cases = dontcares | (inc ^ (exc & inc))
+        #inc, exc = seedmap.get(istype(cls), (0,0)) XXX
+        #cases |= (inc ^ (exc & inc))
+        return cache.setdefault(cls, builder.build(cases,remaining_exprs,memo))
     return cache, lookup_fn
 
 abstract()
@@ -437,7 +437,6 @@ def convertIsXCall(expr, mode):
     seq = [Test(expr, Class(c, mode)) for c in _yield_tuples(seq.value)]
     return or_(seq, mode)
 
-
 def _yield_tuples(ob):
     if type(ob) is tuple:
         for i1 in ob:
@@ -449,4 +448,45 @@ def _yield_tuples(ob):
 when(disjuncts, "ob in Test and ob.expr in Truth and ob.criterion in bool")(
     lambda ob: [ob]
 )
+
+when(compileIs,
+    # matches 'type(x) is y'
+    "expr in Call and expr.func in Const and (expr.func.value is type)"
+    " and len(expr.args)==1"
+)
+def compileTypeIsX(expr, criterion, truth):
+    return Test(IsInstance(expr.args[0]), istype(criterion, truth))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
