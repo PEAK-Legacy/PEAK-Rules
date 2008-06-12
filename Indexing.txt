@@ -654,39 +654,59 @@ long integers::
 The ``BitmapIndex`` Add-on
 ==========================
 
-The ``BitmapIndex`` add-on provides basic support for indexing cases
+The ``BitmapIndex`` add-on base class provides basic support for indexing cases
 identified by sequential integers.  Indexes are keyed by expression and attach
 to an "engine", which can be any object that supports add-ons.
 
 The ``BitmapIndex`` add-on provides these methods and attributes:
 
 add_case(case_id, criterion)
-    Given an integer `case_id`, update ``all_seeds`` by calling the
-    ``seeds_for(index, criterion)`` generic function and caching the
-    result (so that multiple cases using the same criterion share the same
-    seeds).
+    Given an integer `case_id`, update the index by calling the
+    ``.add_criterion()`` method on `criterion` and caching the result
+    (so that multiple cases using the same criterion share the same seeds).
 
-    The ``seeds_for()`` generic function must return a tuple of three sets or
-    sequences.  The first is the set or sequence of "applicable seeds", for
-    which the criterion holds true.  The second contains seeds that should be
-    "marked for inclusion" in the bitmaps for that criterion, and the third
-    contains the seeds that should be "marked for exclusion".
+add_criterion(criterion) (**abstract method: must be defined in a subclass**)
+    The ``.add_criterion()`` method must return a set or sequence of the 
+    "applicable seeds" for which the criterion holds true.  It must also
+    ensure that the ``.all_seeds`` index is up to date, usually by calling the
+    ``.include()`` and ``.exclude()`` or ``.add_seed()`` methods.
 
-    For the simplest kinds of indexes, the method can simply return the same
-    set or sequence twice, followed by a set or sequence containing a seed that
-    means "none of the above".  However, more sophisticated indexes will use
-    the inclusions and exclusions to denote ranges or hierarchies in a more
-    efficient way than simply listing all the matching seeds.  (Also, the first
-    set or sequence is only used for its ``len()`` as a basis for computing
-    selectivity; its contents aren't actually used by the ``BitmapIndex``
-    itself.  Specialized dynamic objects can therefore be used, that simply
-    compute an appropriate length, and optionally update the ``all_seeds`` sets
-    when they notice new seeds there (e.g. due to ``reseed()`` or the addition
-    of new cases and criteria).
+    The set or sequence returned by this method is only used for its ``len()``
+    as a basis for computing selectivity; its contents aren't actually used by
+    the ``BitmapIndex`` base class.  Thus, this method can return a specialized
+    dynamic object that simply computes an appropriate length, and optionally
+    updates the ``all_seeds`` sets when it notice new seeds there (e.g. due to
+    ``reseed()`` or the addition of new cases and criteria).
+
+include(seed, criterion)
+    Add `criterion` to the "inclusions" for `seed`.  You should call this
+    method in ``.add_criterion()`` for each seed that the criterion applies to.
+
+    Note that there is no requirement that the `criterion` used here must be
+    limited to criteria that were passed to ``.add_criterion()`` -- that method
+    is allowed to pre-calculate inclusions for related criteria that haven't
+    been seen yet.  For example, ``TypeIndex`` precalculates many inclusions
+    and exclusions for the base classes of criteria it encounters.
+    
+exclude(seed, criterion)
+    Add `criterion` to the "exclusions" for `seed`.  Like ``.include()``, this
+    is usually called from within ``.add_criterion()``, and may be called on
+    any criterion, whether or not it was passed to ``.add_criterion()``.
+
+    Simple indexes will probably have no use for this method, as "exclusions"
+    are typically only useful for negated criteria.  For example, an ``is not``
+    condition is false for all seeds but one, so it's not efficient to try to
+    update the inclusions for every seed to list every ``is not`` criterion.
+    Instead, it's better to record an exclusion for the ``is not`` criterion's
+    seed, and an inclusion for the criterion to a "default" seed, so that
+    by default, the criterion will apply.
 
 selectivity(case_id_list)
     Given a **sorted** sequence of integer case ids, return the `selectivity
-    statistics`_ of the index for those cases.
+    statistics`_ of the index for those cases.  The default implementation
+    simply sums the ``len()`` of the values returned by the appropriate
+    ``.add_criterion()`` calls.  It can be overridden in a subclass to
+    implement more sophisticated calculation strategies.
 
 seed_bits(cases)
     Given a bitmap of cases, return a tuple ``(dontcares, seedmap)``, where
@@ -695,9 +715,9 @@ seed_bits(cases)
     seeds to ``(include, exclude)`` bitset pairs.
 
 reseed(criterion)
-    Ensure that `criterion` is indexed, and recheck the ``len()`` of all
-    "applicable seeds" sets of all indexed criteria, so that dynamic criteria
-    have a chance to update the index.
+    Handle a reseed request.  By default, this is  a synonym for
+    ``.add_criterion(criterion)``, but if necessary it can be overridden in a
+    subclass to handle reseeds differently.
 
 expanded_sets()
     Return a list of ``(seed, (inc, exc)`` tuples, where ``inc`` and ``exc``
@@ -715,30 +735,43 @@ criteria_bits
     cases that use that criterion.
 
 criteria_seeds
-    A dictionary that caches the result of the index's calls to
-    ``seeds_for()``.
+    A dictionary that caches the result of the index's calls to the
+    ``.add_criterion()`` method.
 
-engine
-    The engine the index is associated with.
+case_seeds
+    A list mapping case ids to the values returned by ``.add_criterion()``
+    for the corresponding criterion.  Entries for case ids that were not
+    assigned criteria via ``.add_case()`` are filled with ``self.null``.
 
-expr
-    The expression that the index is being applied to.
+null
+    The value used to pad skipped entries in the ``.case_seeds`` list.  By
+    default, this is the same object as ``self.all_seeds``, so that for
+    selectivity-calculation purposes, the case is treated as applying for
+    all seeds.  (You may change this in a subclass if you are also overriding
+    the ``selectivity()`` method.)   
 
 known_cases
     A bitset representing the case ids of all cases added to the index using
     the ``add_case()`` method.
 
-extras
-    An empty dictionary, made available for the use of ``seeds_for()``
+extra
+    An empty dictionary, made available for the use of ``.add_criterion()``
     algorithms that may require additional storage for dependencies or
     intermediate indexes.
 
+match
+    A single-element sequence that can be used as a default return value from
+    ``.add_criterion()``.  If your ``.add_criterion()`` method is going to
+    return a set or sequence containing only one element (and it won't be
+    changed later), you should return ``self.match`` instead of making a new
+    sequence.  This can save a lot of memory.
+    
+
 For our first demo, we'll assume we're indexing a simple equality condition, so
 every criterion will seed only to itself.  We'll create a simple criterion
-type, and register a suitable method with the ``seeds_for()`` generic
-function::
+type, and a suitable ``BitmapIndex`` subclass::
 
-    >>> from peak.rules.indexing import BitmapIndex, seeds_for
+    >>> from peak.rules.indexing import BitmapIndex
     >>> from peak.util.decorators import struct
     >>> from peak.rules import when
 
@@ -749,17 +782,44 @@ function::
     ...     return val,
     >>> find = struct()(find)
 
-    >>> def seeds_for_demo(index, criterion):
-    ...     print "computing seeds for", criterion
-    ...     return [criterion.val], [criterion.val], []
+    >>> class DemoIndex(BitmapIndex):
+    ...     def add_criterion(self, criterion):
+    ...         print "computing seeds for", criterion
+    ...         self.include(criterion.val, criterion)
+    ...         return [criterion.val]
 
-    >>> seeds_for_demo = when(seeds_for, (BitmapIndex, find))(seeds_for_demo)
-
-To start with, selectivity is 0/0 because there are no seeds (and therefore no
-branches)::
+By the way, the ``BitmapIndex`` constructor is an abstract factory: it can
+automatically create a subclass of the appropriate type, for the given engine
+and expression::
 
     >>> eng = DemoEngine()
     >>> ind = BitmapIndex(eng, "some expression")
+    Traceback (most recent call last):
+      ...
+    NoApplicableMethods: ((<...DemoEngine ...>, 'some expression'), {})
+
+Well, it will as long as you register an appropriate method for the
+``bitmap_index_type`` generic function::
+
+    >>> from peak.rules.indexing import bitmap_index_type
+    >>> f = when(bitmap_index_type, (DemoEngine, str))(
+    ...     lambda engine, expr: DemoIndex
+    ... )
+
+Now we should be able to get the right kind of index, just by calling
+``BitmapIndex()``::
+
+    >>> BitmapIndex(eng, "some expression")
+    <DemoIndex object at ...>
+
+We also could have explicitly used ``DemoIndex``, of course.  Once created, the
+same instance will be reused for each call to either the specific constructor
+or ``BitmapIndex``.
+
+To begin with, our index's selectivity is 0/0 because there are no seeds (and
+therefore no branches)::
+
+    >>> ind = DemoIndex(eng, "some expression")
 
     >>> ind.selectivity([])
     (0, 0)
@@ -780,7 +840,7 @@ cached::
     computing seeds for find('x',)
 
     >>> ind.criteria_seeds
-    {find('x',): (['x'], ['x'], [])}
+    {find('x',): ['x']}
 
     >>> ind.criteria_bits
     {find('x',): 1}
@@ -860,8 +920,8 @@ and the number of branches increases::
 Indexing Criteria
 -----------------
 
-All of the criterion objects provided by ``peak.rules.criteria`` can be
-indexed with bitmap indexes (i.e., they have ``seeds_for()`` implementations)::
+All of the criterion objects provided by ``peak.rules.criteria`` have
+``BitmapIndex`` subclasses suitable for indexing them::
 
     >>> from peak.rules.criteria import Value, Range, IsObject, Class, Classes
 
@@ -880,11 +940,13 @@ False)`` represents ``is not x``.  The bitmap index seeds for ``IsObject``
 objects are the ``id()`` values of the target objects, or ``None`` to represent
 the "none of the above" cases::
 
+    >>> from peak.rules.indexing import PointerIndex
+
     >>> p = object()
     >>> ppeq = IsObject(p)
     >>> ppne = IsObject(p, False)
 
-    >>> ind = BitmapIndex(eng, "x")
+    >>> ind = PointerIndex(eng, "x")
     >>> ind.add_case(0, ppeq)
 
     >>> dict(ind.expanded_sets())
@@ -936,7 +998,9 @@ The bitmap index seeds for ``Range`` objects are edge tuples, and the
 selectivity of a ``Range`` is the distance between the low and high edges in
 a sorted list of all the index's seeds::
 
-    >>> ind = BitmapIndex(eng, "y")
+    >>> from peak.rules.indexing import RangeIndex
+
+    >>> ind = RangeIndex(eng, "y")
 
     >>> r = Range((1,-1), (23,1))
 
@@ -1035,7 +1099,7 @@ Value Map Generation
       ((7, 20), [0, 1, 2, 4]), ((20, 23), [0, 2, 4]), ((23, 24), [2, 4]),
       ((24, Max), [4])])
 
-    >>> ind = BitmapIndex(eng, 'q')
+    >>> ind = RangeIndex(eng, 'q')
     >>> dump_ranges(ind, ind.known_cases)
     ({}, [((Min, Max), [])])
 
@@ -1068,7 +1132,9 @@ Single Classes
 ``Class(x)`` is a instance/subclass match, while ``Class(x, False)`` is a
 non-match::
 
-    >>> ind = BitmapIndex(eng, 'by class')
+    >>> from peak.rules.indexing import TypeIndex
+
+    >>> ind = TypeIndex(eng, 'by class')
     >>> ind.add_case(0, Class(int))
     >>> ind.selectivity([0])
     (2, 1)
@@ -1081,7 +1147,7 @@ non-match::
     (3, 1)
     >>> dict(ind.expanded_sets())
     {<type 'int'>: [[0], []], <type 'object'>: [[], []],
-     <class 'myint'>: [[1], []]}
+     <class 'myint'>: [[0, 1], []]}
 
     >>> ind.selectivity([0])
     (3, 2)
@@ -1091,7 +1157,7 @@ non-match::
     (3, 1)
     >>> dict(ind.expanded_sets())
     {<type 'int'>: [[0], [2]], <type 'object'>: [[2], []],
-     <class 'myint'>: [[1], []]}
+     <class 'myint'>: [[0, 1], [2]]}
 
     >>> class other(object): pass
     >>> ind.add_case(3, Class(other))
@@ -1102,7 +1168,7 @@ non-match::
 
     >>> dict(ind.expanded_sets()) == {
     ...     int: [[0], [2]], object: [[2], []], other: [[3], []],
-    ...     myint: [[1], []]
+    ...     myint: [[0, 1], [2]]
     ... }
     True
 
@@ -1123,7 +1189,7 @@ index, because there's no easy way to incrementally update a set intersection::
     >>> class f(e, c): pass
     >>> class g(c): pass
 
-    >>> ind = BitmapIndex(eng, 'classes')
+    >>> ind = TypeIndex(eng, 'classes')
 
     >>> ind.add_case(0, Classes([Class(a), Class(b)]))
     >>> ind.selectivity([0])
@@ -1149,7 +1215,7 @@ index, because there's no easy way to incrementally update a set intersection::
     (4, 0)
 
     >>> dict(ind.expanded_sets()) == {
-    ...     a: [[], []], b: [[], []], c: [[0, 1], [2]], object: [[], []]
+    ...     a: [[], []], b: [[], []], c: [[0, 1], []], object: [[], []]
     ... }
     True
 
@@ -1163,7 +1229,7 @@ index, because there's no easy way to incrementally update a set intersection::
     >>> ind.selectivity([3])
     (6, 1)
     >>> dict(ind.expanded_sets()) == {
-    ...     a: [[], []], b: [[], []], c: [[0, 1], [2]], object: [[], []],
+    ...     a: [[], []], b: [[], []], c: [[0, 1], []], object: [[], []],
     ...     d: [[], []], e: [[0, 2, 3], []]
     ... }
     True
@@ -1175,8 +1241,8 @@ index, because there's no easy way to incrementally update a set intersection::
     >>> ind.selectivity([2])
     (7, 1)
     >>> dict(ind.expanded_sets()) == {
-    ...     a: [[], []], b: [[], []], c: [[0, 1], [2]], object: [[], []],
-    ...     d: [[], []], e: [[0, 2, 3], []], f: [[4], []]
+    ...     a: [[], []], b: [[], []], c: [[0, 1], []], object: [[], []],
+    ...     d: [[], []], e: [[0, 2, 3], []], f: [[0, 1, 3, 4], []]
     ... }
     True
 
@@ -1186,12 +1252,15 @@ index, because there's no easy way to incrementally update a set intersection::
     >>> ind.selectivity([2])    # still just 'e'
     (8, 1)
 
+    >>> Classes([Class(d, False), Class(e, False)])
+    Class(<class 'd'>, False)
+
     >>> ind.add_case(6, Classes([Class(d, False), Class(e, False)]))
     >>> ind.selectivity([6])    # all but d, e, f
     (8, 5)
     >>> dict(ind.expanded_sets()) == {
-    ...     a: [[], []], b: [[], []], c: [[0, 1], [2]], object: [[6], []],
-    ...     d: [[], [6]], e: [[0, 2, 3], []], f: [[4], []], g: [[5], []]
+    ...     a: [[], []], b: [[], []], c: [[0, 1], []], object: [[6], []],
+    ...     d: [[], [6]], e: [[0, 2, 3], [6]], f: [[0, 1, 3, 4], [6]], g: [[0, 1, 5], []]
     ... }
     True
 
@@ -1224,8 +1293,8 @@ the appropriate caches.  The result is that the index now includes correct
 information for the new ``x`` class::
 
     >>> dict(ind.expanded_sets()) == {
-    ...     a: [[], []], b: [[], []], c: [[0, 1], [2]], object: [[6], []],
-    ...     d: [[], [6]], e: [[0, 2, 3], []], f: [[4], []], g: [[5], []],
+    ...     a: [[], []], b: [[], []], c: [[0, 1], []], object: [[6], []],
+    ...     d: [[], [6]], e: [[0, 2, 3], [6]], f: [[0, 1, 3, 4], [6]], g: [[0, 1, 5], []],
     ...     x: [[0, 2], []]
     ... }
     True
@@ -1234,9 +1303,11 @@ information for the new ``x`` class::
 Truth
 =====
 
-``seeds_for()`` treats boolean criteria as logical truth::
+``TruthIndex`` treats boolean criteria as logical truth::
 
-    >>> ind = BitmapIndex(eng, "z")
+    >>> from peak.rules.indexing import TruthIndex
+
+    >>> ind = TruthIndex(eng, "z")
 
     >>> ind.add_case(0, True)
     >>> ind.selectivity([0])
@@ -1246,4 +1317,6 @@ Truth
     >>> ind.selectivity([0,1])
     (2, 2)
 
+    >>> dict(ind.expanded_sets())
+    {False: [[1], []], True: [[0], []]}
 

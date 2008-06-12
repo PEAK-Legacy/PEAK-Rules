@@ -5,11 +5,13 @@ from peak.rules.core import *
 from peak.rules.criteria import *
 from peak.rules.core import sorted, set, frozenset
 from peak.util.extremes import Min, Max, Extreme
+from peak.util.decorators import decorate
 from types import InstanceType
 
 __all__ = [
-    'Ordering', 'BitmapIndex', 'TreeBuilder', 'seeds_for', 'split_ranges',
-    'to_bits', 'from_bits',
+    'Ordering', 'BitmapIndex', 'TreeBuilder', 'split_ranges',
+    'to_bits', 'from_bits', 'RangeIndex', 'TypeIndex', 'TruthIndex',
+    'PointerIndex', 'bitmap_index_type'
 ]
 
 def define_ordering(ob, seq):
@@ -17,8 +19,6 @@ def define_ordering(ob, seq):
     for key in seq:
         Ordering(ob, key).requires(items)
         items.append(key)
-
-
 
 
 
@@ -207,47 +207,55 @@ class BitmapIndex(AddOn):
     """Index that computes selectivity and handles basic caching w/bitmaps"""
 
     known_cases = 0
+    match = True,
+
+    decorate(staticmethod)
+    def addon_key(*args):
+        # Always use BitmapIndex as the add-on key
+        return (BitmapIndex,)+args
+
+    def __new__(cls, engine, expr):
+        if cls is BitmapIndex:
+            cls = bitmap_index_type(engine, expr)
+        return super(BitmapIndex, cls).__new__(cls, engine, expr)
 
     def __init__(self, engine, expr):
         self.extra = {}
-        self.all_seeds = {}         # seed -> inc_cri, exc_cri
-        self.criteria_bits = {}     # cri  -> case bits
-        self.case_seeds = []        # case -> seed set
-        self.criteria_seeds = {}    # cri  -> seeds, inc_seeds, exc_seeds
+        self.null = self.all_seeds = {}    # seed -> inc_cri, exc_cri
+        self.criteria_bits = {}             # cri  -> case bits
+        self.case_seeds = []                # case -> seed set
+        self.criteria_seeds = {}            # cri  -> seeds
 
     def add_case(self, case_id, criterion):
-        seeds = self.add_criterion(criterion)
-        self._extend_cases(case_id)
-        self.case_seeds[case_id] = seeds
+        if criterion in self.criteria_seeds:
+            seeds = self.criteria_seeds[criterion]
+        else:
+            self.criteria_bits.setdefault(criterion, 0)
+            seeds = self.criteria_seeds[criterion] = self.add_criterion(criterion)
+
+        case_seeds = self.case_seeds
+        if case_id==len(case_seeds):
+            case_seeds.append(seeds)
+        else:
+            self._extend_cases(case_id)
+            case_seeds[case_id] = seeds
+
         bit = to_bits([case_id])
-        if seeds is not self.all_seeds:
-            self.known_cases |= bit
+        self.known_cases |= bit
         self.criteria_bits[criterion] |= bit
 
     def add_criterion(self, criterion):
-        """Ensure `criterion` is indexed, return its "applicable seeds" set"""
-        if criterion in self.criteria_seeds:
-            seeds, inc, exc = self.criteria_seeds[criterion]
-        else:
-            seeds, inc, exc = self.criteria_seeds[criterion] \
-                            = seeds_for(self, criterion)        
-        all_seeds = self.all_seeds
-        for i, what_seeds in ((0,inc), (1,exc)):
-            for seed in what_seeds:
-                if seed not in all_seeds:
-                    all_seeds[seed] = set(), set()
-                all_seeds[seed][i].add(criterion)
-        self.criteria_bits.setdefault(criterion, 0)
-        return seeds        
-
-
-
-
+        """Ensure `criterion` is indexed, return its "applicable seeds" set
+        
+        As a side effect, ``self.all_seeds`` must be updated to include any
+        new seeds required by `criterion`.
+        """
+        raise NotImplementedError
 
     def _extend_cases(self, case_id):
         if case_id >= len(self.case_seeds):
             self.case_seeds.extend(
-                [self.all_seeds]*(case_id+1-len(self.case_seeds))
+                [self.null]*(case_id+1-len(self.case_seeds))
             )
 
     def selectivity(self, cases):
@@ -273,30 +281,21 @@ class BitmapIndex(AddOn):
 
     def reseed(self, criterion):
         self.add_criterion(criterion)
-        for cri, (all, inc, exc) in self.criteria_seeds.items():
-            len(all)
 
 
 
 
+    def include(self, seed, criterion, exclude=False):
+        try:
+            s = self.all_seeds[seed]
+        except KeyError:
+            s = self.all_seeds[seed] = set(), set()
+        s[exclude].add(criterion)
+        self.criteria_bits.setdefault(criterion, 0)
 
+    def exclude(self, seed, criterion):
+        self.include(seed, criterion, True)
 
-
-
-
-
-abstract()
-def seeds_for(index, criterion):
-    """Determine the seeds needed to index `criterion`
-
-    Methods must return a 3-tuple (seeds, inclusions, exclusions) of seed sets
-    or sequences.  See Indexing.txt for details.
-    """
-
-when(seeds_for, (BitmapIndex, bool))(
-    # logical truth:
-    lambda index, criterion: ([criterion], [criterion], [not criterion])
-)
 
 
 class _ExclusionSet(object):
@@ -316,49 +315,9 @@ class _ExclusionSet(object):
         return len(self.parent)-1
 
 
-when(seeds_for, (BitmapIndex, IsObject))
-def seeds_for_pointer(index, criterion):
-    idref = id(criterion.ref)
-    if criterion.match:
-        return [idref], [idref], [None]
-    return _ExclusionSet(index.all_seeds, idref), [None], [idref]
 
 
 
-
-class _RangeSubset(object):
-    __slots__ = 'offsets', 'seeds', 'lo', 'hi'
-
-    def __init__(self, index, lo, hi):
-        self.offsets = index.extra
-        self.seeds   = index.all_seeds
-        self.lo = lo
-        self.hi = hi
-
-    def __len__(self):
-        off = self.offsets
-        if not off:
-            for n,k in enumerate(sorted(self.seeds)):
-                off[k] = n
-        return off[self.hi] - off[self.lo]
-
-
-when(seeds_for, (BitmapIndex, Range))
-def seeds_for_range(index, criterion):
-    lo, hi = criterion.lo, criterion.hi
-    if lo not in index.all_seeds or hi not in index.all_seeds:
-        index.extra.clear()   # ensure offsets are rebuilt on next selectivity()
-    return _RangeSubset(index, lo, hi), [lo], [hi]
-
-when(seeds_for, (BitmapIndex, Value))
-def seeds_for_value(index, criterion):
-    v = (criterion.value, 0)
-    if v not in index.all_seeds:
-        index.extra.clear()   # ensure offsets are rebuilt on next selectivity()
-    if criterion.match:
-        return [v], [v], [(Min, -1)]
-    else:
-        return _ExclusionSet(index.all_seeds, v), [(Min, -1)], [v]
 
 
 
@@ -408,127 +367,189 @@ def split_ranges(dont_cares, bitmap, node=lambda b:b):
         ranges.append(((low, Max), node(current)))
     return exact, ranges
 
-when(seeds_for, (BitmapIndex, Class))
-def seeds_for_class(index, criterion):
+class PointerIndex(BitmapIndex):
+    """Index for pointer equality"""
 
-    cls = criterion.cls
+    def add_criterion(self, criterion):
+        seed = id(criterion.ref)
+        self.extra[seed] = 1
+        if criterion.match:
+            self.include(seed, criterion)
+            self.exclude(None, criterion)
+            return self.match
+        else:
+            self.include(None, criterion)
+            self.exclude(seed, criterion)
+            return self.extra
+
+
+class TruthIndex(BitmapIndex):
+    """Index for simple boolean expression tests"""
+
+    def add_criterion(self, criterion):
+        assert isinstance(criterion, bool)
+        self.include(criterion, criterion)
+        self.include(not criterion, not criterion)
+        return self.match
+
+
+def _get_mro(cls):
     if isinstance(cls, type):
         mro = cls.__mro__
     else:
         class tmp(cls, object): pass
         mro = tmp.__mro__[1:-1] + (InstanceType, object)
-
-    parents = []
-    csmap = index.criteria_seeds
-    all_seeds = index.all_seeds
-    unions = index.extra
-
-    for base in mro:
-        parents.append(base)
-        c = Class(base)
-        if base is not cls:
-            index.add_criterion(c).add(cls)
-            #all_seeds[base][0].add(c)  XXX
-        elif c not in csmap:
-            csmap[c] = set([cls]), set([cls]), []
-
-        if base not in all_seeds:
-            all_seeds[base] = set(), set()
-
-        if base in unions:
-            for s in unions[base]: s.add(cls)
-
-    if not criterion.match:
-        c = Class(cls)
-        return _DiffSet(index.all_seeds, csmap[c][0]), [object], [cls] #csmap[c][1] XXX
-
-    return csmap[criterion]
+    return mro
 
 
+abstract()
+def bitmap_index_type(engine, expr):
+    """Get the BitmapIndex subclass to use for the given engine and `expr`"""
+    raise NotImplementedError(engine, expr)
+
+
+class TypeIndex(BitmapIndex):
+    """Index for istype(), Class(), and Classes() criteria"""
+
+    def add_class(self, cls):
+        if cls in self.all_seeds:
+            return
+
+        t = istype(cls)
+        csmap = self.criteria_seeds
+        intersects = self.extra
+        all_seeds = self.all_seeds
+
+        for base in _get_mro(cls):
+            if base is not cls and base not in all_seeds:
+                self.add_class(base)
+
+            self.exclude(cls, Class(base, False))   # issubclass non-match
+
+            c = Class(base)
+            if c not in csmap:
+                csmap[c] = set()
+            csmap[c].add(cls)     # issubclass match
+            self.include(cls, c)  # issubclass match
+
+            if base in intersects:
+                # multi-class matches
+                for c2 in intersects[base]:
+                    if implies(t, c2):
+                        self.include(cls, c2)
+                        csmap[c2].add(cls)
+
+        self.include(cls, t)    # exact type match
 
 
 
 
-when(seeds_for, (BitmapIndex, Classes))
-def seeds_for_classes(index, criterion):
-
-    csmap = index.criteria_seeds
-    excluded, required = sets = [], []
-
-    for c in criterion:
-        if c not in csmap:
-            csmap.setdefault(c, seeds_for(index, c))
-        sets[c.match].append(c)
-
-    ex_classes = [c.cls for c in excluded]
-    cex = Classes(excluded)
-    if cex not in csmap:
-        ex_union = reduce(
-            set.union, [csmap[c][0].subtract for c in excluded], set()
-        )
-        for c in ex_classes:
-            index.extra.setdefault(c, []).append(ex_union)
-
-        csmap[cex] = _DiffSet(index.all_seeds, ex_union), [object], ex_classes
-
-    if required:
-        required = [csmap[c][0] for c in required]
-        required = _MultiSet(index, criterion, required, csmap[cex][0].subtract)
-        return required, [], ex_classes
-
-    return csmap[cex]
 
 
-'''XXX when(seeds_for, (BitmapIndex, istype))
-def seeds_for_istype(index, criterion):
-    cls = Class(criterion.type)
-    if criterion.match:
-        return [cls], [cls], []
-    else:
-        es = _ExclusionSet(index.all_seeds, cls)
-        return es, es, []
-'''
 
 
-class _MultiSet(object):
-    def __init__(self, index, classes, required, excluded):
-        self.all_seeds = index.all_seeds
-        self.classes = classes
-        self.lastlen = self.cachelen = 0
-        self.seen = set()
-        self.required = required
-        self.excluded = excluded
 
-    def __len__(self):
-        if len(self.all_seeds)==self.lastlen:
-            return self.cachelen
-        s = reduce(set.intersection, self.required) - self.excluded
-        l = self.cachelen = len(s)
-        self.lastlen = len(self.all_seeds)
-        if l > len(self.seen):
-            for cls in s - self.seen:
-                for c in cls.__bases__:
-                    if c in s:
-                        break   # not a root if any of its bases are in the set
+    def add_criterion(self, criterion):
+        if isinstance(criterion, istype):
+            self.add_class(criterion.type)
+            if criterion.match:
+                return self.match
+            else:
+                self.include(object, criterion)
+                self.exclude(criterion.type, criterion)
+                return _ExclusionSet(self.all_seeds, criterion.type)
+
+        elif isinstance(criterion, Class):
+            self.add_class(criterion.cls)
+            if criterion.match:
+                return self.criteria_seeds[criterion]
+            else:
+                self.include(object, criterion)
+                return _DiffSet(
+                    self.all_seeds, self.criteria_seeds[Class(criterion.cls)]
+                )
+
+        elif isinstance(criterion, Classes):
+            t, m = object, 1    # find Class() w/longest mro to use as target
+            for c in criterion:
+                self.add_criterion(c)
+                if isinstance(c, Class) and c.match:
+                    n = len(_get_mro(c.cls))
+                    if n > m:
+                        t, m = c.cls, n
+            seeds = set()
+            for cls in self.all_seeds:
+                # only look within the relevant subtree
+                if t is object or issubclass(cls, t):
+                    if implies(istype(cls), criterion):
+                        seeds.add(cls)
+                        self.include(cls, criterion)
+            self.extra.setdefault(t, set()).add(criterion)
+            return seeds
+
+        raise TypeError(criterion)
+
+
+class RangeIndex(BitmapIndex):
+
+    def __init__(self, engine, expr):
+        BitmapIndex.__init__(self, engine, expr)
+        self.null = None
+
+    def add_criterion(self, criterion):
+
+        if isinstance(criterion, Range):
+            lo = i = criterion.lo
+            hi = e = criterion.hi
+            match = True
+
+        elif isinstance(criterion, Value):
+            lo = hi = val = (criterion.value, 0)
+            if criterion.match:
+                e = (Min, -1)
+                i = val
+            else:
+                i = (Min, -1)
+                e = val
+            match = criterion.match
+
+        else:
+            raise TypeError(criterion)
+
+        if (i not in self.all_seeds or e not in self.all_seeds
+            or (lo,hi,match) not in self.extra
+        ):
+            # oops, there's a seed we haven't seen before:
+            # make sure the offsets are rebuilt on the next selectivity() call
+            self.extra.clear()   
+
+        self.include(i, criterion)
+        self.exclude(e, criterion)
+        return lo, hi, match
+
+
+
+
+
+    def selectivity(self, cases):
+        case_seeds = self.case_seeds
+        if cases and cases[-1] >= len(case_seeds):
+            self._extend_cases(cases[-1])
+
+        extras = self.extra
+        if not extras:
+            all_seeds = self.all_seeds
+            offsets = dict([(k,n) for n,k in enumerate(sorted(all_seeds))])
+            all = extras[None] = len(all_seeds)
+            all_but_one = all - 1  
+            for lo,hi,inc in self.criteria_seeds.values():
+                if lo==hi:
+                    extras[lo,hi,inc] = [all_but_one, 1][inc]
                 else:
-                    # Flag the new root as an inclusion point for our criterion
-                    self.all_seeds[cls][0].add(self.classes)
-            self.seen = s
-        return l
+                    extras[lo,hi,inc] = offsets[hi] - offsets[lo]
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+        cases = map(case_seeds.__getitem__, cases)
+        return (len(self.all_seeds), sum(map(extras.__getitem__, cases)))
 
 
 class _DiffSet(object):
@@ -548,27 +569,6 @@ class _DiffSet(object):
         if len(self.base) != self.baselen:
             len(self)   # recache
         return iter(self.cache)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

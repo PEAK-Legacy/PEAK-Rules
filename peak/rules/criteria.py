@@ -115,7 +115,7 @@ def class_implies(c1, c2):
 when(intersect, (Class, Class))(lambda c1,c2: Classes([c1, c2]))
 
 when(implies, (istype, Class))(lambda c1,c2:
-    c1.match and c2.match == issubclass(c1.type, c2.cls)
+    c1.match and (c2.match == issubclass(c1.type, c2.cls))
 )
 when(implies, (Class, istype))(lambda c1,c2:
     c1.match and not c2.match and c1.cls is not c2.type and issubclass(c1.cls, c2.type)

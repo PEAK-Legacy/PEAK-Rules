@@ -124,15 +124,15 @@ class MiscTests(unittest.TestCase):
     def testIndexClassicMRO(self):
         class MyEngine: pass
         eng = MyEngine()
-        from peak.rules.indexing import BitmapIndex
+        from peak.rules.indexing import TypeIndex
         from peak.rules.criteria import Class
         from types import InstanceType
-        ind = BitmapIndex(eng, 'classes')
+        ind = TypeIndex(eng, 'classes')
         ind.add_case(0, Class(MyEngine))
         ind.add_case(1, Class(object))
         self.assertEqual(
             dict(ind.expanded_sets()),
-            {MyEngine: [[0],[]], InstanceType: [[],[]], object: [[1],[]]}
+            {MyEngine: [[0,1],[]], InstanceType: [[1],[]], object: [[1],[]]}
         )
 
     def testEngineArgnames(self):
@@ -512,10 +512,10 @@ class NodeBuildingTests(unittest.TestCase):
         self.assertEqual(node, {None:27, 9127:27|128, 6499: 27|64})
 
     def testRangeNode(self):
-        from peak.rules.indexing import BitmapIndex, to_bits
+        from peak.rules.indexing import RangeIndex, to_bits
         from peak.rules.predicates import range_node
         from peak.rules.criteria import Range, Value, Min, Max
-        ind = BitmapIndex(self, 'expr')
+        ind = RangeIndex(self, 'expr')
         ind.add_case(0, Value(19))
         ind.add_case(1, Value(23))
         ind.add_case(2, Value(23, False))
@@ -532,11 +532,11 @@ class NodeBuildingTests(unittest.TestCase):
 
 
     def testClassNode(self):
-        from peak.rules.indexing import BitmapIndex, to_bits
+        from peak.rules.indexing import TypeIndex, to_bits
         from peak.rules.predicates import class_node
         from peak.rules.criteria import Class, Classes
         from types import InstanceType
-        ind = BitmapIndex(self, 'expr')
+        ind = TypeIndex(self, 'expr')
         class a: pass
         class b: pass
         class c(a,b): pass
@@ -560,7 +560,7 @@ class NodeBuildingTests(unittest.TestCase):
             (a, to_bits([0,2,4,5])),
             (b, to_bits([0,2,5])),
             (c, to_bits([0,2,3,4,5])),
-            (x, to_bits([0,1,2,3,4,5]))
+            (x, to_bits([1,2,3,4,5]))
         ]
         for k, v in data:
             self.assertEqual(lookup(k), v)

@@ -295,7 +295,7 @@ class IndexedEngine(Engine, TreeBuilder):
             return memo[action]
         return memo.setdefault(action, (0, self.optimize(action)))
 
-
+when(bitmap_index_type,  (IndexedEngine, Truth))(lambda en,ex:TruthIndex)
 when(predicate_node_for, (IndexedEngine, Truth))
 def truth_node(builder, expr, cases, remaining_exprs, memo):
     dont_cares, seedmap = builder.seed_bits(expr, cases)
@@ -304,6 +304,7 @@ def truth_node(builder, expr, cases, remaining_exprs, memo):
         builder.build(seedmap[False][0] | dont_cares, remaining_exprs, memo)
     )
 
+when(bitmap_index_type,  (IndexedEngine, Identity))(lambda en,ex:PointerIndex)
 when(predicate_node_for, (IndexedEngine, Identity))
 def identity_node(builder, expr, cases, remaining_exprs, memo):
     dont_cares, seedmap = builder.seed_bits(expr, cases)
@@ -312,6 +313,7 @@ def identity_node(builder, expr, cases, remaining_exprs, memo):
             for seed, (inc, exc) in seedmap.iteritems()]
     )
 
+when(bitmap_index_type,  (IndexedEngine, Comparison))(lambda en,ex:RangeIndex)
 when(predicate_node_for, (IndexedEngine, Comparison))
 def range_node(builder, expr, cases, remaining_exprs, memo):
     dontcares, seedmap = builder.seed_bits(expr, cases)
@@ -324,48 +326,32 @@ except NameError: from core import frozenset
 
 
 
-
+when(bitmap_index_type,  (IndexedEngine, IsInstance))(lambda en,ex:TypeIndex)
+when(bitmap_index_type,  (IndexedEngine, IsSubclass))(lambda en,ex:TypeIndex)
 
 when(predicate_node_for, (IndexedEngine, IsInstance))
 when(predicate_node_for, (IndexedEngine, IsSubclass))
+
 def class_node(builder, expr, cases, remaining_exprs, memo):
     dontcares, seedmap = builder.seed_bits(expr, cases)
     cache = {}
-    bitcache = {}
 
-    def build_map(cls):
-        bases = cls.__bases__
+    def lookup_fn(cls):
         try:
             inc, exc = seedmap[cls]
         except KeyError:
-            if len(bases)>1:
+            if len(cls.__bases__)>1:
                 builder.reseed(expr, Class(cls))    # fix multiple inheritance
                 inc, exc = seedmap.setdefault(
                     cls, builder.seed_bits(expr, cases)[1][cls]
                 )
             else:
                 inc = exc = 0
-        if not bases and cls is not object:
-            bases = (InstanceType,)
-        for base in bases:
-            try:
-                i, e = bitcache[base]
-            except KeyError:
-                i, e = build_map(base)
-            inc |= i
-            exc |= e
-        return bitcache.setdefault(cls, (inc, exc))
+        cbits = dontcares | (inc ^ (exc & inc))
+        return cache.setdefault(cls, builder.build(cbits,remaining_exprs,memo))
 
-    def lookup_fn(cls):
-        try:
-            inc, exc = bitcache[cls]
-        except KeyError:
-            inc, exc = build_map(cls)
-        cases = dontcares | (inc ^ (exc & inc))
-        #inc, exc = seedmap.get(istype(cls), (0,0)) XXX
-        #cases |= (inc ^ (exc & inc))
-        return cache.setdefault(cls, builder.build(cases,remaining_exprs,memo))
     return cache, lookup_fn
+
 
 abstract()
 def type_to_test(typ, expr, engine):
@@ -379,6 +365,7 @@ def std_type_to_test(typ, expr, engine):
 when(type_to_test, (istype,))
 def istype_to_test(typ, expr, engine):
     return Test(IsInstance(expr), typ)
+
 
 when(tests_for, (istype(tuple), Engine))
 def tests_for_tuple(ob, engine):
@@ -401,13 +388,6 @@ when(always_testable, (Local,))(lambda expr:True)
 when(always_testable, (Const,))(lambda expr:True)
 
 
-
-
-
-
-
-
-
 when(parse_rule, (IndexedEngine, basestring))
 def _parse_string(engine, predicate, ctx, cls):
     b = CriteriaBuilder(engine.arguments, ctx.localdict, ctx.globaldict, __builtins__)
@@ -416,6 +396,17 @@ def _parse_string(engine, predicate, ctx, cls):
         cls = type_to_test(cls, engine.arguments[engine.argnames[0]], engine)
         expr = intersect(cls, expr)
     return Rule(ctx.body, expr, ctx.actiontype, ctx.sequence)
+
+
+
+
+
+
+
+
+
+
+
 
 # === As of this point, it should be possible to compile expressions!
 #
@@ -456,37 +447,5 @@ when(compileIs,
 )
 def compileTypeIsX(expr, criterion, truth):
     return Test(IsInstance(expr.args[0]), istype(criterion, truth))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
