@@ -416,12 +416,14 @@ class TypeIndex(BitmapIndex):
             return
 
         t = istype(cls)
+        self.include(cls, t)    # exact type match
+
         csmap = self.criteria_seeds
         intersects = self.extra
         all_seeds = self.all_seeds
 
         for base in _get_mro(cls):
-            if base is not cls and base not in all_seeds:
+            if base not in all_seeds:
                 self.add_class(base)
 
             self.exclude(cls, Class(base, False))   # issubclass non-match
@@ -438,8 +440,6 @@ class TypeIndex(BitmapIndex):
                     if implies(t, c2):
                         self.include(cls, c2)
                         csmap[c2].add(cls)
-
-        self.include(cls, t)    # exact type match
 
 
 

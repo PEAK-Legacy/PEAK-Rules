@@ -1300,6 +1300,80 @@ information for the new ``x`` class::
     True
 
 
+Exact Types
+===========
+
+Finally, let's try out some ``istype()`` and mixed class/classes/istype
+criteria, to make sure they interoperate::
+
+    >>> from peak.rules import istype
+
+    >>> ind = TypeIndex(eng, 'types')
+    >>> ind.add_case(0, istype(a))
+    >>> ind.selectivity([0])
+    (2, 1)
+    
+    >>> ind.add_case(1, istype(b, False))
+    >>> ind.selectivity([1])
+    (3, 2)
+
+    >>> ind.selectivity([0,1])
+    (3, 3)
+
+    >>> ind.add_case(2, Class(a))
+    >>> ind.selectivity([2])
+    (3, 1)
+
+    >>> ind.selectivity([0,1,2])
+    (3, 4)
+
+    >>> dict(ind.expanded_sets()) == {
+    ...     a:[[0, 2], []],
+    ...     b:[[], [1]],
+    ...     object:[[1], []]
+    ... }
+    True
+
+    >>> ind.add_case(3, Class(a, False))
+    >>> ind.selectivity([3])
+    (3, 2)
+   
+    >>> ind.selectivity([0,1,2,3])
+    (3, 6)
+
+    >>> dict(ind.expanded_sets()) == {
+    ...     a:[[0, 2], [3]],
+    ...     b:[[], [1]],
+    ...     object:[[1, 3], []]
+    ... }
+    True
+
+    >>> ind.add_case(4, Classes([Class(a), istype(c, False)]))
+    >>> ind.selectivity([4])
+    (4, 1)
+
+    >>> dict(ind.expanded_sets()) == {    
+    ...     a:[[0, 2, 4], [3]],
+    ...     b:[[], [1]],
+    ...     c:[[2], [3]],
+    ...     object:[[1, 3], []]
+    ... }
+    True
+
+    >>> ind.reseed(Class(e))
+    
+    >>> dict(ind.expanded_sets()) == {    
+    ...     a:[[0, 2, 4], [3]],
+    ...     b:[[], [1]],
+    ...     c:[[2], [3]],
+    ...     d:[[], []],
+    ...     e:[[2, 4], [3]],
+    ...     object:[[1, 3], []]
+    ... }
+    True
+
+
+    
 Truth
 =====
 
