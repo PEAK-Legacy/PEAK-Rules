@@ -461,6 +461,46 @@ a node for the condition, and a node for the "false" value::
     IfElse(a, b, c)
 
 
+
+List Comprehensions and Generator Expressions
+=============================================
+
+The ``ListComp`` and ``GenExpr`` methods receive two arguments: a node for the
+output expression, and a list of ``(op, node)`` tuples, where `op` is the name
+of an operator (either "for", "in", or "if"), and `node` is the node
+corresponding to the operator's argument::
+
+    >>> class Builder(Builder):
+    ...     def ListComp(self, initExpr, clauses):
+    ...         data = [build(self,initExpr)]
+    ...         for op,val in clauses:
+    ...             data.append(op)
+    ...             data.append(build(self,val))
+    ...         return 'ListComp(%s)' % ' '.join(data)
+    ...
+    ...     def GenExpr(self, initExpr, clauses):
+    ...         data = [build(self,initExpr)]
+    ...         for op,val in clauses:
+    ...             data.append(op)
+    ...             data.append(build(self,val))
+    ...         return 'GenExpr(%s)' % ' '.join(data)
+
+    >>> pe("[x for x in y if z]")
+    ListComp(x for x in y if z)
+
+    >>> pe("[(x+1, 42) for x in y for y in z if q>z]")
+    ListComp(Tuple(Add(x,1),42) for x in y for y in z if Compare(q > z))
+
+    >>> pe("[x+1 for x in y if x in z for y in q if r if p]")
+    ListComp(Add(x,1) for x in y if Compare(x in z) for y in q if r if p)
+
+    >>> if sys.version>='2.4':
+    ...     pe("(x for x in y if z)")
+    ... else:
+    ...     print "GenExpr(x for x in y if z)"
+    GenExpr(x for x in y if z)
+
+
 Dictionaries
 ============
 
@@ -551,6 +591,16 @@ The ``CallFunc`` method takes five arguments:
     Call(a,Tuple(),{'b':3},x,y)
     >>> pe("a(1,2,b=3,*x,**y)")
     Call(a,Tuple(1,2),{'b':3},x,y)
+
+
+    >>> if sys.version>='2.4':
+    ...     pe("a(x for x in y if z)")
+    ...     pe("a(x for x in y if z, q)")
+    ... else:
+    ...     print "Call(a,Tuple(GenExpr(x for x in y if z)),{},None,None)"
+    ...     print "Call(a,Tuple(GenExpr(x for x in y if z),q),{},None,None)"
+    Call(a,Tuple(GenExpr(x for x in y if z)),{},None,None)
+    Call(a,Tuple(GenExpr(x for x in y if z),q),{},None,None)
 
 
 Miscellaneous Tests

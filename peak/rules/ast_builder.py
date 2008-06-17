@@ -1,4 +1,4 @@
-from token import tok_name, NAME, NUMBER, STRING, ISNONTERMINAL
+from token import tok_name, NAME, NUMBER, STRING, ISNONTERMINAL, EQUAL
 from symbol import sym_name
 from new import instancemethod
 import token, symbol, parser, sys
@@ -54,9 +54,6 @@ def com_binary(opname, builder,nodelist):
 # subscriptlist: subscript (',' subscript)* [',']
 testlist = subscriptlist = curry(com_binary, 'Tuple')
 
-# testlist_gexp test (gen_for | (',' test)* [','])
-testlist_gexp = testlist    # XXX
-
 # test: and_test ('or' and_test)* | lambdef
 test = curry(com_binary, 'Or')
 
@@ -74,6 +71,9 @@ and_test = curry(com_binary, 'And')
 # not_test: 'not' not_test | comparison
 def not_test(builder, nodelist):
     return builder.Not(nodelist[2])
+
+
+
 
 
 
@@ -203,7 +203,7 @@ def power(builder, nodelist):
 
 
 
-# atom: '(' [testlist_gexp] ')' |
+# atom: '(' [yield_expr|testlist_gexp] ')' |
 #       '[' [listmaker] ']' |
 #       '{' [dictmaker] '}' |
 #       '`' testlist1 '`' |
@@ -286,15 +286,18 @@ def com_call_function(builder, primaryNode, nodelist):
 
 
 # argument: [test '='] test [gen_for]  (Really [keyword '='] test)
+# argument: test [gen_for] | test '=' test  # Really [keyword '='] test
 
 def com_argument(nodelist, kw):
-
-    # XXX Python 2.4 needs genexp handling here
-
     if len(nodelist) == 2:
         if kw:
             raise SyntaxError, "non-keyword arg after keyword arg"
         return 0, nodelist[1]
+
+    if nodelist[2][0] != token.EQUAL and len(nodelist)==3:
+        return 0, (symbol.testlist_gexp, nodelist[1], nodelist[2])
+    elif len(nodelist) !=4:
+        raise AssertionError
 
     n = nodelist[1]
     while len(n) == 2 and n[0] != token.NAME:
@@ -304,7 +307,6 @@ def com_argument(nodelist, kw):
 
     return 1, ((token.STRING,`n[1]`,n[2]), nodelist[3])
 
-
 # listmaker: test ( list_for | (',' test)* [','] )
 
 def listmaker(builder, nodelist):
@@ -313,15 +315,54 @@ def listmaker(builder, nodelist):
 
     for i in range(1, len(nodelist)):
 
-        #if nodelist[i][0] == symbol.list_for:
-        #    assert len(nodelist[i:]) == 1
-        #    return com_list_comprehension(builder,values[0],nodelist[i])
+        if nodelist[i][0] == symbol.list_for:
+            assert i==2 and len(nodelist)==3 and len(values)==1
+            return com_iterator(builder.ListComp,values[0],nodelist[i])
 
         if nodelist[i][0] == token.COMMA:
             continue
         values.append(nodelist[i])
 
     return builder.List(values)
+
+
+# list_iter: list_for | list_if
+# list_for: 'for' exprlist 'in' testlist_safe [list_iter]
+# list_if: 'if' old_test [list_iter]
+#
+# gen_iter: gen_for | gen_if
+# gen_for: 'for' exprlist 'in' or_test [gen_iter]
+# gen_if: 'if' old_test [gen_iter]
+
+def com_iterator(method, value, nodelist):
+    clauses = []
+    nodelist = nodelist[1:]     # skip the symbol
+    while nodelist:
+        while len(nodelist)==1:
+            nodelist, = nodelist
+            nodelist = nodelist[1:]     # skip the symbol
+        tok, val, line = nodelist[0]
+        assert tok==NAME
+        assert val in ('for', 'in', 'if')
+        clauses.append((val, nodelist[1]))
+        nodelist = nodelist[2:]
+    return method(value, clauses)
+
+
+# testlist_gexp test (gen_for | (',' test)* [','])
+
+def testlist_gexp(builder, nodelist):
+    if nodelist[2][0] == token.COMMA:
+        return testlist(builder, nodelist)
+    else:
+        value, nodelist = nodelist[1:]
+        return com_iterator(builder.GenExpr, value, nodelist)
+    
+
+
+
+
+
 
 
 
@@ -365,7 +406,6 @@ def subscript(builder, nodelist):
     if have_stride:
         return builder.Slice3(start,stop,stride)
     return builder.Slice2(start,stop)
-
 
 
 for sym,name in sym_name.items():
