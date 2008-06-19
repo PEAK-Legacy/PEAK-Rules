@@ -331,22 +331,22 @@ when(bitmap_index_type,  (IndexedEngine, IsSubclass))(lambda en,ex:TypeIndex)
 
 when(predicate_node_for, (IndexedEngine, IsInstance))
 when(predicate_node_for, (IndexedEngine, IsSubclass))
-
 def class_node(builder, expr, cases, remaining_exprs, memo):
     dontcares, seedmap = builder.seed_bits(expr, cases)
     cache = {}
-
     def lookup_fn(cls):
         try:
             inc, exc = seedmap[cls]
         except KeyError:
-            if len(cls.__bases__)>1:
+            if len(cls.__bases__)==1:
+                base, = cls.__bases__
+                if base in cache: return cache[base]
+                return cache.setdefault(cls, lookup_fn(base))
+            else:
                 builder.reseed(expr, Class(cls))    # fix multiple inheritance
                 inc, exc = seedmap.setdefault(
                     cls, builder.seed_bits(expr, cases)[1][cls]
                 )
-            else:
-                inc = exc = 0
         cbits = dontcares | (inc ^ (exc & inc))
         return cache.setdefault(cls, builder.build(cbits,remaining_exprs,memo))
 

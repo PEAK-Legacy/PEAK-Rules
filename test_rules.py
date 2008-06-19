@@ -285,6 +285,47 @@ class MiscTests(unittest.TestCase):
             self.assertEqual(pe('not x %s y' % not_op),x_cmp_y(not_stdop,False))
 
 
+    def testInheritance(self):
+        class X: pass
+        class Y(X): pass
+        x = Y()
+        f = lambda x: "f"
+        when(f, "isinstance(x, X)")(lambda x: "g")
+        self.assertEqual(f(x), 'g')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class RuleDispatchTests(unittest.TestCase):
 
     def testSimplePreds(self):
