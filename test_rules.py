@@ -291,6 +291,7 @@ class MiscTests(unittest.TestCase):
         x = Y()
         f = lambda x: "f"
         when(f, "isinstance(x, X)")(lambda x: "g")
+        when(f, "x in istype(X)")(lambda x: "h")
         self.assertEqual(f(x), 'g')
 
 
