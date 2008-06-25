@@ -294,7 +294,11 @@ class MiscTests(unittest.TestCase):
         when(f, "x in istype(X)")(lambda x: "h")
         self.assertEqual(f(x), 'g')
 
-
+    def testNotInherited(self):
+        f = abstract(lambda x: "f")
+        when(f, "not isinstance(x, int)")(lambda x: "g")
+        self.assertEqual(f(None), 'g')
+        
 
 
 

@@ -441,13 +441,13 @@ class TypeIndex(BitmapIndex):
                         self.include(cls, c2)
                         csmap[c2].add(cls)
 
-
-
-
-
-
-
-
+    def seed_bits(self, cases):
+        bits = self.criteria_bits
+        io = istype(object)
+        dontcares, seedbits = super(TypeIndex, self).seed_bits(cases)
+        for cri in self.all_seeds[object][0]:
+            if cri!=io: dontcares |= bits[cri]
+        return dontcares & cases, seedbits
 
     def add_criterion(self, criterion):
         if isinstance(criterion, istype):

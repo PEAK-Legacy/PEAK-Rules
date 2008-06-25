@@ -339,10 +339,10 @@ def class_node(builder, expr, cases, remaining_exprs, memo):
             inc, exc = seedmap[cls]
         except KeyError:
             builder.reseed(expr, Class(cls))
-            inc, exc = seedmap.setdefault(
-                cls, builder.seed_bits(expr, cases)[1][cls]
-            )
-        cbits = dontcares | (inc ^ (exc & inc))
+            seedmap.update(builder.seed_bits(expr, cases)[1])
+            inc, exc = seedmap[cls]
+        cbits = dontcares | inc
+        cbits ^= (exc & cbits)
         return cache.setdefault(cls, builder.build(cbits,remaining_exprs,memo))
 
     return cache, lookup_fn
@@ -360,6 +360,7 @@ def std_type_to_test(typ, expr, engine):
 when(type_to_test, (istype,))
 def istype_to_test(typ, expr, engine):
     return Test(IsInstance(expr), typ)
+
 
 
 
