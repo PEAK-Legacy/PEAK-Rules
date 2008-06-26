@@ -623,12 +623,12 @@ def additional_tests():
     import doctest
     files = [
         'README.txt', 'DESIGN.txt', 'Indexing.txt', 'AST-Builder.txt',
-        'Code-Generation.txt', 'Criteria.txt', 'Predicates.txt',
+        'Code-Generation.txt', 'Syntax-Matching.txt', 'Criteria.txt',
+        'Predicates.txt', 
     ][sys.version<'2.4':]   # skip README.txt on 2.3 due to @ syntax
     return doctest.DocFileSuite(
         optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE, *files
     )
-
 
 
 
