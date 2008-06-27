@@ -379,6 +379,17 @@ And arbitrary expressions are handled as truth tests::
     Test(Truth(Local('x')), False)
 
 
+Note, by the way, that backquotes are not allowed in predicate expressions, as
+they are reserved for use by macros or "meta functions" to create specialized
+syntax::
+
+    >>> pe('`x`')
+    Traceback (most recent call last):
+      ...
+    SyntaxError: backquotes are not allowed in predicates
+
+
+
 Pattern Matching
 ----------------
 

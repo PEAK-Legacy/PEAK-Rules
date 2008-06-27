@@ -80,10 +80,13 @@ def Truth(expr, code=None):
          Code.ROT_TWO, Code.POP_TOP)
 
 
+class ExprBuilder(ExprBuilder):
+    def Backquote(self, expr):
+        raise SyntaxError("backquotes are not allowed in predicates")
+
 class CriteriaBuilder:
     simplify_comparisons = True
     mode = True
-
     def __init__(self, arguments, *namespaces):
         self.expr_builder = ExprBuilder(arguments, *namespaces)
 
@@ -110,7 +113,6 @@ class CriteriaBuilder:
         '<>': '<>', '!=': '<>', '==':'==',
         'is': 'is', 'is not': 'is not'
     }
-
     _rev_ops = {
         '>': '<=', '>=': '<', '=>': '<',
         '<': '>=', '<=': '>', '=<': '>',
@@ -118,8 +120,6 @@ class CriteriaBuilder:
         'in': 'not in', 'not in': 'in',
         'is': 'is not', 'is not': 'is'
     }
-
-
 
     def Compare(self, initExpr, ((op,other),)):
         old_op = [op, '!='][op=='<>']
@@ -360,7 +360,6 @@ def std_type_to_test(typ, expr, engine):
 when(type_to_test, (istype,))
 def istype_to_test(typ, expr, engine):
     return Test(IsInstance(expr), typ)
-
 
 
 

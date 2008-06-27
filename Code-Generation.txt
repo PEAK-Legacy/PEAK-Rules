@@ -41,11 +41,9 @@ arguments named "a" through "g"::
     >>> argmap = dict([(name,Local(name)) for name in 'abcdefg'])
     >>> builder = ExprBuilder(argmap, locals(), globals(), __builtins__)
 
-And, for convenience, we'll define a short function to parse and output an
-expression's AST using this builder instance::
+And, for convenience, we'll save the builder's ``parse()`` method as ``pe``::
 
-    >>> def pe(expr):
-    ...     return parse_expr(expr, builder)
+    >>> pe = builder.parse
 
 
 Names and Constants

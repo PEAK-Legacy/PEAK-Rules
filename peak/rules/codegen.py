@@ -1,7 +1,7 @@
 from peak.util.assembler import *
 from peak.util.symbols import Symbol
 from peak.rules.core import gen_arg, clone_function
-from ast_builder import build
+from ast_builder import build, parse_expr
 import sys
 try:
     set
@@ -338,7 +338,7 @@ class ExprBuilder:
     def push(self, ns={}): self.bindings.insert(0, {}); self.bind(ns)
     def bind(self, ns): self.bindings[0].update(ns)
     def pop(self): return self.bindings.pop(0)        
-
+    def parse(self, expr): return parse_expr(expr, self)
     def Const(self,value): return Const(value)
 
     def Name(self,name):

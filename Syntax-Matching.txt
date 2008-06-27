@@ -161,3 +161,29 @@ And recursively matching their contents::
      'x': [Getitem(Local('q'), Const(0))]}
 
 
+Parsing Syntax Patterns
+=======================
+
+The ``syntax.SyntaxBuilder`` class is used to parse Python expressions into
+AST patterns suitable for use with ``match_predicate``::
+
+    >>> from peak.rules.syntax import SyntaxBuilder
+    >>> builder = SyntaxBuilder({}, locals(), globals(), __builtins__)
+    >>> pe = builder.parse
+
+It parses backquoted identifiers into ``Bind`` nodes:
+
+    >>> pe('type(`x`) is `y`')
+    Compare(Call(Const(<type 'type'>), (Bind('x'),), (), (), (), True),
+            (('is', Bind('y')),))
+
+And rejects all other use of backquotes::
+
+    >>> pe('`type(x)`')
+    Traceback (most recent call last):
+      ...
+    SyntaxError: backquotes may only be used around an indentifier
+
+In all other respects, it's essentially the same as ``codegen.ExprBuilder``.
+
+
