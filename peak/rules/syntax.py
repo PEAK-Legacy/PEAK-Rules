@@ -3,6 +3,7 @@ from codegen import *
 from criteria import *
 from predicates import *
 from core import *
+from token import NAME
 
 __all__ = ['Bind', 'match_predicate', 'match_sequence']
 
@@ -30,10 +31,12 @@ def match_bind(pattern, expr, binds):
                 return Test(Truth(Compare(expr, (('==', old),))), True)
     return True
 
-
-
-
-
+class SyntaxBuilder(ExprBuilder):
+    def Backquote(self, expr):
+        while len(expr)==2: expr, expr = expr
+        if expr[0]==NAME:
+            return Bind(expr[1])
+        raise SyntaxError("backquotes may only be used around an indentifier")
 
 
 
