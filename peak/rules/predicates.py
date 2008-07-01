@@ -4,9 +4,10 @@ from core import class_or_type_of
 from criteria import *
 from indexing import *
 from codegen import SMIGenerator, ExprBuilder, Getitem, IfElse
-from peak.util.decorators import decorate, synchronized
+from peak.util.decorators import decorate, synchronized, decorate_assignment
 from types import InstanceType, ClassType
 from ast_builder import build, parse_expr
+import inspect
 
 __all__ = [
     'IsInstance', 'IsSubclass', 'Truth', 'Identity', 'Comparison',
@@ -37,7 +38,6 @@ nodetype()
 def IsInstance(expr, code=None):
     if code is None: return expr,
     return IsSubclass(class_or_type_of(expr), code)
-
 
 _unpack = lambda c: c.UNPACK_SEQUENCE(2)
 subclass_check = TryExcept(
@@ -81,12 +81,133 @@ def Truth(expr, code=None):
 
 
 class ExprBuilder(ExprBuilder):
+    """Extended expression builder with support for meta-functions"""
+
     def Backquote(self, expr):
         raise SyntaxError("backquotes are not allowed in predicates")
 
+    def CallFunc(self, func, args, kw, star_node, dstar_node):
+        b = build.__get__(self)
+        target = b(func)
+        if isinstance(target, Const) and target.value in meta_functions:
+            return self.apply_meta(
+                meta_functions[target.value], args, kw, star_node, dstar_node
+            )
+        return Call(
+            target, map(b,args), [(b(k),b(v)) for k,v in kw],
+            star_node and b(star_node), dstar_node and b(dstar_node)
+        )
+
+    def apply_meta(self,
+        (func, parsers, (argnames, varargs, varkw, defaults)), args, kw, star, dstar
+    ):
+        # NB: tuple-args not allowed!
+        def parse(arg, node):
+            if not node:
+                return None
+            return parsers.get(arg, build)(self, node)
+
+        data = {}
+        extra = []
+        offset = 0
+        for name in argnames:
+            if name=='__builder__': data[name] = self
+            elif name=='__star__':  data[name] = parse(name, star)
+            elif name=='__dstar__': data[name] = parse(name, dstar)
+            else:
+                break
+            offset += 1
+
+        for k, v in zip(argnames[offset:], args):
+            data[k] = parse(k, v)
+
+        varargpos = len(argnames)-offset
+        if len(args)> varargpos:
+            if not varargs:
+                raise TypeError("Too many arguments for %r" % (func,))
+            extra.extend([parse(varargs, node) for node in args[varargpos:]])
+
+        for k,v in kw:
+            k = build(self, k)
+            assert type(k) is Const and isinstance(k.value, basestring)
+            k = k.value
+            if k in data:
+                raise TypeError("Duplicate keyword %s for %r" % (k,func))
+            if varkw and k not in argnames and k not in parsers:
+                data[k] = parse(varkw,  v)
+            else:
+                data[k] = parse(k, v)
+
+        if star and '__star__' not in data:
+            raise TypeError("%r does not support parsing *args" % (func,))
+
+        if dstar and '__dstar__' not in data:
+            raise TypeError("%r does not support parsing **kw" % (func,))
+
+        if defaults:
+            for k,v in zip(argnames[-len(defaults):], defaults):
+                data.setdefault(k, v)
+
+        try:
+            args = map(data.pop, argnames)+extra
+        except KeyError, e:
+            raise TypeError(
+                "Missing positional argument %s for %r"%(e.args[0], func)
+            )
+        return func(*args, **data)
+
+
+
+
+
+
+
+meta_functions = {}
+
+def meta_function(*stub, **parsers):
+    """Declare a meta-function and its argument parsers"""
+    stub, = stub
+    def callback(frame, name, func, old_locals):
+        for name in inspect.getargs(func.func_code)[0]:
+            if not isinstance(name, basestring):
+                raise TypeError(
+                    "Meta-functions cannot have packed-tuple arguments"
+                )
+        meta_functions[stub] = func, parsers, inspect.getargspec(func)
+        return func
+    return decorate_assignment(callback)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class CriteriaBuilder:
+
     simplify_comparisons = True
     mode = True
+    parse = ExprBuilder.parse.im_func
     def __init__(self, arguments, *namespaces):
         self.expr_builder = ExprBuilder(arguments, *namespaces)
 
@@ -100,7 +221,7 @@ class CriteriaBuilder:
         if opname[0].isalpha() and opname[0]==opname[0].upper():
             locals()[opname] = mkOp(opname)
 
-    def Not(self,expr):
+    def Not(self, expr):
         self.mode = not self.mode
         try:
             return build(self, expr)
@@ -113,6 +234,7 @@ class CriteriaBuilder:
         '<>': '<>', '!=': '<>', '==':'==',
         'is': 'is', 'is not': 'is not'
     }
+
     _rev_ops = {
         '>': '<=', '>=': '<', '=>': '<',
         '<': '>=', '<=': '>', '=<': '>',
@@ -120,6 +242,7 @@ class CriteriaBuilder:
         'in': 'not in', 'not in': 'in',
         'is': 'is not', 'is not': 'is'
     }
+
 
     def Compare(self, initExpr, ((op,other),)):
         old_op = [op, '!='][op=='<>']
@@ -170,11 +293,15 @@ def or_(items, mode=True):
     if mode: return Disjunction(items)
     return reduce(intersect, items, True)
 
-
 def expressionSignature(expr, mode):
     """Return a test that tests `expr` in truth `mode`"""
     # Default is to simply test the truth of the expression
     return Test(Truth(expr), mode)
+
+when(expressionSignature, (bool,))  # XXX this needs to handle more things
+def bool_signature(expr, mode):
+    if not mode: return not expr
+    return expr
 
 def compileIn(expr, criterion, truth):
     """Return a signature or predicate (or None) for 'expr in criterion'"""
@@ -196,10 +323,6 @@ def compileInIsType(expr, criterion, truth):
     if not truth:
         criterion = istype(criterion.type, not criterion.match)
     return Test(IsInstance(expr), criterion)
-
-
-
-
 
 
 

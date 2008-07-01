@@ -256,9 +256,7 @@ tests and signatures.  It's initialized using the same arguments as the
     >>> builder = CriteriaBuilder(
     ...     dict(x=Local('x'), y=Local('y')), locals(), globals(), __builtins__
     ... )
-    >>> from peak.rules.ast_builder import parse_expr
-    >>> def pe(expr):
-    ...     return parse_expr(expr, builder)
+    >>> pe = builder.parse
 
     >>> pe('x+42 > 23*2')
     Test(Comparison(Add(Local('x'), Const(42))), Range((46, 1), (Max, 1)))
@@ -449,6 +447,203 @@ where `y` is a constant::
     ...         Class(unicode, False), Class(int, False), Class(str, False)])
     ... )
     True
+
+
+"Meta Function" Expansion
+-------------------------
+
+To create special functions with the ability to manipulate the compile-time
+representation of a rule, you can register "meta functions" with the
+``meta_function`` decorator.  You begin by defining a stub function which
+will be imported and used by the caller in their rules::
+
+    >>> def let(**kw):
+    ...     """This is a function that will have special behavior in rules"""
+    ...     raise NotImplementedError("`let` can only be used in rules")
+
+Then, you define a "meta function" for this function, that will be called at
+compile time.  The signature of this function must match the signature with
+which it will be called, except that it can have zero or more extra parameters
+at the beginning named ``__builder__``, ``__star__`` and/or ``__dstar__``.
+``__builder__``, for example, will be the active ``ExpressionBuilder``::
+
+    >>> def compile_let(__builder__, **kw):
+    ...     __builder__.bind(kw)
+    ...     return True
+
+To register your "meta function", you use ``@meta_function(stub_function)``::
+
+    >>> from peak.rules.predicates import meta_function
+    >>> compile_let = meta_function(let)(compile_let)
+
+Then, when the stub function is used in a rule, the meta function is called
+with the PEAK-Rules AST objects resulting from compiling the invocation of
+the stub function in the rule::
+
+    >>> builder = CriteriaBuilder(
+    ...     dict(x=Local('x'), y=Local('y')), locals(), globals(), __builtins__
+    ... )
+    >>> pe = builder.parse
+
+    >>> pe('let(q=x*y) and q>42')
+    Test(Comparison(Mul(Local('x'), Local('y'))), Range((42, 1), (Max, 1)))
+
+As you can see, our ``compile_let`` meta-function bound ``q`` to
+``Mul(Local('x'), Local('y'))``, which was the compiled form of the keyword
+argument it received.
+
+Notice, by the way, that our meta-function does NOT accept ``**`` arguments::
+
+    >>> pe('let(**{"z":x*y}) and z>42')
+    Traceback (most recent call last):
+      ...
+    TypeError: <function compile_let at ...> does not support parsing **kw
+
+Or ``*`` arguments:::
+
+    >>> pe('let(*[1,2]) and z>42')
+    Traceback (most recent call last):
+      ...
+    TypeError: <function compile_let at ...> does not support parsing *args
+
+This is because we didn't include ``__star__`` or ``__dstar__`` parameters
+at the beginning of the ``compile_let()`` parameter list; if we had, the
+function would have received either the compiled AST for the corresponding
+part of the call, or ``None`` if no star or double-star arguments were
+provided.
+
+
+Dynamic Arguments
+~~~~~~~~~~~~~~~~~
+
+Notice, by the way, that ``__star__`` and ``__dstar__`` refer to the *caller's*
+use of ``*`` and ``**`` to make dynamic calls.  The meta function can have
+``*`` and ``**`` parameters, but these are passed any *static* positional or
+keyword arguments used by the caller.  For example::
+
+    >>> def dummy(*args, **kw):
+    ...     """Just a dummy"""
+
+    >>> def compile_dummy(__star__, __dstar__, p1, p2=None, *args, **kw):
+    ...     print "p1        =", p1
+    ...     print "p2        =", p2
+    ...     print "args      =", args
+    ...     print "kw        =", kw
+    ...     print "__star__  =", __star__
+    ...     print "__dstar__ =", __dstar__
+    ...     return True
+
+    >>> compile_dummy = meta_function(dummy)(compile_dummy)
+    
+    >>> builder = CriteriaBuilder(
+    ...     dict(x=Local('x'), y=Local('y')), locals(), globals(), __builtins__
+    ... )
+    >>> pe = builder.parse
+
+    >>> pe('dummy(x, y, x*x, y*y, k1=x, k2=y, *x+1, **y*2)')
+    p1        = Local('x')
+    p2        = Local('y')
+    args      = (Mul(Local('x'), Local('x')), Mul(Local('y'), Local('y')))
+    kw        = {'k2': Local('y'), 'k1': Local('x')}
+    __star__  = Add(Local('x'), Const(1))
+    __dstar__ = Mul(Local('y'), Const(2))
+    True
+
+    >>> pe('dummy(x)')
+    p1        = Local('x')
+    p2        = None
+    args      = ()
+    kw        = {}
+    __star__  = None
+    __dstar__ = None
+    True
+
+
+Argument Errors
+~~~~~~~~~~~~~~~
+
+Static argument errors, such as failure to pass the right number of positional
+arguments, and duplicate keyword arguments that occur in the source (as opposed
+to runtime ``*`` or ``**`` problems), are detected at compile time::
+
+    >>> pe('dummy(x, p1=y)')
+    Traceback (most recent call last):
+      ...
+    TypeError: Duplicate keyword p1 for <... compile_dummy at ...>
+
+    >>> pe('dummy(p2=x, p2=y)')
+    Traceback (most recent call last):
+      ...
+    TypeError: Duplicate keyword p2 for <... compile_dummy at ...>
+
+    >>> pe('dummy()')
+    Traceback (most recent call last):
+      ...
+    TypeError: Missing positional argument p1 for <... compile_dummy at ...>
+
+    >>> pe('let(x)')
+    Traceback (most recent call last):
+      ...
+    TypeError: Too many arguments for <... compile_let at ...>
+
+Also, note that meta functions cannot have packed-tuple arguments::
+
+    >>> meta_function(lambda x,y:None)(lambda x,(y,z): True)
+    Traceback (most recent call last):
+      ...
+    TypeError: Meta-functions cannot have packed-tuple arguments
+
+
+Custom Argument Compiling
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+On occasion, a meta function may wish to interpret one or more of its arguments
+using a custom expression builder in place of the standard one, so that instead
+of a PEAK-Rules AST, it gets some other data structure.  You can do this
+by passing keyword arguments to ``@meta_function()`` that supply a builder
+function for each argument that needs custom building.
+
+A builder function is a 2-argument callable that will be passed the active
+``ExpressionBuilder`` instance and the raw Python AST tuples of the argument
+it is supposed to parse.  The function must then return whatever value should
+be used as the parsed form of the argument supplied to the meta function.
+
+For example::
+
+    >>> def make_builder(text):
+    ...     def builder_function(old_builder, arg_node):
+    ...         return text
+    ...     return builder_function
+
+    >>> def dummy2(*args, **kw):
+    ...     """Just another dummy"""
+
+    >>> compile_dummy = meta_function(dummy2,
+    ...     p1=make_builder('p1'), p2=make_builder('p2'),
+    ...     args=make_builder('args'), kw=make_builder('kw'),
+    ...     k2=make_builder('k2'),
+    ...     __star__ = make_builder('*'), __dstar__=make_builder('**')
+    ... )(compile_dummy)
+    
+    >>> builder = CriteriaBuilder(
+    ...     dict(x=Local('x'), y=Local('y')), locals(), globals(), __builtins__
+    ... )
+    >>> pe = builder.parse
+
+    >>> pe('dummy2(x, y, x*x, y*y, k1=x, k2=y, *x+1, **y*2)')
+    p1        = p1
+    p2        = p2
+    args      = ('args', 'args')
+    kw        = {'k2': 'k2', 'k1': 'kw'}
+    __star__  = *
+    __dstar__ = **
+    True
+
+As you can see, build functions are selected on the basis of the argument
+name they target.  If the meta function has a ``*`` parameter, each of the
+overflow positional arguments is parsed with the builder function of the
+corresponding name.  If a named keyword argument has a build function, that one
+is used, otherwise any build function for the ``**`` parameter is used.
 
 
 Upgrading from ``TypeEngine``
