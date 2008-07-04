@@ -167,7 +167,7 @@ Parsing Syntax Patterns
 The ``syntax.SyntaxBuilder`` class is used to parse Python expressions into
 AST patterns suitable for use with ``match_predicate``::
 
-    >>> from peak.rules.syntax import SyntaxBuilder
+    >>> from peak.rules.syntax import SyntaxBuilder, match
     >>> builder = SyntaxBuilder({}, locals(), globals(), __builtins__)
     >>> pe = builder.parse
 
@@ -185,5 +185,63 @@ And rejects all other use of backquotes::
     SyntaxError: backquotes may only be used around an indentifier
 
 In all other respects, it's essentially the same as ``codegen.ExprBuilder``.
+
+
+The ``match()`` Pseudo-function
+-------------------------------
+
+    >>> from peak.rules.syntax import match
+
+    >>> from peak.rules.predicates import ExprBuilder
+    >>> builder = ExprBuilder(
+    ...     {'expr':Local('expr')}, locals(), globals(), __builtins__
+    ... )
+    >>> pe = builder.parse
+
+    >>> pe('match(expr, type(`x`) is `y`)')
+    Signature([Test(IsInstance(Local('expr')),
+                    istype(<class 'peak.util.assembler.Compare'>, True)),
+               Test(IsInstance(Getitem(Local('expr'), Const(1))),
+                    istype(<class 'peak.util.assembler.Call'>, True)),
+               Test(Comparison(Getitem(Getitem(Local('expr'), Const(1)),
+                                       Const(1))),
+                    Value(Const(<type 'type'>), True)),
+               Test(Comparison(Call(Const(<... len>),
+                                    (Getitem(Getitem(Local('expr'),
+                                             Const(1)), Const(2)),), (),
+                                    (), (), True)),
+                               Value(1, True)),
+               Test(Comparison(Call(Const(<... len>),
+                                    (Getitem(Getitem(Local('expr'), Const(1)),
+                                             Const(3)),), (), (), (), True)),
+                               Value(0, True)),
+               Test(Comparison(Call(Const(<... len>),
+                                    (Getitem(Getitem(Local('expr'), Const(1)),
+                                             Const(4)),), (), (), (), True)),
+                               Value(0, True)),
+               Test(Comparison(Call(Const(<... len>),
+                                    (Getitem(Getitem(Local('expr'), Const(1)),
+                                             Const(5)),), (), (), (), True)),
+                               Value(0, True)),
+               Test(Comparison(Getitem(Getitem(Local('expr'), Const(1)),
+                                       Const(6))),
+                               Value(True, True)),
+               Test(Comparison(Call(Const(<... len>),
+                                    (Getitem(Local('expr'), Const(2)),), (),
+                                    (), (), True)),
+                               Value(1, True)),
+               Test(Comparison(Call(Const(<... len>),
+                                    (Getitem(Getitem(Local('expr'), Const(2)),
+                                             Const(0)),), (), (), (), True)),
+                               Value(2, True)),
+               Test(Comparison(Getitem(Getitem(Getitem(Local('expr'),
+                                                       Const(2)), Const(0)),
+                                       Const(0))),
+                               Value('is', True))])
+
+    >>> builder.bindings[0]
+    {'y': Getitem(Getitem(Getitem(Local('expr'), Const(2)), Const(0)), Const(1)),
+     'x': Getitem(Getitem(Getitem(Local('expr'), Const(1)), Const(2)), Const(0))}
+
 
 

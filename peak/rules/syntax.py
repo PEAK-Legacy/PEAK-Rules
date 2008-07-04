@@ -4,6 +4,7 @@ from criteria import *
 from predicates import *
 from core import *
 from token import NAME
+from ast_builder import build
 
 __all__ = ['Bind', 'match_predicate', 'match_sequence']
 
@@ -37,6 +38,43 @@ class SyntaxBuilder(ExprBuilder):
         if expr[0]==NAME:
             return Bind(expr[1])
         raise SyntaxError("backquotes may only be used around an indentifier")
+
+def match(expr, pattern):
+    """Match `expr` against inline pattern `pattern`
+
+    This function can only be called inside a rule string; the second argument
+    is treated as a syntactic match pattern, which can include backquoted
+    locals to be used as bind patterns."""
+    raise NotImplementedError(
+        "Use match_predicate() to match compiled patterns outside a rule"
+    )
+
+def build_pattern(builder, node):
+    old = builder.__class__
+    builder.__class__ = SyntaxBuilder
+    try:
+        return build(builder, node)
+    finally:
+        builder.__class__ = old
+
+meta_function(match, pattern=build_pattern)
+def compile_match(__builder__, expr, pattern):
+    binds = {}
+    pred = match_predicate(pattern, expr, binds)
+    __builder__.bind(dict([(k, list(v)[0]) for k, v in binds.items()]))
+    return pred
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

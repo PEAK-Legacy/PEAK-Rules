@@ -11,7 +11,7 @@ import inspect
 
 __all__ = [
     'IsInstance', 'IsSubclass', 'Truth', 'Identity', 'Comparison',
-    'IndexedEngine', 'predicate_node_for',
+    'IndexedEngine', 'predicate_node_for', 'meta_function'
 ]
 
 abstract()
