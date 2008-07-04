@@ -192,8 +192,8 @@ The ``match()`` Pseudo-function
 
     >>> from peak.rules.syntax import match
 
-    >>> from peak.rules.predicates import ExprBuilder
-    >>> builder = ExprBuilder(
+    >>> from peak.rules.predicates import CriteriaBuilder
+    >>> builder = CriteriaBuilder(
     ...     {'expr':Local('expr')}, locals(), globals(), __builtins__
     ... )
     >>> pe = builder.parse
@@ -239,7 +239,7 @@ The ``match()`` Pseudo-function
                                        Const(0))),
                                Value('is', True))])
 
-    >>> builder.bindings[0]
+    >>> builder.expr_builder.bindings[0]
     {'y': Getitem(Getitem(Getitem(Local('expr'), Const(2)), Const(0)), Const(1)),
      'x': Getitem(Getitem(Getitem(Local('expr'), Const(1)), Const(2)), Const(0))}
 
