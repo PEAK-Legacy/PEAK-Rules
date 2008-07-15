@@ -301,6 +301,8 @@ def expressionSignature(expr):
     # Default is to simply test the truth of the expression
     return Test(Truth(expr), Value(True))
 
+when(expressionSignature, (Const,))(lambda expr: bool(expr.value))
+
 def compileIn(expr, criterion):
     """Return a signature or predicate (or None) for 'expr in criterion'"""
     try:
@@ -319,8 +321,6 @@ def compileInClass(expr, criterion):
 when(compileIn, (object, istype))
 def compileInIsType(expr, criterion):
     return Test(IsInstance(expr), criterion)
-
-
 
 
 
@@ -533,22 +533,24 @@ def _parse_string(engine, predicate, ctx, cls):
 
 # === As of this point, it should be possible to compile expressions!
 #
-when(expressionSignature,
-    # matches 'issubclass/isinstance(?, Const)'
-    "expr in Call and expr.func in Const"
-    " and (expr.func.value is issubclass or expr.func.value is isinstance)"
-    " and len(expr.args)==2 and expr.args[1] in Const"
+meta_function(isinstance)(
+    lambda __star__, __dstar__, *args, **kw:
+        compileIsXCall(isinstance, IsInstance, args, kw, __star__, __dstar__)
 )
-def convertIsXCall(expr):
-    func, (expr, seq) = expr.func.value, expr.args
-    if func is isinstance:
-        expr = IsInstance(expr)
-    elif func is issubclass:
-        expr = IsSubclass(expr)
-    else:
-        raise AssertionError("Should only be called for isinstance/issubclass")
-
-    return Test(expr, Disjunction(map(Class, _yield_tuples(seq.value))))
+meta_function(issubclass)(
+    lambda __star__, __dstar__, *args, **kw:
+        compileIsXCall(issubclass, IsSubclass, args, kw, __star__, __dstar__)
+)
+def compileIsXCall(func, test, args, kw, star, dstar):    
+    if (
+        kw or len(args)!=2 or not isinstance(args[1], Const)
+        or isinstance(args[0], Const) or star is not None or dstar is not None
+    ):
+        return expressionSignature(
+            Call(Const(func), args, tuple(kw.items()), star, dstar)
+        )
+    expr, seq = args
+    return Test(test(expr), Disjunction(map(Class, _yield_tuples(seq.value))))
 
 def _yield_tuples(ob):
     if type(ob) is tuple:
@@ -565,8 +567,6 @@ when(compileIs,
 )
 def compileTypeIsX(expr, criterion):
     return Test(IsInstance(expr.args[0]), istype(criterion))
-
-
 
 
 

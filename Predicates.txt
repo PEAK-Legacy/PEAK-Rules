@@ -453,6 +453,9 @@ where `y` is a constant::
     ... )
     True
 
+    >>> pe('issubclass(int, object)')
+    True
+
 
 "Meta Function" Expansion
 -------------------------
