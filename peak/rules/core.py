@@ -246,7 +246,6 @@ class AmbiguousMethods(DispatchError):
 
 class RuleSet(object):
     """An observable, stably-ordered collection of rules"""
-
     default_action = NoApplicableMethods()
     default_actiontype = Method
     counter = 0
@@ -271,6 +270,11 @@ class RuleSet(object):
         self.rules.remove(rule)
         self._notify(removed=actiondefs)
 
+    synchronized()
+    def clear(self):
+        actiondefs = frozenset(self)
+        del self.rules[:]; self.actiondefs.clear()
+        self._notify(removed=actiondefs)
     #def changed(self, rule):
     #    sequence, actions = self.actions[rule]
     #    new_actions = frozenset(self._actions_for(rule, sequence))
@@ -280,16 +284,11 @@ class RuleSet(object):
     def _notify(self, added=empty, removed=empty):
         for listener in self.listeners[:]:  # must be re-entrant
             listener.actions_changed(added, removed)
-
-
-
-
-
+            
     synchronized()
     def __iter__(self):
-        for rule in self.rules:
-            for actiondef in self.actiondefs[rule]:
-                yield actiondef
+        ad = self.actiondefs
+        return iter([a for rule in self.rules for a in ad[rule]])
 
     def _actions_for(self, (na, body, predicate, actiontype, seq)):
         actiontype = actiontype or self.default_actiontype
@@ -322,6 +321,7 @@ def abstract(func=None):
         )
     else:
         return Dispatching(func).as_abstract()
+
 
 
 

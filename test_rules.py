@@ -314,13 +314,13 @@ class MiscTests(unittest.TestCase):
         self.failUnlessEqual(whats_this(B()), "B()")
         self.failUnlessEqual(whats_this(A()), "A()")
 
-
-
-
-
-
-
-
+    def testRuleSetClear(self):
+        from peak.rules.core import Rule, RuleSet
+        rs = RuleSet(); r = Rule(lambda:None,actiontype=Method)
+        rs.add(r)
+        self.assertEqual(list(rs), [r])
+        rs.clear()
+        self.assertEqual(list(rs), [])
 
 
 
