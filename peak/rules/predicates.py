@@ -124,7 +124,6 @@ def meta_function(*stub, **parsers):
 class CriteriaBuilder:
 
     simplify_comparisons = True
-    mode = True
     parse = ExprBuilder.parse.im_func
     def __init__(self, arguments, *namespaces):
         self.expr_builder = ExprBuilder(arguments, *namespaces)
@@ -132,7 +131,7 @@ class CriteriaBuilder:
     def mkOp(name):
         op = getattr(ExprBuilder,name)
         def method(self, *args):
-            return expressionSignature(op(self.expr_builder, *args), self.mode)
+            return expressionSignature(op(self.expr_builder, *args))
         return method
 
     for opname in dir(ExprBuilder):
@@ -140,11 +139,14 @@ class CriteriaBuilder:
             locals()[opname] = mkOp(opname)
 
     def Not(self, expr):
-        self.mode = not self.mode
+        return negate(self.build_with(expr))
+
+    def build_with(self, expr, ):
+        self.expr_builder.push()
         try:
             return build(self, expr)
         finally:
-            self.mode = not self.mode
+            self.expr_builder.pop()
 
     _mirror_ops = {
         '>': '<', '>=': '<=', '=>':'<=',
@@ -153,55 +155,41 @@ class CriteriaBuilder:
         'is': 'is', 'is not': 'is not'
     }
 
-    _rev_ops = {
-        '>': '<=', '>=': '<', '=>': '<',
-        '<': '>=', '<=': '>', '=<': '>',
-        '<>': '==', '!=': '==', '==':'!=',
-        'in': 'not in', 'not in': 'in',
-        'is': 'is not', 'is not': 'is'
-    }
+
+
+
+
+
 
 
     def Compare(self, initExpr, ((op,other),)):
         old_op = [op, '!='][op=='<>']
         left = initExpr = build(self.expr_builder, initExpr)
         right = other = build(self.expr_builder, other)
-
         if isinstance(left,Const) and op in self._mirror_ops:
             left, right, op = right, left, self._mirror_ops[op]
 
         if isinstance(right,Const):
-            if not self.mode:
-                op = self._rev_ops[op]
-
             if op=='in' or op=='not in':
-                cond = compileIn(left, right.value, op=='in')
+                cond = compileIn(left, right.value)
                 if cond is not None:
-                    return cond
+                    return maybe_invert(cond, op=='in')
             elif op=='is' or op=='is not':
-                return compileIs(left, right.value, op=='is')
+                return maybe_invert(compileIs(left, right.value), op=='is')
             else:
                 return Test(Comparison(left), Inequality(op, right.value))
 
         # Both sides involve variables or an un-optimizable constant,
         #  so it's a generic boolean criterion  :(
         return expressionSignature(
-            Compare(initExpr, ((old_op, other),)), self.mode
+            Compare(initExpr, ((old_op, other),))
         )
 
     def And(self, items):
-        return and_([build(self,expr) for expr in items], self.mode)
+        return reduce(intersect, [build(self,expr) for expr in items], True)
 
     def Or(self, items):
-        return or_([build(self,expr) for expr in items], self.mode)
-
-
-
-
-
-
-
-
+        return OrElse(map(self.build_with, items))
 
     def CallFunc(self, func, args, kw, star_node, dstar_node):
         b = build.__get__(self.expr_builder)
@@ -213,7 +201,7 @@ class CriteriaBuilder:
         return expressionSignature(Call(
             target, map(b,args), [(b(k),b(v)) for k,v in kw],
             star_node and b(star_node), dstar_node and b(dstar_node)
-        ), self.mode)
+        ))
 
     def apply_meta(self,
         (func, parsers, (argnames, varargs, varkw, defaults)), args, kw, star, dstar
@@ -250,6 +238,7 @@ class CriteriaBuilder:
             k = k.value
             if k in data:
                 raise TypeError("Duplicate keyword %s for %r" % (k,func))
+
             if varkw and k not in argnames and k not in parsers:
                 data[k] = parse(varkw,  v)
             else:
@@ -274,31 +263,45 @@ class CriteriaBuilder:
         return func(*args, **data)
 
 
-def compileIs(expr, criterion, truth):
-    """Return a signature or predicate (or None) for 'expr is criterion'"""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def compileIs(expr, criterion):
+    """Return a signature or predicate for 'expr is criterion'"""
     #if criterion is None:     # XXX this should be smarter
-    #    return Test(IsInstance(expr), Class(NoneType, truth)
+    #    return Test(IsInstance(expr), istype(NoneType))
     #else:
-    return Test(Identity(expr), IsObject(criterion, truth))
+    return Test(Identity(expr), IsObject(criterion))
 
+def maybe_invert(cond, truth):
+    if not truth: return negate(cond)
+    return cond
 
-
-
-
-def and_(items, mode=True):
-    if mode: return reduce(intersect, items, True)   
-    return Disjunction(items)
-
-def or_(items, mode=True):
-    if mode: return Disjunction(items)
-    return reduce(intersect, items, True)
-
-def expressionSignature(expr, mode):
+def expressionSignature(expr):
     """Return a test that tests `expr` in truth `mode`"""
     # Default is to simply test the truth of the expression
-    return Test(Truth(expr), mode)
+    return Test(Truth(expr), Value(True))
 
-def compileIn(expr, criterion, truth):
+def compileIn(expr, criterion):
     """Return a signature or predicate (or None) for 'expr in criterion'"""
     try:
         iter(criterion)
@@ -306,19 +309,16 @@ def compileIn(expr, criterion, truth):
         pass    # treat the in condition as a truth expression
     else:
         expr = Comparison(expr)
-        return or_([Test(expr, Value(v, truth)) for v in criterion], truth)
+        return Test(expr, Disjunction([Value(v) for v in criterion]))
 
 when(compileIn, (object, type))
 when(compileIn, (object, ClassType))
-def compileInClass(expr, criterion, truth):
-    return Test(IsInstance(expr), Class(criterion, truth))
+def compileInClass(expr, criterion):
+    return Test(IsInstance(expr), Class(criterion))
 
 when(compileIn, (object, istype))
-def compileInIsType(expr, criterion, truth):
-    if not truth:
-        criterion = istype(criterion.type, not criterion.match)
+def compileInIsType(expr, criterion):
     return Test(IsInstance(expr), criterion)
-
 
 
 
@@ -539,7 +539,7 @@ when(expressionSignature,
     " and (expr.func.value is issubclass or expr.func.value is isinstance)"
     " and len(expr.args)==2 and expr.args[1] in Const"
 )
-def convertIsXCall(expr, mode):
+def convertIsXCall(expr):
     func, (expr, seq) = expr.func.value, expr.args
     if func is isinstance:
         expr = IsInstance(expr)
@@ -548,8 +548,7 @@ def convertIsXCall(expr, mode):
     else:
         raise AssertionError("Should only be called for isinstance/issubclass")
 
-    seq = [Test(expr, Class(c, mode)) for c in _yield_tuples(seq.value)]
-    return or_(seq, mode)
+    return Test(expr, Disjunction(map(Class, _yield_tuples(seq.value))))
 
 def _yield_tuples(ob):
     if type(ob) is tuple:
@@ -559,16 +558,17 @@ def _yield_tuples(ob):
     else:
         yield ob
 
-when(disjuncts, "ob in Test and ob.expr in Truth and ob.criterion in bool")(
-    lambda ob: [ob]
-)
-
 when(compileIs,
     # matches 'type(x) is y'
     "expr in Call and expr.func in Const and (expr.func.value is type)"
     " and len(expr.args)==1"
 )
-def compileTypeIsX(expr, criterion, truth):
-    return Test(IsInstance(expr.args[0]), istype(criterion, truth))
+def compileTypeIsX(expr, criterion):
+    return Test(IsInstance(expr.args[0]), istype(criterion))
+
+
+
+
+
 
 

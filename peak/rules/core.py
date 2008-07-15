@@ -4,12 +4,12 @@ __all__ = [
     'DispatchError', 'AmbiguousMethods', 'NoApplicableMethods',
     'abstract', 'when', 'before', 'after', 'around', 'istype', 'parse_rule',
     'implies', 'dominant_signatures', 'combine_actions', 'overrides',
-    'always_overrides', 'merge_by_default', 'intersect', 'disjuncts'
+    'always_overrides', 'merge_by_default', 'intersect', 'disjuncts', 'negate'
 ]
 from peak.util.decorators import decorate_assignment, decorate, struct, synchronized, frameinfo, decorate_class
 from peak.util.assembler import Code, Const, Call, Local, Getattr, TryExcept, Suite, with_name
 from peak.util.addons import AddOn
-import inspect, new, itertools
+import inspect, new, itertools, operator
 try:
     set = set
     frozenset = frozenset
@@ -181,6 +181,7 @@ class Method(object):
             maker = cls.make
         def decorate(f, pred=(), depth=2, frame=None):
             def callback(frame, name, func, old_locals):
+                assert f is not func    # XXX
                 rules = rules_for(f)
                 engine = Dispatching(f).engine
                 kind, module, locals_, globals_ = frameinfo(frame)
@@ -201,7 +202,6 @@ class Method(object):
         decorate = with_name(decorate, name)
         decorate.__doc__ = doc
         return decorate
-
 
 when = Method.make_decorator(
     "when", "Extend a generic function with a new action"
@@ -808,12 +808,12 @@ def parse_string_rule_by_upgrade(engine, predicate, context, cls):
 when(rules_for, type(After.sorted))(lambda f: rules_for(f.im_func))
 
 
+abstract()
+def negate(c):
+    """Return the logical negation of criterion `c`"""
 
-
-
-
-
-
+when(negate, (bool,)  )(operator.not_)
+when(negate, (istype,))(lambda c: istype(c.type, not c.match))
 
 
 

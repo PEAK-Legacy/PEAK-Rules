@@ -387,9 +387,9 @@ class TruthIndex(BitmapIndex):
     """Index for simple boolean expression tests"""
 
     def add_criterion(self, criterion):
-        assert isinstance(criterion, bool)
-        self.include(criterion, criterion)
-        self.include(not criterion, not criterion)
+        assert isinstance(criterion, Value) and criterion.value is True
+        self.include(criterion.match, criterion)
+        self.include(not criterion.match, not criterion)
         return self.match
 
 
@@ -401,11 +401,11 @@ def _get_mro(cls):
         mro = tmp.__mro__[1:-1] + (InstanceType, object)
     return mro
 
-
 abstract()
 def bitmap_index_type(engine, expr):
     """Get the BitmapIndex subclass to use for the given engine and `expr`"""
     raise NotImplementedError(engine, expr)
+
 
 
 class TypeIndex(BitmapIndex):

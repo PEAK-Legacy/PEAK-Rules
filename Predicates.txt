@@ -44,13 +44,13 @@ manipulation to select the correct subnode.
 The ``disjuncts()`` of a Truth Test is the Test itself::
 
     >>> from peak.rules import disjuncts
-    >>> from peak.rules.criteria import Test, Signature
+    >>> from peak.rules.criteria import Test, Signature, Value
 
-    >>> disjuncts(Test(Truth(88), True))
-    [Test(Truth(88), True)]
+    >>> disjuncts(Test(Truth(88), Value(True)))
+    [Test(Truth(88), Value(True, True))]
 
-    >>> disjuncts(Test(Truth(88), False))
-    [Test(Truth(88), False)]
+    >>> disjuncts(Test(Truth(88), Value(True, False)))
+    [Test(Truth(88), Value(True, False))]
 
 
 Identity
@@ -250,7 +250,7 @@ tests and signatures.  It's initialized using the same arguments as the
 ``codegen.ExprBuilder`` class::
 
     >>> from peak.rules.predicates import CriteriaBuilder, Comparison, istype
-    >>> from peak.rules.criteria import Disjunction, Value, Test, Range, Class
+    >>> from peak.rules.criteria import Disjunction, Value, Test, Range, Class, OrElse
     >>> from peak.util.assembler import Local
 
     >>> builder = CriteriaBuilder(
@@ -293,18 +293,23 @@ Iterable constants into or-ed equality tests::
     ... ])
     True
 
-    >>> pe('x not in (1,2,3)') == Test( Comparison(Local('x')), Disjunction([
-    ...     Range((Min, -1), (1, -1)), Range((1, 1), (2, -1))])
+    >>> pe('x not in (1,2,3)') == Test(
+    ...     Comparison(Local('x')),
+    ...     Disjunction([  
+    ...         Range((Min, -1), (1, -1)), Range((1, 1), (2, -1)),
+    ...         Range((2, 1), (3, -1)), Range((3, 1), (Max, 1))
+    ...     ])
     ... )
     True
+
 
 And non-iterable constants into plain expressions::
 
     >>> pe('x in 27')
-    Test(Truth(Compare(Local('x'), (('in', Const(27)),))), True)
+    Test(Truth(Compare(Local('x'), (('in', Const(27)),))), Value(True, True))
 
     >>> pe('x not in 27')
-    Test(Truth(Compare(Local('x'), (('not in', Const(27)),))), True)
+    Test(Truth(Compare(Local('x'), (('not in', Const(27)),))), Value(True, True))
 
 
 The ``is`` operator produces identity tests, if either side is a constant::
@@ -319,16 +324,16 @@ The ``is`` operator produces identity tests, if either side is a constant::
 And plain expressions when neither side is constant::
 
     >>> pe('x is y')
-    Test(Truth(Compare(Local('x'), (('is', Local('y')),))), True)
+    Test(Truth(Compare(Local('x'), (('is', Local('y')),))), Value(True, True))
 
     >>> pe('x is not y')
-    Test(Truth(Compare(Local('x'), (('is not', Local('y')),))), True)
+    Test(Truth(Compare(Local('x'), (('is not', Local('y')),))), Value(True, True))
 
     >>> pe('not (x is y)')
-    Test(Truth(Compare(Local('x'), (('is', Local('y')),))), False)
+    Test(Truth(Compare(Local('x'), (('is', Local('y')),))), Value(True, False))
 
     >>> pe('not (x is not y)')
-    Test(Truth(Compare(Local('x'), (('is not', Local('y')),))), False)
+    Test(Truth(Compare(Local('x'), (('is not', Local('y')),))), Value(True, False))
 
 
 Complex logical expressions are always rendered in disjunctive normal form,
@@ -344,37 +349,37 @@ with negations simplified away or reduced to match flags on criteria objects::
 
 
     >>> pe('x in int and (y in str or y in unicode)')
-    Disjunction([Signature([Test(IsInstance(Local('x')),
-                                 Class(<type 'int'>, True)),
-                            Test(IsInstance(Local('y')),
-                                 Class(<type 'str'>, True))]),
-                 Signature([Test(IsInstance(Local('x')),
-                                 Class(<type 'int'>, True)),
-                            Test(IsInstance(Local('y')),
-                                 Class(<type 'unicode'>, True))])])
+    OrElse([Signature([Test(IsInstance(Local('x')),
+                            Class(<type 'int'>, True)),
+                       Test(IsInstance(Local('y')),
+                            Class(<type 'str'>, True))]),
+            Signature([Test(IsInstance(Local('x')),
+                            Class(<type 'int'>, True)),
+                       Test(IsInstance(Local('y')),
+                            Class(<type 'unicode'>, True))])])
 
     >>> pe('not (x in int or y in str)')
     Signature([Test(IsInstance(Local('x')), Class(<type 'int'>, False)),
                Test(IsInstance(Local('y')), Class(<type 'str'>, False))])
 
-    >>> pe('not( x not in int and y not in str)') == Disjunction([
+    >>> pe('not( x not in int and y not in str)') == OrElse([
     ...     Test(IsInstance(Local('x')), Class(int)),
     ...     Test(IsInstance(Local('y')), Class(str))
     ... ])
     True
 
     >>> pe('not( x in int and y in str)')
-    Disjunction([Test(IsInstance(Local('y')), Class(<type 'str'>, False)),
-                 Test(IsInstance(Local('x')), Class(<type 'int'>, False))])
+    OrElse([Test(IsInstance(Local('x')), Class(<type 'int'>, False)),
+            Test(IsInstance(Local('y')), Class(<type 'str'>, False))])
 
 
 And arbitrary expressions are handled as truth tests::
 
     >>> pe('x')
-    Test(Truth(Local('x')), True)
+    Test(Truth(Local('x')), Value(True, True))
 
     >>> pe('not x')
-    Test(Truth(Local('x')), False)
+    Test(Truth(Local('x')), Value(True, False))
 
 
 Note, by the way, that backquotes are not allowed in predicate expressions, as
@@ -644,6 +649,37 @@ name they target.  If the meta function has a ``*`` parameter, each of the
 overflow positional arguments is parsed with the builder function of the
 corresponding name.  If a named keyword argument has a build function, that one
 is used, otherwise any build function for the ``**`` parameter is used.
+
+
+Binding Scope
+~~~~~~~~~~~~~
+
+Note that bindings defined by meta-functions (e.g. our ``let`` example) cannot
+escape "or" or "not" clauses in an expression::
+
+    >>> pe('let(q=1) or x>q')
+    Traceback (most recent call last):
+      ...
+    NameError: q
+
+    >>> pe('not let(q=1) and x<q')
+    Traceback (most recent call last):
+      ...
+    NameError: q
+
+But they can work within an overall ``not`` clause, as long as there are only
+``and`` operators between the function call and the place where the bindings
+are used::
+
+    >>> pe('not (let(q=1) and x<q)')
+    Test(Comparison(Local('x')), Range((1, -1), (Max, 1)))
+
+Note that whenever an "or" is encountered or a "not" clause is completed, any
+previous bindings in effect are restored.  So in this example ``x<q`` becomes
+``x<2``, since that's the binding that was in effect before the ``or`` clause::
+
+    >>> pe('let(q=2) and (not let(q=3) or x<q)')
+    Test(Comparison(Local('x')), Range((Min, -1), (2, -1)))
 
 
 Upgrading from ``TypeEngine``

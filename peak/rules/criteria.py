@@ -4,40 +4,40 @@ from peak.util.decorators import struct
 from weakref import ref
 from sys import maxint
 from peak.util.extremes import Min, Max
-
 __all__ = [
     'Range', 'Value', 'IsObject', 'Class', 'Classes', 'tests_for',
     'NotObjects',  'Conjunction', 'Disjunction', 'Test', 'Signature',
-    'Inequality',
+    'Inequality', 'DisjunctionSet', 'OrElse',
 ]
 
 class Intersection(object):
     """Abstract base for conjunctions and signatures"""
     __slots__ = ()
 
+class Disjunction(object):
+    """Abstract base for DisjunctionSet and OrElse
+    
+    Note that a Disjunction can never have less than 2 members, as creating a
+    Disjunction with only 1 item returns that item, and creating one with no
+    items returns ``False`` (as no acceptable conditions means "never true").
+    """
+    __slots__ = ()
+
+    def __new__(cls, input):
+        if cls is Disjunction:
+            return DisjunctionSet(input)
+        return super(Disjunction, cls).__new__(cls)
+
+when(negate, (Disjunction,))(lambda c: reduce(intersect, map(negate, c)))
+        
 struct()
 def Range(lo=(Min,-1), hi=(Max,1)):
-    assert hi>lo
+    if hi<=lo: return False
     return lo, hi
 
 struct()
 def Value(value, match=True):
     return value, match
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 when(implies, (Value, Range))(
     # ==Value implies Range if Value is within range
@@ -55,45 +55,40 @@ when(implies, (Range, Range))(
 when(implies, (Value, Value))(
     lambda c1, c2: c1==c2 or (c1.match and not c2.match and c1.value!=c2.value)
 )
-when(disjuncts, (Value,))(
-    lambda ob: ob.match and [ob] or
-               [Range(hi=(ob.value,-1)), Range(lo=(ob.value,1))]
+when(intersect, (Range, Range))(
+    lambda c1, c2: Range(max(c1.lo, c2.lo), min(c1.hi, c2.hi))
 )
-when(intersect, (Range, Range))
-def intersect_range(c1, c2):
-    lo, hi = max(c1.lo, c2.lo), min(c1.hi, c2.hi)
-    if hi<=lo:
-        return False
-    return Range(lo, hi)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+def to_range(v):
+    lo, hi = (v.value, -1), (v.value, 1)
+    if v.match:
+        return Range(lo, hi)
+    return Disjunction([Range(hi=lo), Range(lo=hi)])
 
 when(intersect, (Value, Value))
 def intersect_values(c1, c2):
-    if not c1.match or not c2.match:
-        return intersect(Disjunction([c1]), Disjunction([c2]))
-    return False    # no overlap
+    if c1==c2: return c1
+    return intersect(to_range(c1), to_range(c2))
 
-# if these weren't disjoint, they'd be handled by the implication test of
-# intersection; therefore, they must be disjoint (i.e. empty).
-when(intersect, (Range, Value))(lambda c1, c2: False)
-when(intersect, (Value, Range))(lambda c1, c2: False)
+# if a value is a point inside a range, the implication rules would handle it;
+# therefore, they are either !=values, or outside the range (and thus empty)
+when(intersect, (Range, Value))(
+    lambda c1, c2: not c2.match and intersect(c1, to_range(c2)) or False
+)
+when(intersect, (Value, Range))(
+    lambda c1, c2: not c1.match and intersect(to_range(c1), c2) or False
+)
+
+
+when(negate, (Value,))(lambda c: Value(c.value, not c.match))
+when(negate, (Range,))(lambda c: Disjunction([Range(hi=c.lo), Range(lo=c.hi)]))
+
 
 struct()
 def Class(cls, match=True):
     return cls, match
+
+when(negate, (Class,))(lambda c: Class(c.cls, not c.match))
 
 when(implies, (Class, Class))
 def class_implies(c1, c2):
@@ -118,19 +113,27 @@ when(implies, (istype, Class))(lambda c1,c2:
     c1.match and (c2.match == issubclass(c1.type, c2.cls))
 )
 when(implies, (Class, istype))(lambda c1,c2:
-    c1.match and not c2.match and c1.cls is not c2.type and issubclass(c1.cls, c2.type)
+    c1.match and not c2.match and c1.cls is not c2.type
+    and issubclass(c1.cls, c2.type)
 )
+
+
+
+
 
 struct()
 def Test(expr, criterion):
+    d = disjuncts(criterion)
+    if len(d)!=1:
+        return Disjunction([Test(expr, c) for c in d])
     return expr, criterion
+
+when(negate, (Test,))(lambda c: Test(c.expr, negate(c.criterion)))
 
 when(implies, (Test, Test))(
     lambda c1, c2: c1.expr==c2.expr and implies(c1.criterion, c2.criterion)
 )
-when(disjuncts, (Test,))(
-    lambda ob: [Test(ob.expr, d) for d in disjuncts(ob.criterion)]
-)
+
 when(intersect, (Test, Test))
 def intersect_tests(c1, c2):
     if c1.expr==c2.expr:
@@ -159,9 +162,6 @@ def Inequality(op, value):
 
 
 
-
-
-
 class Signature(Intersection, tuple):
     """Represent and-ed Tests, in sequence"""
 
@@ -176,23 +176,17 @@ class Signature(Intersection, tuple):
                 return False
             assert isinstance(new, Test), \
                 "Signatures can only contain ``criteria.Test`` instances"
-            if new.expr in index:
-                posn = index[new.expr]
+            expr = new.expr
+            if expr in index:
+                posn = index[expr]
                 old = output[posn]
                 if implies(old, new):
                     continue    # 'new' is irrelevant, skip it
-                new = output[index[new.expr]] = intersect(old, new)
+                new = output[index[expr]] = intersect(old, new)
+                if new is False: return False
             else:
-                posn = index[new.expr] = len(output)
+                posn = index[expr] = len(output)
                 output.append(new)
-
-            d = disjuncts(new)
-            if len(d) != 1:
-                del output[index[new.expr]]
-                return intersect(
-                    intersect(Signature(output[:posn]), Disjunction([new])),
-                    Signature(output[posn+1:]+list(input))
-                )
 
         if not output:
             return True
@@ -202,6 +196,12 @@ class Signature(Intersection, tuple):
 
     def __repr__(self):
         return "Signature("+repr(list(self))+")"
+
+when(negate, (Signature,))(lambda c: OrElse(map(negate, c)))
+
+
+
+
 
 class IsObject(int):
     """Criterion for 'is' comparisons"""
@@ -223,6 +223,8 @@ class IsObject(int):
     def __repr__(self):
         return "IsObject(%r, %r)" % (self.ref, self.match)
 
+when(negate, (IsObject,))(lambda c: IsObject(c.ref, not c.match))
+
 when(implies, (IsObject, IsObject))
 def implies_objects(c1, c2):
     # c1 implies c2 if it's identical, or if c1=="is x" and c2=="is not y"
@@ -242,9 +244,7 @@ def intersect_objects(c1, c2):
 
 
 
-
-
-class Disjunction(frozenset):
+class DisjunctionSet(Disjunction, frozenset):
     """Set of minimal or-ed conditions (i.e. no redundant/implying items)
 
     Note that a Disjunction can never have less than 2 members, as creating a
@@ -290,19 +290,19 @@ def ob_implies_union(c1, c2):   # x implies Or(...) if it implies any disjunct
 # (object, bool) and  (bool, object) rules for intersect().
 #
 around(intersect, (Disjunction, object))(
-    lambda c1, c2: Disjunction([intersect(x,c2) for x in c1])
+    lambda c1, c2: type(c1)([intersect(x,c2) for x in c1])
 )
 around(intersect, (object, Disjunction))(
-    lambda c1, c2: Disjunction([intersect(c1,x) for x in c2])
+    lambda c1, c2: type(c2)([intersect(c1,x) for x in c2])
 )
 around(intersect, (Disjunction, Disjunction))(
-    lambda c1, c2: Disjunction([intersect(x,y) for x in c1 for y in c2])
+    lambda c1, c2: type(c1)([intersect(x,y) for x in c1 for y in c2])
 )
 around(intersect, (Disjunction, Intersection))(
-    lambda c1, c2: Disjunction([intersect(x,c2) for x in c1])
+    lambda c1, c2: type(c1)([intersect(x,c2) for x in c1])
 )
 around(intersect, (Intersection, Disjunction))(
-    lambda c1, c2: Disjunction([intersect(c1,x) for x in c2])
+    lambda c1, c2: type(c2)([intersect(c1,x) for x in c2])
 )
 
 # XXX These rules prevent ambiguity with implies(object, bool) and
@@ -315,7 +315,7 @@ when(implies, (bool, Disjunction))(lambda c1, c2: not c1)
 when(implies, (Disjunction, bool))(lambda c1, c2: c2)
 
 # The disjuncts of a Disjunction are a list of its contents:
-when(disjuncts, (Disjunction,))(list)
+when(disjuncts, (DisjunctionSet,))(list)
 
 abstract()
 def tests_for(ob, engine=None):
@@ -367,6 +367,8 @@ def ob_implies_set(c1, c2):
     else:
         return True
 
+when(negate, (Conjunction,))(lambda c: Disjunction(map(negate, c)))
+
 when(intersect, (istype,Class))
 def intersect_type_class(c1, c2):
     if not c1.match: return Classes([c1,c2])
@@ -391,8 +393,6 @@ def mutually_exclusive(c1, c2):
 when(mutually_exclusive, (istype, istype))(
     lambda c1, c2: c1.match != c2.match and c1.type==c2.type
 )
-
-
 
 
 
@@ -443,6 +443,47 @@ class NotObjects(Conjunction):
             for item in self:
                 assert isinstance(item, IsObject) and not item.match, \
                     "NotObjects() items must be false ``IsObject`` instances"
+
+
+
+
+
+
+class OrElse(Disjunction, tuple):
+    """SEQUENCE of or-ed conditions (excluding redundant/implying items)"""
+
+    def __new__(cls, input):
+        output = []
+        for item in input:
+            for old in output[:]:
+                if implies(item, old):
+                    break
+                elif implies(old, item):
+                    output.remove(old)
+            else:
+                output.append(item)
+        if not output:
+            return False
+        elif len(output)==1:
+            return output[0]
+        return tuple.__new__(cls, output)
+
+    def __repr__(self):
+        return "%s(%s)" % (self.__class__.__name__, list(self))
+
+
+when(disjuncts, (OrElse,))
+def sequential_disjuncts(c):
+    pre = True
+    out = set()
+    for cond in c:
+        out.update(disjuncts(intersect(pre, cond)))
+        pre = intersect(pre, negate(cond))
+    return list(out)
+
+
+
+
 
 
 

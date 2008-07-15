@@ -205,7 +205,7 @@ class MiscTests(unittest.TestCase):
 
     def testClassBodyRules(self):
         from peak.rules.core import Local, Rule
-        from peak.rules.criteria import Signature, Test, Class
+        from peak.rules.criteria import Signature, Test, Class, Value
         from peak.rules.predicates import IsInstance, Truth
 
         abstract()
@@ -234,7 +234,7 @@ class MiscTests(unittest.TestCase):
             list(rules_for(f2)), [Rule(
                 T.f2_.im_func, Signature([
                     Test(IsInstance(Local('b')), Class(T)),
-                    Test(Truth(Local('b')), True)
+                    Test(Truth(Local('b')), Value(True))
                 ]), Method, num+2)
             ]
         )
@@ -256,7 +256,7 @@ class MiscTests(unittest.TestCase):
             return parse_expr(expr, builder)
 
         x_cmp_y = lambda op, t=True: Test(
-            Truth(Compare(Local('x'), ((op, Local('y')),))), t
+            Truth(Compare(Local('x'), ((op, Local('y')),))), Value(True, t)
         )      
         x,y = Comparison(Local('x')), Comparison(Local('y'))
 
@@ -300,12 +300,6 @@ class MiscTests(unittest.TestCase):
         when(f, "x in istype(object)")(lambda x: "h")
         self.assertEqual(f(None), 'g')
         
-
-
-
-
-
-
 
 
 

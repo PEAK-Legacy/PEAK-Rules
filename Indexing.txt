@@ -1396,11 +1396,11 @@ Truth
 
     >>> ind = TruthIndex(eng, "z")
 
-    >>> ind.add_case(0, True)
+    >>> ind.add_case(0, Value(True))
     >>> ind.selectivity([0])
     (2, 1)
 
-    >>> ind.add_case(1, False)
+    >>> ind.add_case(1, Value(True, False))
     >>> ind.selectivity([0,1])
     (2, 2)
 
