@@ -299,20 +299,20 @@ class MiscTests(unittest.TestCase):
         when(f, "not isinstance(x, int)")(lambda x: "g")
         when(f, "x in istype(object)")(lambda x: "h")
         self.assertEqual(f(None), 'g')
-        
 
-
-
-
-
-
-
-
-
-
-
-
-
+    def testTypeImplicationAndIsSubclassOrdering(self):
+        from inspect import isclass
+        class A(object): pass
+        class B(A): pass
+        whats_this = abstract(lambda obj: obj)
+        when(whats_this, "isclass(obj) and issubclass(obj, A)")(lambda o:"A")
+        when(whats_this, "isclass(obj) and issubclass(obj, B)")(lambda o:"B")
+        when(whats_this, (B,))(lambda o:"B()")
+        when(whats_this, (A,))(lambda o:"A()")
+        self.failUnlessEqual(whats_this(B), "B")
+        self.failUnlessEqual(whats_this(A), "A")
+        self.failUnlessEqual(whats_this(B()), "B()")
+        self.failUnlessEqual(whats_this(A()), "A()")
 
 
 

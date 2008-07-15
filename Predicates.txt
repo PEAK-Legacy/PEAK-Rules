@@ -804,11 +804,6 @@ expression::
     >>> always_testable(IsInstance(Add(Local('a'),Local('b'))))
     False
 
-    >>> always_testable(IsSubclass(Local('x')))
-    True
-    >>> always_testable(IsSubclass(Add(Local('a'),Local('b'))))
-    False
-
     >>> always_testable(Comparison(Local('x')))
     True
     >>> always_testable(Comparison(Add(Local('a'),Local('b'))))
@@ -822,6 +817,12 @@ expression::
     >>> always_testable(Truth(Local('x')))
     True
     >>> always_testable(Truth(Add(Local('a'),Local('b'))))
+    False
+
+Except for ``IsSubclass()``, which may need to have other tests applied before
+it::
+
+    >>> always_testable(IsSubclass(Local('x')))
     False
 
 If you create a new predicate type, be sure to define a method for

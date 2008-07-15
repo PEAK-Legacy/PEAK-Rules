@@ -500,7 +500,7 @@ def always_testable(expr):
     return False
 
 when(always_testable, (IsInstance,))
-when(always_testable, (IsSubclass,))
+#when(always_testable, (IsSubclass,))   XXX might not be a class!
 when(always_testable, (Identity,))
 when(always_testable, (Truth,))
 when(always_testable, (Comparison,))
