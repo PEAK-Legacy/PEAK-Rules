@@ -533,7 +533,7 @@ class TypeEngine(Engine):
 
     def _generate_code(self):
         self.cache = cache = self.static_cache.copy()
-        def callback(*args):
+        def callback(*args, **kw):
             types = tuple([getattr(arg,'__class__',type(arg)) for arg in args])
             self.__lock__.acquire()
             try:
@@ -544,7 +544,7 @@ class TypeEngine(Engine):
                 f = cache[types] = action
             finally:
                 self.__lock__.release()
-            return f(*args)
+            return f(*args, **kw)
 
         c = Code.from_function(self.function, copy_lineno=True)
         types = [class_or_type_of(Local(name))

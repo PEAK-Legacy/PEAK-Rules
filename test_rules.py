@@ -326,6 +326,47 @@ class MiscTests(unittest.TestCase):
 
 
 
+    def testTypeEngineKeywords(self):
+        def func(x, **k): pass
+        def fstr(x,**k): return x,k
+        abstract(func)
+        when(func,(str,))(fstr)
+        self.assertEqual(func('x',s='7'), ('x',{'s':'7'}))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class RuleDispatchTests(unittest.TestCase):
 
     def testSimplePreds(self):
