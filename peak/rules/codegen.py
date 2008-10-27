@@ -167,7 +167,7 @@ class SMIGenerator:
     
     ARG = Local('$Arg')
     SET_ARG = lambda self, code: code.STORE_FAST(self.ARG.name)
-    WHY_CONTINUE = {'2.3':5, '2.4':32, '2.5':32}[sys.version[:3]]
+    WHY_CONTINUE = {'2.3':5}.get(sys.version[:3], 32)
 
     def __init__(self, func):
         import inspect

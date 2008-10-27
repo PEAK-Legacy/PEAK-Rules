@@ -6,7 +6,7 @@ from warnings import warn
 import new, sys
 
 __all__ = [
-    'on', 'as', 'generic'
+    'on', 'as', 'generic', 'as_'
 ]
 
 def generic(combiner=None):
@@ -26,7 +26,7 @@ def generic(combiner=None):
     return decorate_assignment(callback)
 
 
-def as(*decorators):
+def as_(*decorators):
     """Please switch to using @peak.util.decorators.decorate"""
     warn("Please use @peak.util.decorators.decorate instead of dispatch.as()",
         DeprecationWarning, 2
@@ -36,7 +36,7 @@ def as(*decorators):
         return v
     return decorate_assignment(callback)
 
-
+globals()['as'] = as_  
 
 
 def make_module():
