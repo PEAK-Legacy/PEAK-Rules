@@ -217,7 +217,7 @@ class BitmapIndex(AddOn):
     def __new__(cls, engine, expr):
         if cls is BitmapIndex:
             cls = bitmap_index_type(engine, expr)
-        return super(BitmapIndex, cls).__new__(cls, engine, expr)
+        return super(BitmapIndex, cls).__new__(cls)
 
     def __init__(self, engine, expr):
         self.extra = {}
