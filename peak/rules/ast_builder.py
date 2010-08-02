@@ -363,7 +363,7 @@ testlist_comp = testlist_gexp
 if hasattr(symbol, 'testlist_comp'):
     testlist_comp.symbol = symbol.testlist_comp
 else:
-    testlist_gexp.symbol = symobl.testlist_gexp
+    testlist_gexp.symbol = symbol.testlist_gexp
 
 
 
