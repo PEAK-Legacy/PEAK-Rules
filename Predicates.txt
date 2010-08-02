@@ -17,7 +17,7 @@ There are five built-in expression types::
 
 And we will test them using code objects:
 
-    >>> from peak.util.assembler import Code, Const
+    >>> from peak.util.assembler import Code, Const, dump
     >>> from dis import dis
 
 Truth
@@ -28,15 +28,15 @@ and selects the appropriate sub-node from a ``(true_node, false_node)`` tuple::
 
     >>> c = Code()
     >>> c(Truth(42))
-    >>> dis(c.code())
-      0           0 LOAD_FAST                0 ($Arg)
-                  3 UNPACK_SEQUENCE          2
-                  6 LOAD_CONST               1 (42)
-                  9 JUMP_IF_TRUE             1 (to 13)
-                 12 ROT_THREE
-            >>   13 POP_TOP
-                 14 ROT_TWO
-                 15 POP_TOP
+    >>> dump(c.code())
+                    LOAD_FAST                0 ($Arg)
+                    UNPACK_SEQUENCE          2
+                    LOAD_CONST               1 (42)
+                    JUMP_IF_TRUE            L1
+                    ROT_THREE
+            L1:     POP_TOP
+                    ROT_TWO
+                    POP_TOP
 
 The generated code unpacks the 2-tuple, and then does a bit of stack
 manipulation to select the correct subnode.
@@ -61,24 +61,24 @@ a dictionary of sub-nodes.  If the id isn't found, the ``None`` entry is used::
 
     >>> c = Code()
     >>> c(Identity(99))
-    >>> dis(c.code())
-      0           0 LOAD_CONST               1 (<built-in function id>)
-                  3 LOAD_CONST               2 (99)
-                  6 CALL_FUNCTION            1
-                  9 DUP_TOP
-                 10 LOAD_FAST                0 ($Arg)
-                 13 COMPARE_OP               6 (in)
-                 16 JUMP_IF_FALSE            9 (to 28)
-                 19 POP_TOP
-                 20 LOAD_FAST                0 ($Arg)
-                 23 ROT_TWO
-                 24 BINARY_SUBSCR
-                 25 JUMP_FORWARD             9 (to 37)
-            >>   28 POP_TOP
-                 29 POP_TOP
-                 30 LOAD_FAST                0 ($Arg)
-                 33 LOAD_CONST               0 (None)
-                 36 BINARY_SUBSCR
+    >>> dump(c.code())
+                    LOAD_CONST               1 (<built-in function id>)
+                    LOAD_CONST               2 (99)
+                    CALL_FUNCTION            1
+                    DUP_TOP
+                    LOAD_FAST                0 ($Arg)
+                    COMPARE_OP               6 (in)
+                    JUMP_IF_FALSE           L1
+                    POP_TOP
+                    LOAD_FAST                0 ($Arg)
+                    ROT_TWO
+                    BINARY_SUBSCR
+                    JUMP_FORWARD            L2
+            L1:     POP_TOP
+                    POP_TOP
+                    LOAD_FAST                0 ($Arg)
+                    LOAD_CONST               0 (None)
+                    BINARY_SUBSCR
 
 
 Comparison
@@ -127,35 +127,35 @@ cache::
 
     >>> c = Code()
     >>> c(IsSubclass(Const(int)))
-    >>> dis(c.code())
-      0           0 LOAD_CONST               1 (<type 'int'>)
-                  3 SETUP_EXCEPT            16 (to 22)
-                  6 DUP_TOP
-                  7 LOAD_FAST                0 ($Arg)
-                 10 UNPACK_SEQUENCE          2
-                 13 ROT_THREE
-                 14 POP_TOP
-                 15 BINARY_SUBSCR
-                 16 ROT_TWO
-                 17 POP_TOP
-                 18 POP_BLOCK
-                 19 JUMP_FORWARD            30 (to 52)
-            >>   22 DUP_TOP
-                 23 LOAD_CONST               2 (<...KeyError...>)
-                 26 COMPARE_OP              10 (exception match)
-                 29 JUMP_IF_FALSE           18 (to 50)
-                 32 POP_TOP
-                 33 POP_TOP
-                 34 POP_TOP
-                 35 POP_TOP
-                 36 LOAD_FAST                0 ($Arg)
-                 39 UNPACK_SEQUENCE          2
-                 42 POP_TOP
-                 43 ROT_TWO
-                 44 CALL_FUNCTION            1
-                 47 JUMP_FORWARD             2 (to 52)
-            >>   50 POP_TOP
-                 51 END_FINALLY
+    >>> dump(c.code())
+                    LOAD_CONST               1 (<type 'int'>)
+                    SETUP_EXCEPT            L1
+                    DUP_TOP
+                    LOAD_FAST                0 ($Arg)
+                    UNPACK_SEQUENCE          2
+                    ROT_THREE
+                    POP_TOP
+                    BINARY_SUBSCR
+                    ROT_TWO
+                    POP_TOP
+                    POP_BLOCK
+                    JUMP_FORWARD            L3
+            L1:     DUP_TOP
+                    LOAD_CONST               2 (<...KeyError...>)
+                    COMPARE_OP              10 (exception match)
+                    JUMP_IF_FALSE           L2
+                    POP_TOP
+                    POP_TOP
+                    POP_TOP
+                    POP_TOP
+                    LOAD_FAST                0 ($Arg)
+                    UNPACK_SEQUENCE          2
+                    POP_TOP
+                    ROT_TWO
+                    CALL_FUNCTION            1
+                    JUMP_FORWARD            L3
+            L2:     POP_TOP
+                    END_FINALLY
 
 
 IsInstance
@@ -166,56 +166,56 @@ that it first obtains the ``__class__`` or ``type()`` of its target::
 
     >>> c = Code()
     >>> c(IsInstance(Const(999)))
-    >>> dis(c.code())
-      0           0 LOAD_CONST               1 (999)
-                  3 SETUP_EXCEPT            10 (to 16)
-                  6 DUP_TOP
-                  7 LOAD_ATTR                0 (__class__)
-                 10 ROT_TWO
-                 11 POP_TOP
-                 12 POP_BLOCK
-                 13 JUMP_FORWARD            26 (to 42)
-            >>   16 DUP_TOP
-                 17 LOAD_CONST               2 (<...AttributeError...>)
-                 20 COMPARE_OP              10 (exception match)
-                 23 JUMP_IF_FALSE           14 (to 40)
-                 26 POP_TOP
-                 27 POP_TOP
-                 28 POP_TOP
-                 29 POP_TOP
-                 30 LOAD_CONST               3 (<type 'type'>)
-                 33 ROT_TWO
-                 34 CALL_FUNCTION            1
-                 37 JUMP_FORWARD             2 (to 42)
-            >>   40 POP_TOP
-                 41 END_FINALLY
-            >>   42 SETUP_EXCEPT            16 (to 61)
-                 45 DUP_TOP
-                 46 LOAD_FAST                0 ($Arg)
-                 49 UNPACK_SEQUENCE          2
-                 52 ROT_THREE
-                 53 POP_TOP
-                 54 BINARY_SUBSCR
-                 55 ROT_TWO
-                 56 POP_TOP
-                 57 POP_BLOCK
-                 58 JUMP_FORWARD            30 (to 91)
-            >>   61 DUP_TOP
-                 62 LOAD_CONST               4 (<...KeyError...>)
-                 65 COMPARE_OP              10 (exception match)
-                 68 JUMP_IF_FALSE           18 (to 89)
-                 71 POP_TOP
-                 72 POP_TOP
-                 73 POP_TOP
-                 74 POP_TOP
-                 75 LOAD_FAST                0 ($Arg)
-                 78 UNPACK_SEQUENCE          2
-                 81 POP_TOP
-                 82 ROT_TWO
-                 83 CALL_FUNCTION            1
-                 86 JUMP_FORWARD             2 (to 91)
-            >>   89 POP_TOP
-                 90 END_FINALLY
+    >>> dump(c.code())
+                    LOAD_CONST               1 (999)
+                    SETUP_EXCEPT            L1
+                    DUP_TOP
+                    LOAD_ATTR                0 (__class__)
+                    ROT_TWO
+                    POP_TOP
+                    POP_BLOCK
+                    JUMP_FORWARD            L3
+            L1:     DUP_TOP
+                    LOAD_CONST               2 (<...AttributeError...>)
+                    COMPARE_OP              10 (exception match)
+                    JUMP_IF_FALSE           L2
+                    POP_TOP
+                    POP_TOP
+                    POP_TOP
+                    POP_TOP
+                    LOAD_CONST               3 (<type 'type'>)
+                    ROT_TWO
+                    CALL_FUNCTION            1
+                    JUMP_FORWARD            L3
+            L2:     POP_TOP
+                    END_FINALLY
+            L3:     SETUP_EXCEPT            L4
+                    DUP_TOP
+                    LOAD_FAST                0 ($Arg)
+                    UNPACK_SEQUENCE          2
+                    ROT_THREE
+                    POP_TOP
+                    BINARY_SUBSCR
+                    ROT_TWO
+                    POP_TOP
+                    POP_BLOCK
+                    JUMP_FORWARD            L6
+            L4:     DUP_TOP
+                    LOAD_CONST               4 (<...KeyError...>)
+                    COMPARE_OP              10 (exception match)
+                    JUMP_IF_FALSE           L5
+                    POP_TOP
+                    POP_TOP
+                    POP_TOP
+                    POP_TOP
+                    LOAD_FAST                0 ($Arg)
+                    UNPACK_SEQUENCE          2
+                    POP_TOP
+                    ROT_TWO
+                    CALL_FUNCTION            1
+                    JUMP_FORWARD            L6
+            L5:     POP_TOP
+                    END_FINALLY
 
 
 Defining New Predicate Types
