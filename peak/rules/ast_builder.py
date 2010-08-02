@@ -51,8 +51,9 @@ def com_binary(opname, builder,nodelist):
     return getattr(builder,opname)(items)
 
 # testlist: test (',' test)* [',']
+# exprlist: expr (',' expr)* [',']
 # subscriptlist: subscript (',' subscript)* [',']
-testlist = subscriptlist = curry(com_binary, 'Tuple')
+testlist = exprlist = subscriptlist = curry(com_binary, 'Tuple')
 
 # test: and_test ('or' and_test)* | lambdef
 test = curry(com_binary, 'Or')
@@ -71,7 +72,6 @@ and_test = curry(com_binary, 'And')
 # not_test: 'not' not_test | comparison
 def not_test(builder, nodelist):
     return builder.Not(nodelist[2])
-
 
 
 
@@ -358,15 +358,12 @@ def testlist_gexp(builder, nodelist):
         value, nodelist = nodelist[1:]
         return com_iterator(builder.GenExpr, value, nodelist)
     
-testlist_comp = testlist_gexp
+testlist_comp = testlist_gexp   # Python 2.7
 
 if hasattr(symbol, 'testlist_comp'):
     testlist_comp.symbol = symbol.testlist_comp
 else:
     testlist_gexp.symbol = getattr(symbol, 'testlist_gexp', None)
-
-
-
 
 
 
