@@ -244,9 +244,6 @@ def intersect_objects(c1, c2):
 
 
 
-
-
-
 class DisjunctionSet(Disjunction, frozenset):
     """Set of minimal or-ed conditions (i.e. no redundant/implying items)
 
