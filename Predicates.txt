@@ -778,6 +778,9 @@ variable (i.e., a plain function argument), do not have such restrictions::
     >>> list(Ordering(engine, IsInstance(Local('b'))).constraints)
     [frozenset([])]
 
+    >>> try: frozenset
+    ... except NameError: from peak.rules.core import frozenset
+    
     >>> list(
     ...     Ordering(engine, Comparison(Add(Local('a'),Local('b')))).constraints
     ... ) == [frozenset([IsInstance(Local('a')), IsInstance(Local('b'))])]
