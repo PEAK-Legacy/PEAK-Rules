@@ -68,7 +68,7 @@ def IfElse(tval, cond, fval, code=None):
     else_clause, end_if = Label(), Label()
     code(cond)
     if tval != cond:
-        code(else_clause.JUMP_IF_FALSE, Code.POP_TOP, tval)
+        code(else_clause.JUMP_IF_FALSE_OR_POP, tval)
         if code.stack_size is not None:
             code(end_if.JUMP_FORWARD)
     elif fval != cond:
@@ -185,8 +185,7 @@ class SMIGenerator:
         code(
             exit.JUMP_IF_FALSE,
             Compare(Code.DUP_TOP, (('in', actions),)),
-            bad_action.JUMP_IF_FALSE,
-            Code.POP_TOP,
+            bad_action.JUMP_IF_FALSE_OR_POP,
             Code.ROT_TWO,   # argument, action
             self.SET_ARG,   # action
             fake.SETUP_LOOP, self.WHY_CONTINUE, Code.END_FINALLY,
@@ -202,6 +201,7 @@ class SMIGenerator:
         )
         self.NEXT_STATE = loop_top.JUMP_ABSOLUTE
         self.maybe_cache = code.maybe_cache
+
 
     def generate(self, start_node):
         func = clone_function(self.func)
