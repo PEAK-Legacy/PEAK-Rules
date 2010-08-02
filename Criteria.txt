@@ -228,9 +228,6 @@ class for this, called ``Conjunction``::
 
     >>> from peak.rules.criteria import Conjunction
 
-    >>> Conjunction([str, int])
-    Conjunction([<type 'str'>, <type 'int'>])
-
 This class is a subclass of ``frozenset``, but has a few additional features.
 First, a ``Conjunction`` never contains redundant (implied) items.
 For example, the conjunction of the classes ``object`` and ``int`` is ``int``,
@@ -296,14 +293,14 @@ of intersecting them will be a conjunction of the correct subclass::
 
     >>> class MySet(Conjunction): pass
 
-    >>> intersect(MySet([int, str]), float)
-    MySet([<type 'int'>, <type 'str'>, <type 'float'>])
+    >>> intersect(MySet([int, str]), float) == MySet([int, str, float])
+    True
 
-    >>> intersect(float, MySet([int, str]))
-    MySet([<type 'float'>, <type 'int'>, <type 'str'>])
+    >>> intersect(float, MySet([int, str])) == MySet([float, int, str])
+    True
 
-    >>> intersect(MySet([d, c]), MySet([int, str]))
-    MySet([<class 'd'>, <class ...c...>, <type 'str'>])
+    >>> intersect(MySet([d, c]), MySet([int, str])) == MySet([d,c,str])
+    True
 
 If you want to ensure that all items in a set are of appropriate type or value,
 you can override ``__init__`` to do the checking, and raise an appropriate
@@ -319,12 +316,6 @@ The ``DisjunctionSet`` and ``OrElse`` classes are used to represent sets and
 sequences of "or"-ed criteria::
 
     >>> from peak.rules.criteria import DisjunctionSet, OrElse
-
-    >>> DisjunctionSet([str, int])
-    DisjunctionSet([<type 'str'>, <type 'int'>])
-
-    >>> OrElse([str, int])
-    OrElse([<type 'str'>, <type 'int'>])
 
 Both types automatically exclude redundant (i.e. more-specific) criteria, and
 can never contain less than 2 entries.  For example, "or"-ing ``object`` and
@@ -462,13 +453,18 @@ contents.  In other words::
     ... ])
     True
 
-    >>> intersect(int_or_str, Conjunction([long, float]))
-    DisjunctionSet([Conjunction([<type 'int'>, <type 'long'>, <type 'float'>]),
-                 Conjunction([<type 'str'>, <type 'long'>, <type 'float'>])])
+    >>> intersect(int_or_str, Conjunction([long, float])) == \
+    ...     DisjunctionSet(
+    ...         [Conjunction([int, long, float]),
+    ...          Conjunction([str, long, float])]
+    ... )
+    True
 
-    >>> intersect(Conjunction([int, str]), long_or_float)
-    DisjunctionSet([Conjunction([<type 'int'>, <type 'str'>, <type 'long'>]),
-                 Conjunction([<type 'int'>, <type 'str'>, <type 'float'>])])
+    >>> intersect(Conjunction([int, str]), long_or_float) == \
+    ...     DisjunctionSet(
+    ...         [Conjunction([int, str, long]), Conjunction([int, str, float])]
+    ...     )
+    True
 
 As you can see, this is the heart of the process that allows expressions like
 ``(A or B) and (C or D)`` to be transformed into their disjunctive normal
@@ -974,8 +970,9 @@ will be AST-like structures.)
 
 Creating a test with disjunct criteria actually returns a set of tests::
 
-    >>> Test("x", DisjunctionSet([int, str]))
-    DisjunctionSet([Test('x', <type 'int'>), Test('x', <type 'str'>)])
+    >>> Test("x", DisjunctionSet([int, str])) == \
+    ...           DisjunctionSet([Test('x', int), Test('x', str)])
+    True
 
 So the ``disjuncts()`` of a test will always just be the test itself::
 
@@ -995,9 +992,10 @@ a disjunction of tests::
     ...     Test('x',
     ...         NotObjects([IsObject('foo',False), IsObject('bar',False)])
     ...     )
-    ... )
-    DisjunctionSet([Test('x', IsObject('foo', True)),
-                    Test('x', IsObject('bar', True))])
+    ... ) == DisjunctionSet(
+    ...     [Test('x', IsObject('foo', True)),
+    ...      Test('x', IsObject('bar', True))])
+    True
 
 Intersecting two tests for the same dispatch expression returns a test whose
 criterion is the intersection of the original tests' criteria::

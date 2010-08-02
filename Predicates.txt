@@ -771,12 +771,17 @@ variable (i.e., a plain function argument), do not have such restrictions::
     ...     lambda a,b: None
     ... )
     >>> engine = Dispatching(f).engine
+
     >>> list(Ordering(engine, IsInstance(Local('a'))).constraints)
     [frozenset([])]
+
     >>> list(Ordering(engine, IsInstance(Local('b'))).constraints)
     [frozenset([])]
-    >>> list(Ordering(engine, Comparison(Add(Local('a'),Local('b')))).constraints)
-    [frozenset([IsInstance(Local('a')), IsInstance(Local('b'))])]
+
+    >>> list(
+    ...     Ordering(engine, Comparison(Add(Local('a'),Local('b')))).constraints
+    ... ) == [frozenset([IsInstance(Local('a')), IsInstance(Local('b'))])]
+    True
 
 
 Order Independence
