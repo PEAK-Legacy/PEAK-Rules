@@ -371,8 +371,10 @@ branches for each value whose name equals the expression string::
 
     >>> x = DemoExpr('x')
 
-    >>> x.branch_table([r(x=1), r(x=2)])
-    {None: [], 1: [(('x', 1),)], 2: [(('x', 2),)]}
+    >>> x.branch_table([r(x=1), r(x=2)]) == {
+    ...     None: [], 1: [(('x', 1),)], 2: [(('x', 2),)]
+    ... }
+    True
 
 Notice, by the way, that branch tables produced by this expression type contain
 a ``None`` key, to handle the case where the expression value doesn't match any
@@ -402,10 +404,11 @@ a tuple of name-value pairs, and that each "expr" is a ``DemoExpr`` instance::
     ...         print "building switch for", expr,
     ...         print "with", map(list,cases), "and (", enames, ")"
     ...
-    ...         branches = expr.branch_table(cases)
+    ...         branches = expr.branch_table(cases).items()
+    ...         branches.sort()
     ...         return dict(
     ...             [(key, self.build(tuple(values), remaining_exprs, memo))
-    ...                 for key,values in branches.items()]
+    ...                 for key,values in branches]
     ...         )
     ...
     ...     def build_leaf(self, cases, memo):
@@ -469,23 +472,29 @@ Any inapplicable indexes are ignored::
 
 But applicable indexes are used::
 
-    >>> DemoBuilder().build((r(x=1),), (DemoExpr('x'),), {})
+    >>> DemoBuilder().build((r(x=1),), (DemoExpr('x'),), {}) == {
+    ...     None: [], 1: [[('x', 1)]]
+    ... }
     building switch for x with [[('x', 1)]] and (  )
     building leaf node for []
     building leaf node for [[('x', 1)]]
-    {None: [], 1: [[('x', 1)]]}
+    True
 
-    >>> DemoBuilder().build((r(x=1),), (DemoExpr('x'), DemoExpr('q')), {})
+    >>> DemoBuilder().build((r(x=1),), (DemoExpr('x'), DemoExpr('q')), {}) == {
+    ...     None: [], 1: [[('x', 1)]]
+    ... }
     building switch for x with [[('x', 1)]] and (  )
     building leaf node for []
     building leaf node for [[('x', 1)]]
-    {None: [], 1: [[('x', 1)]]}
+    True
 
-    >>> DemoBuilder().build((r(x=1),), (DemoExpr('q'), DemoExpr('x')), {})
+    >>> DemoBuilder().build((r(x=1),), (DemoExpr('q'), DemoExpr('x')), {}) == {
+    ...     None: [], 1: [[('x', 1)]]
+    ... }
     building switch for x with [[('x', 1)]] and (  )
     building leaf node for []
     building leaf node for [[('x', 1)]]
-    {None: [], 1: [[('x', 1)]]}
+    True
 
 As long as they have no constraints preventing them from being used::
 
@@ -494,19 +503,23 @@ As long as they have no constraints preventing them from being used::
     >>> y = DemoExpr('y')
     >>> db = DemoBuilder()
     >>> Ordering(db, x).requires([y])
-    >>> db.build((r(x=1, y=2),), (x, y), {})
+    >>> db.build((r(x=1, y=2),), (x, y), {}) == {
+    ...     None: [], 2: {None: [], 1: [[('y', 2), ('x', 1)]]}
+    ... }
     building switch for y with [[('y', 2), ('x', 1)]] and ( x )
     building leaf node for []
     building switch for x with [[('y', 2), ('x', 1)]] and (  )
     building leaf node for [[('y', 2), ('x', 1)]]
-    {None: [], 2: {None: [], 1: [[('y', 2), ('x', 1)]]}}
+    True
 
-    >>> db.build((r(x=1, y=2),), (y, x), {})
+    >>> db.build((r(x=1, y=2),), (y, x), {}) == {
+    ...     None: [], 2: {None: [], 1: [[('y', 2), ('x', 1)]]}
+    ... }
     building switch for y with [[('y', 2), ('x', 1)]] and ( x )
     building leaf node for []
     building switch for x with [[('y', 2), ('x', 1)]] and (  )
     building leaf node for [[('y', 2), ('x', 1)]]
-    {None: [], 2: {None: [], 1: [[('y', 2), ('x', 1)]]}}
+    True
 
 
 Optimizations
@@ -518,7 +531,13 @@ chosen::
     >>> z = DemoExpr('z')
     >>> rules = r(x=1,y=2,z=3), r(z=4)
 
-    >>> db.build(rules, (x,y,z), {}) # doctest: +NORMALIZE_WHITESPACE
+    >>> db.build(rules, (x,y,z), {}) == {   # doctest: +NORMALIZE_WHITESPACE
+    ...     None: [],
+    ...         3: {None: [],
+    ...                2: {None: [],
+    ...                       1: [[('y', 2), ('x', 1), ('z', 3)]]}},
+    ...         4: [[('z', 4)]]
+    ... }
     building switch for z with
         [[('y', 2), ('x', 1), ('z', 3)], [('z', 4)]] and ( x, y )
     building leaf node for []
@@ -526,13 +545,15 @@ chosen::
     building switch for x with [[('y', 2), ('x', 1), ('z', 3)]] and (  )
     building leaf node for [[('y', 2), ('x', 1), ('z', 3)]]
     building leaf node for [[('z', 4)]]
-    {None: [],
-        3: {None: [],
-               2: {None: [],
-                      1: [[('y', 2), ('x', 1), ('z', 3)]]}},
-        4: [[('z', 4)]]}
+    True
 
-    >>> db.build(rules, (z,y,x), {}) # doctest: +NORMALIZE_WHITESPACE
+    >>> db.build(rules, (z,y,x), {}) == { # doctest: +NORMALIZE_WHITESPACE
+    ...     None: [],
+    ...        3: {None: [],
+    ...               2: {None: [],
+    ...                      1: [[('y', 2), ('x', 1), ('z', 3)]]}},
+    ...        4: [[('z', 4)]]
+    ... }
     building switch for z with
         [[('y', 2), ('x', 1), ('z', 3)], [('z', 4)]] and ( x, y )
     building leaf node for []
@@ -540,11 +561,7 @@ chosen::
     building switch for x with [[('y', 2), ('x', 1), ('z', 3)]] and (  )
     building leaf node for [[('y', 2), ('x', 1), ('z', 3)]]
     building leaf node for [[('z', 4)]]
-    {None: [],
-        3: {None: [],
-               2: {None: [],
-                      1: [[('y', 2), ('x', 1), ('z', 3)]]}},
-        4: [[('z', 4)]]}
+    True
 
 If an index is skipped due to a constraint, its selectivity should still be
 checked if its constraints go away (due to the blocking index being found
@@ -553,21 +570,25 @@ inapplicable)::
     >>> Ordering(db, z).requires([y])       # z now must have y checked first
     >>> rules = r(x=1,z=3), r(z=4)  # but y isn't used by the rules
 
-    >>> db.build(rules, (x,y,z), {}) # so z is the most-selective index
+    >>> db.build(rules, (x,y,z), {}) == {   # so z is the most-selective index
+    ...     None: [], 3: {None: [], 1: [[('x', 1), ('z', 3)]]}, 4: [[('z', 4)]]
+    ... } 
     building switch for z with [[('x', 1), ('z', 3)], [('z', 4)]] and ( x )
     building leaf node for []
     building switch for x with [[('x', 1), ('z', 3)]] and (  )
     building leaf node for [[('x', 1), ('z', 3)]]
     building leaf node for [[('z', 4)]]
-    {None: [], 3: {None: [], 1: [[('x', 1), ('z', 3)]]}, 4: [[('z', 4)]]}
+    True
 
-    >>> db.build(rules, (z,y,x), {}) # try them in another order
+    >>> db.build(rules, (z,y,x), {}) == {
+    ...     None: [], 3: {None: [], 1: [[('x', 1), ('z', 3)]]}, 4: [[('z', 4)]]
+    ... } # try them in another order
     building switch for z with [[('x', 1), ('z', 3)], [('z', 4)]] and ( x )
     building leaf node for []
     building switch for x with [[('x', 1), ('z', 3)]] and (  )
     building leaf node for [[('x', 1), ('z', 3)]]
     building leaf node for [[('z', 4)]]
-    {None: [], 3: {None: [], 1: [[('x', 1), ('z', 3)]]}, 4: [[('z', 4)]]}
+    True
 
 The above examples whose results contain more than one ``[]`` leaf node show
 that leaf nodes for the same cases are being cached, but let's also show that
@@ -582,14 +603,16 @@ non-leaf nodes are similarly shared and cached::
         with [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]] and (  )
     building leaf node for [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]]
 
-    >>> tree # doctest: +NORMALIZE_WHITESPACE
-    {None: [],
-        1: {None: [],
-               1: [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]],
-               2: [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]]},
-        2: {None: [],
-               1: [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]],
-               2: [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]]}}
+    >>> tree == {
+    ...     None: [],
+    ...        1: {None: [],
+    ...               1: [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]],
+    ...               2: [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]]},
+    ...        2: {None: [],
+    ...               1: [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]],
+    ...               2: [[('x', 1), ('x', 2), ('y', 1), ('y', 2)]]}
+    ... }
+    True
 
     >>> tree[1] is tree[2]
     True
@@ -1083,6 +1106,7 @@ Value Map Generation
 --------------------
 
     >>> from peak.rules.indexing import split_ranges
+    >>> from peak.util.extremes import Min, Max
 
     >>> def dump_ranges(ind, cases):
     ...     exact, ranges = split_ranges(*ind.seed_bits(cases))
@@ -1092,37 +1116,50 @@ Value Map Generation
     ...         ranges[n] = k, list(from_bits(v))
     ...     return exact, ranges
 
-    >>> dump_ranges(ind, ind.known_cases)
-    ({1: [0, 4], 5: [0, 1, 4], 7: [0, 1, 2, 3, 5], 20: [0, 1, 2, 4],
-      23: [0, 2, 4], 24: [2, 4]},
-     [((Min, 1), [4]), ((1, 5), [0, 4]), ((5, 7), [0, 1, 4]),
-      ((7, 20), [0, 1, 2, 4]), ((20, 23), [0, 2, 4]), ((23, 24), [2, 4]),
-      ((24, Max), [4])])
+    >>> dump_ranges(ind, ind.known_cases) == (
+    ...     {1: [0, 4], 5: [0, 1, 4], 7: [0, 1, 2, 3, 5], 20: [0, 1, 2, 4],
+    ...      23: [0, 2, 4], 24: [2, 4]},
+    ...     [((Min, 1), [4]), ((1, 5), [0, 4]), ((5, 7), [0, 1, 4]),
+    ...      ((7, 20), [0, 1, 2, 4]), ((20, 23), [0, 2, 4]), ((23, 24), [2, 4]),
+    ...      ((24, Max), [4])]
+    ... )
+    True
 
     >>> ind = RangeIndex(eng, 'q')
-    >>> dump_ranges(ind, ind.known_cases)
-    ({}, [((Min, Max), [])])
+    >>> dump_ranges(ind, ind.known_cases) == ({}, [((Min, Max), [])])
+    True
 
     >>> ind.add_case(0, Value(19))
-    >>> dump_ranges(ind, ind.known_cases)
-    ({Min: [], 19: [0]}, [((Min, Max), [])])
+    >>> dump_ranges(ind, ind.known_cases) == (
+    ...     {Min: [], 19: [0]}, [((Min, Max), [])]
+    ... )
+    True
 
     >>> ind.add_case(1, Value(23))
-    >>> dump_ranges(ind, ind.known_cases)
-    ({Min: [], 19: [0], 23: [1]}, [((Min, Max), [])])
+    >>> dump_ranges(ind, ind.known_cases) == (
+    ...     {Min: [], 19: [0], 23: [1]}, [((Min, Max), [])]
+    ... )
+    True
 
     >>> ind.add_case(2, Value(23, False))
-    >>> dump_ranges(ind, ind.known_cases)
-    ({19: [0, 2], 23: [1]}, [((Min, Max), [2])])
+    >>> dump_ranges(ind, ind.known_cases) == (
+    ...     {19: [0, 2], 23: [1]}, [((Min, Max), [2])]
+    ... )
+    True
 
     >>> ind.add_case(3, Range(lo=(57,1)))
-    >>> dump_ranges(ind, ind.known_cases)
-    ({57: [2], 19: [0, 2], 23: [1]}, [((Min, 57), [2]), ((57, Max), [2, 3])])
+    >>> dump_ranges(ind, ind.known_cases) == (
+    ...     {57: [2], 19: [0, 2], 23: [1]},
+    ...     [((Min, 57), [2]), ((57, Max), [2, 3])]
+    ... )
+    True
 
     >>> ind.add_case(4, Range(lo=(57,-1)))
-    >>> dump_ranges(ind, ind.known_cases)
-    ({57: [2, 4], 19: [0, 2], 23: [1]},
-     [((Min, 57), [2]), ((57, Max), [2, 3, 4])])
+    >>> dump_ranges(ind, ind.known_cases) == (
+    ...     {57: [2, 4], 19: [0, 2], 23: [1]},
+    ...     [((Min, 57), [2]), ((57, Max), [2, 3, 4])]
+    ... )
+    True
 
 
 Single Classes
@@ -1138,16 +1175,19 @@ non-match::
     >>> ind.add_case(0, Class(int))
     >>> ind.selectivity([0])
     (2, 1)
-    >>> dict(ind.expanded_sets())
-    {<type 'int'>: [[0], []], <type 'object'>: [[], []]}
+    >>> dict(ind.expanded_sets()) == {
+    ...     int: [[0], []], object: [[], []]
+    ... }
+    True
 
     >>> class myint(int): pass
     >>> ind.add_case(1, Class(myint))
     >>> ind.selectivity([1])
     (3, 1)
-    >>> dict(ind.expanded_sets())
-    {<type 'int'>: [[0], []], <type 'object'>: [[], []],
-     <class 'myint'>: [[0, 1], []]}
+    >>> dict(ind.expanded_sets()) == {
+    ...     int: [[0], []], object: [[], []], myint: [[0, 1], []]
+    ... }
+    True
 
     >>> ind.selectivity([0])
     (3, 2)
@@ -1155,9 +1195,10 @@ non-match::
     >>> ind.add_case(2, Class(int, False))
     >>> ind.selectivity([2])
     (3, 1)
-    >>> dict(ind.expanded_sets())
-    {<type 'int'>: [[0], [2]], <type 'object'>: [[2], []],
-     <class 'myint'>: [[0, 1], [2]]}
+    >>> dict(ind.expanded_sets()) == {
+    ...     int: [[0], [2]], object: [[2], []], myint: [[0, 1], [2]]
+    ... }
+    True
 
     >>> class other(object): pass
     >>> ind.add_case(3, Class(other))
