@@ -220,6 +220,9 @@ class IsObject(int):
             and self.ref is other.ref
         ) or (isinstance(other,(int,long)) and int(self)==other and self.match)
 
+    def __ne__(self,other):
+        return not (self==other)
+
     def __repr__(self):
         return "IsObject(%r, %r)" % (self.ref, self.match)
 

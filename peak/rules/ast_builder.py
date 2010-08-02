@@ -295,7 +295,7 @@ def com_argument(nodelist, kw):
         return 0, nodelist[1]
 
     if nodelist[2][0] != token.EQUAL and len(nodelist)==3:
-        return 0, (symbol.testlist_gexp, nodelist[1], nodelist[2])
+        return 0, (testlist_gexp.symbol, nodelist[1], nodelist[2])
     elif len(nodelist) !=4:
         raise AssertionError
 
@@ -358,9 +358,12 @@ def testlist_gexp(builder, nodelist):
         value, nodelist = nodelist[1:]
         return com_iterator(builder.GenExpr, value, nodelist)
     
+testlist_comp = testlist_gexp
 
-
-
+if hasattr(symbol, 'testlist_comp'):
+    testlist_comp.symbol = symbol.testlist_comp
+else:
+    testlist_gexp.symbol = symobl.testlist_gexp
 
 
 
