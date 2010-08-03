@@ -354,11 +354,11 @@ class IndexedEngine(Engine, TreeBuilder):
 
     def _generate_code(self):
         smig = SMIGenerator(self.function)
-        for expr in self.all_exprs: smig.maybe_cache(expr)
-        memo = dict(
-            [(expr, smig.action_id(self.to_expression(expr)))
-                    for expr in self.all_exprs]
-        )
+        all_exprs = map(self.to_expression, self.all_exprs)
+        for expr in all_exprs:
+            smig.maybe_cache(expr)
+
+        memo = dict([(expr, smig.action_id(expr)) for expr in all_exprs])
         return smig.generate(self.build_root(memo)).func_code
 
     def _full_reset(self):
