@@ -32,7 +32,7 @@ setup(
     ],
     author="Phillip J. Eby",
     author_email="peak@eby-sarna.com",
-    license="http://www.apache.org/licenses/LICENSE-2.0",
+    license="ZPL 2.1",
     url="http://pypi.python.org/pypi/PEAK-Rules",
     download_url = "http://peak.telecommunity.com/snapshots/",
     test_suite = 'test_rules',
