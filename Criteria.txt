@@ -16,7 +16,7 @@ really quite simple.
 Implication means that if one thing is true, then so is another.  A implies B
 if B is always true whenever A is true.  It doesn't matter what B is when A is
 not true, however.  It could be true or false, we don't care.  Implication is
-important for prioritizing which rules are "more specific" than others
+important for prioritizing which rules are "more specific" than others.
 
 Intersection just means that both things have to be true for a condition to
 be true - it's like the "and" of two conditions.  But rather than performing
@@ -359,7 +359,7 @@ the ``disjuncts()`` of a ``DisjunctionSet`` are a list of its contents::
     [1, 2, 3, 4]
 
 But ``OrElse`` sequences do not do this flattening, in order to avoid imposing
-an arbitrary sequences on their contents::
+an arbitrary sequence on their contents::
 
     >>> OrElse([DisjunctionSet([1, 2]), DisjunctionSet([3, 4])])
     OrElse([DisjunctionSet([1, 2]), DisjunctionSet([3, 4])])
@@ -1144,7 +1144,7 @@ is used to obtain the *unordered* disjunctions of a logical condition, but
 Python "or" operator.
 
 In Python, a condition on the right-hand side of an "or" operator is not tested
-*unless the condition on the left is False*.  PEAK-Rules, however, tests the
+*unless the condition on the left is false*.  PEAK-Rules, however, tests the
 ``disjuncts()`` of a predicate *independently*.  Thus, in order to properly
 translate "or" conditions in a predicate, the ``disjuncts()`` of an ``OrElse``
 must include additional and-ed conditions to force them to be tested in order.
