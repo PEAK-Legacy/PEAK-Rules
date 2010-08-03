@@ -6,7 +6,7 @@ from core import *
 from token import NAME
 from ast_builder import build
 
-__all__ = ['Bind', 'match_predicate', 'match_sequence']
+__all__ = ['match', 'Bind', 'match_predicate', 'match_sequence']
 
 nodetype()
 def Bind(name, code=None):
