@@ -500,6 +500,22 @@ corresponding to the operator's argument::
     ...     print "GenExpr(x for x in y if z)"
     GenExpr(x for x in y if z)
 
+Note, by the way, that when you are building the "for" clause assignments,
+you'll need to handle arbitrary assignments (e.g. tuple unpacking)::
+
+    >>> pe("[x for y, x in z]")
+    ListComp(x for Tuple(y,x) in z)
+
+    >>> pe("[x.y for x.y in z]")
+    ListComp(Getattr(x,'y') for Getattr(x,'y') in z)
+
+    >>> pe("[x[y] for x[y] in z]")
+    ListComp(Subscript(x,y) for Subscript(x,y) in z)
+
+(Normally, you would handle this by passing the "for" clauses to a different
+builder instance that's set up to handle calls to ``Name``, ``Getattr``,
+``Tuple``, etc. by generating assignments instead of lookups.)
+
 
 Dictionaries
 ============
