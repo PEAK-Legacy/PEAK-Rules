@@ -39,17 +39,38 @@ Basic usage::
 PEAK-Rules works with Python 2.3 and up -- just omit the ``@`` signs if your
 code needs to run under 2.3.  Also, note that with PEAK-Rules, *any* function
 can be generic: you don't have to predeclare a function as generic.  (The
-``abstract`` decorator is used to declare a function with no *default* method.)
+``abstract`` decorator is used to declare a function with no *default* method;
+i.e., one that will give a ``NoApplicableMethods`` if no rules match the
+arguments it's invoked with, as opposed to executing a default implementation.)
 
 PEAK-Rules is still under development; it lacks much in the way of error
 checking, so if you mess up your rules, it may not be obvious where or how you
 did.  User documentation is also lacking, although there are extensive doctests
-describing most of its internals.
+describing and testing most of its internals, including:
+
+* `Introduction`_ (Method combination, porting from RuleDispatch)
+* `Core Design Overview`_ (Terminology, method precedence, etc.)
+* The `Basic AST Builder`_ and advanced `Code Generation`_
+* `Criteria`_, `Indexing`_, and `Predicates`_
+* `Syntax pattern matching`_
+
+(Please note that these documents are still in a state of flux and some may
+still be incomplete or disorganized, prior to the first official release.)
 
 Source distribution snapshots are generated daily, but you can also update
 directly from the `development version`_ in SVN.
 
 .. _development version: svn://svn.eby-sarna.com/svnroot/PEAK-Rules#egg=PEAK_Rules-dev
+.. _Introduction: http://peak.telecommunity.com/DevCenter/PEAK-Rules#toc
+.. _Core Design Overview: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Design
+.. _Predicates: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Predicates
+.. _Basic AST Builder: http://peak.telecommunity.com/DevCenter/PEAK-Rules/AST-Builder
+.. _Code Generation: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Code-Generation
+.. _Criteria: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Criteria
+.. _Indexing: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Indexing
+.. _Predicates: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Predicates
+.. _Syntax pattern matching: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Syntax-Matching
+
 .. _toc:
 
 .. contents:: **Table of Contents**

@@ -15,6 +15,9 @@ Will return true if ``expr`` is a PEAK-Rules AST of the form::
 (where v1 and v2 are arbitrary values).
 
 
+.. contents:: **Table of Contents**
+
+
 Bind Variables
 ==============
 

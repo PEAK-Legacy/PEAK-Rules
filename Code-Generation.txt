@@ -19,6 +19,7 @@ inherits the limitations and restrictions of both ``peak.util.assembler`` and
 ``peak.rules.ast_builder``, so you should consult the documentation for those
 tools before proceeding.
 
+.. contents:: **Table of Contents**
 
 --------------
 AST Generation

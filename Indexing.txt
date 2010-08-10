@@ -22,6 +22,7 @@ constraints.  The new approach is simpler to explain and implement, while being
 more precise in what it constrains, as it more directly represents the actual
 constraints supplied by the input rules.
 
+.. contents:: **Table of Contents**
 
 --------------------
 Expression Selection
@@ -68,8 +69,8 @@ division by zero.  Even if it was highly selective, we can't use the ``z/y``
 equality index for the root of the decision tree.
 
 These two requirements of correctness and efficiency are met by managing
-`inter-expression constraints`_ and `selectivity statistics`_, as described in
-the sections below.
+inter-expression `ordering constraints`_ and `selectivity statistics`_, as
+described in the sections below.
 
 
 Ordering Constraints
@@ -287,7 +288,7 @@ build(`cases`, `exprs`, `memo`)
     otherwise occur when more than one path leads to the same remaining
     options.
 
-    Because of this, however, the input `cases` and `indexes` must be hashable,
+    Because of this, however, the input `cases` and `exprs` must be hashable,
     because the ``TreeBuilder`` will be using them as dictionary keys.  Our
     examples here will use tuples of cases and indexes (so as to maintain their
     order when we display them), but immutable sets could also be used, as
