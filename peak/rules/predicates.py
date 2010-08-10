@@ -11,7 +11,7 @@ import inspect
 
 __all__ = [
     'IsInstance', 'IsSubclass', 'Truth', 'Identity', 'Comparison',
-    'IndexedEngine', 'predicate_node_for', 'meta_function'
+    'IndexedEngine', 'predicate_node_for', 'meta_function', 'expressionSignature',
 ]
 
 abstract()
@@ -343,13 +343,15 @@ class IndexedEngine(Engine, TreeBuilder):
             requires = []
             exprs = self.all_exprs
             for _t, expr, criterion in tests_for(signature, self):
-                if expr not in exprs:
-                    exprs[expr] = 1
-                    if always_testable(expr):
-                        Ordering(self, expr).requires([])
                 Ordering(self, expr).requires(requires)
                 requires.append(expr)
-                BitmapIndex(self, expr).add_case(case_id, criterion)
+                index_type = bitmap_index_type(self, expr)
+                if index_type is not None:
+                    if expr not in exprs:
+                        exprs[expr] = 1
+                        if always_testable(expr):
+                            Ordering(self, expr).requires([])
+                    index_type(self, expr).add_case(case_id, criterion)
         return super(IndexedEngine, self)._add_method(signature, rule)
 
     def _generate_code(self):
@@ -364,8 +366,6 @@ class IndexedEngine(Engine, TreeBuilder):
     def _full_reset(self):
         # Replace the entire engine with a new one
         Dispatching(self.function).create_engine(self.__class__)
-
-
 
     synchronized()
     def seed_bits(self, expr, cases):
@@ -449,6 +449,8 @@ except NameError: from core import frozenset
 
 
 
+when(bitmap_index_type,  (IndexedEngine, type(None)))(lambda en,ex:None)
+
 when(bitmap_index_type,  (IndexedEngine, IsInstance))(lambda en,ex:TypeIndex)
 when(bitmap_index_type,  (IndexedEngine, IsSubclass))(lambda en,ex:TypeIndex)
 
@@ -483,8 +485,6 @@ def std_type_to_test(typ, expr, engine):
 when(type_to_test, (istype,))
 def istype_to_test(typ, expr, engine):
     return Test(IsInstance(expr), typ)
-
-
 
 
 

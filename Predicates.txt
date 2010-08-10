@@ -685,6 +685,96 @@ previous bindings in effect are restored.  So in this example ``x<q`` becomes
     Test(Comparison(Local('x')), Range((Min, -1), (2, -1)))
 
 
+
+Expression to Predicate Conversion
+==================================
+
+Meta-functions are only one way to transform a Python expression into a
+predicate.  It's also possible to register somewhat-arbitrary transformations
+by registering methods with the ``expressionSignature()`` generic function.
+
+In this section, we'll create a simple "priority" predicate that doesn't
+influence method selection, but affects implication order between predicates.
+
+The basic idea is that we'll create a ``priority`` type that's an integer
+subclass, and use it in expressions of the form ``isisntance(foo, Bar) and
+priority(3)``, that will then have precedence over an identical expression with
+a lower priority::
+
+    >>> from peak.rules.core import when, implies
+    
+    >>> class priority(int):
+    ...     """A simple priority"""
+    
+    >>> when(implies, (priority, priority))(lambda p1,p2: p1>p2)
+    <function <lambda> ...>
+    
+    >>> implies(priority(3), priority(2))
+    True
+    
+    >>> implies(priority(2), priority(3))
+    False
+
+To use our new type, we'll need to implement a conversion from a
+``Const(somepriority)`` expression, to a ``Test(priority, somepriority)``
+condition.
+
+Normally, these conversions are handled by the ``expressionSignature()``
+generic function in the ``peak.rules.predicates`` module.
+
+By default, ``expressionSignature()`` simply takes the expression object it's
+given, and returns ``Test(Truth(expr), Value(True))`` -- that is, a truth test
+on the boolean value of the expression.  Or, if the value given is a constant,
+it simply returns an immediate boolean value::
+
+    >>> from peak.rules.predicates import expressionSignature
+
+    >>> expressionSignature(Const(priority(3)))
+    True
+
+So, we need to register a method that handles priorities appropriately::
+
+    >>> when(expressionSignature, "expr in Const and expr.value in priority")(
+    ...     lambda expr: Test(None, expr.value)
+    ... )
+    <function <lambda> ...>    
+    
+Okay, let's try out our new condition::
+
+    >>> def dummy(arg): return "default"
+    >>> when(dummy, "arg==1 and priority(1)")(lambda arg: "1 @ 1")
+    <function <lambda> ...>    
+
+    >>> dummy(1)
+    '1 @ 1'
+    >>> dummy(2)
+    'default'
+
+    >>> when(dummy, "arg==1 and priority(2)")(lambda arg: "1 @ 2")
+    <function <lambda> ...>    
+
+    >>> dummy(1)
+    '1 @ 2'
+    >>> dummy(2)
+    'default'
+
+
+    >>> when(dummy, "arg==2 and priority(2)")(lambda arg: "2 @ 2")
+    <function <lambda> ...>    
+    >>> dummy(1)
+    '1 @ 2'
+    >>> dummy(2)
+    '2 @ 2'
+
+    >>> when(dummy, "arg==2 and priority(1)")(lambda arg: "2 @ 1")
+    <function <lambda> ...>    
+    >>> dummy(1)
+    '1 @ 2'
+    >>> dummy(2)
+    '2 @ 2'
+
+
+
 Upgrading from ``TypeEngine``
 =============================
 
