@@ -165,6 +165,8 @@ def Inequality(op, value):
 class Signature(Intersection, tuple):
     """Represent and-ed Tests, in sequence"""
 
+    __slots__ = ()
+
     def __new__(cls, input):
         output = []
         index = {}
@@ -198,8 +200,6 @@ class Signature(Intersection, tuple):
         return "Signature("+repr(list(self))+")"
 
 when(negate, (Signature,))(lambda c: OrElse(map(negate, c)))
-
-
 
 
 
