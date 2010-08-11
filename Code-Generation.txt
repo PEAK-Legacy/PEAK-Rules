@@ -527,13 +527,13 @@ accessing the dictionary.
 Note that this caching mechanism is not primarily aimed at improving the
 performance of the underlying code, although in some cases it *might* have this
 effect.  It is also not aimed at producing compact code; the code it generates
-may be an order of magnitude larger than the unadorned code would be!
+may be considerably larger than the unadorned code would be!
 
-Rather, the goal is to provide the desired semantics with better performance
-than the ``RuleDispatch`` package provides for the same operations.  In
-``RuleDispatch``, expressions are calculated using partial functions and a
-similar cache dictionary to this one, whereas here the functions are
-effectively inlined as Python bytecode.
+Rather, the goal is to provide the desired semantics (i.e. no duplicated
+calculations) with better performance than the ``RuleDispatch`` package
+provides for the same operations.  In ``RuleDispatch``, expressions are
+calculated using partial functions and a similar cache dictionary to this one,
+whereas here the functions are effectively inlined as Python bytecode.
 
 The ``CSECode`` class replaces the ``assembler.Code`` class::
 
