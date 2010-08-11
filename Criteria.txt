@@ -35,7 +35,9 @@ But this equivalent expression is **not** in DNF::
 The criteria used to define generic function methods are likely to look more
 like this, than they are to be in disjunctive normal form.  Therefore, we must
 convert them in order to implement the Chambers & Chen dispatch algorithm
-correctly (see Indexing.txt).
+correctly (see `Indexing.txt`_).
+
+.. _Indexing.txt: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Indexing
 
 We do this using the ``DisjunctionSet`` and ``OrElse`` classes to represent
 overall expressions (sets or sequences of "ors"), and the ``Signature`` and
@@ -151,28 +153,30 @@ second condition always apply if the first condition applies?"
 true when the original conditions apply.  So, if it returns a boolean value,
 that's just an indication that the intersection of the two input conditions
 would always apply or never apply.  Also, ``intersect()`` is logically
-symmetrical, in that it doesn't matter what order the arguments in, whereas
+symmetrical, in that it doesn't matter what order the arguments are in, whereas
 the order is critically important for ``implies()``.
 
 However, ``intersect()`` methods must be order *preserving*, because the order
 in which logical "and" operations occur is important.  Consider, for example,
-the condition ``y!=0 and z>x/y``, in which it would be a bad thing to skip the
-zero check before division.  So, as we will see later on, when working with
-more complex conditions, ``intersect()`` methods must ensure that the subparts
-of the output condition are in the same relative order as they were in the
-input.
+the condition ``"y!=0 and z>x/y"``, in which it would be a bad thing to skip
+the zero check before the division!
 
-(Also, note that in general, intersecting two conditions where one condition
-implies the other, the result is the implying condition.  This general rule
-greatly simplifies the implementation of most intersect operations, since as
-long as there is an implication relationship defined between conditions, many
-common cases of intersection can be handled automatically.)
+So, as we will see later on, when working with more complex conditions,
+``intersect()`` methods must ensure that the subparts of the output condition
+are in the same relative order as they were in the input.
 
-In contrast to both of these functions, the ``disjuncts()`` function takes
-only a single argument, and returns a list of the "disjuncts" (or-ed-together
-conditions) of its argument.  More precisely, it returns a list of conditions
-that each imply the original condition.  That is, if any of the disjuncts were
-true, then the original condition would also be true.
+(Also, note that in general, when you intersect two conditions, if one condition
+implies the other, the result of the intersection is the implying condition.
+This general rule greatly simplifies the implementation of most intersect
+operations, since as long as there is an implication relationship defined
+between conditions, many common cases of intersection can be handled
+automatically.)
+
+In contrast to both ``implies()`` and ``intersects()``, the ``disjuncts()``
+function takes only a single argument, and returns a list of the "disjuncts"
+(or-ed-together conditions) of its argument.  More precisely, it returns a list
+of conditions that each imply the original condition.  That is, if any of the
+disjuncts were true, then the original condition would also be true.
 
 Thus, the ``disjuncts()`` of an arbitrary object will normally be a list
 containing just that object::
@@ -214,7 +218,8 @@ expression. There are several criterion types supplied with PEAK-Rules, but you
 can also add your own, as long as they can be tested for implication with
 ``implies()``, and intersected with ``intersect()``.  (And if they represent an
 "or" of sub-criteria, they should be able to provide their list of
-``disjuncts()``.)
+``disjuncts()``.  They'll also need to be indexable, but more on that later in
+other documents!)
 
 
 "And"-ed Criteria
@@ -293,6 +298,9 @@ of intersecting them will be a conjunction of the correct subclass::
 
     >>> class MySet(Conjunction): pass
 
+    >>> type(intersect(MySet([int, str]), float))
+    <class 'MySet'>
+    
     >>> intersect(MySet([int, str]), float) == MySet([int, str, float])
     True
 
@@ -334,10 +342,10 @@ can never contain less than 2 entries.  For example, "or"-ing ``object`` and
     <type 'object'>
 
 Notice that instead of getting back a set or sequence with one member, we got
-back the item that would have been in the set.  This helps to simplify the expression
-structure.  As a further simplification, creating an empty disjunction returns
-``False``, because "no conditions are sufficient" is the same as "always
-false"::
+back the item that would have been in the set.  This helps to simplify the
+expression structure.  As a further simplification, creating an empty
+disjunction returns ``False``, because "no conditions are sufficient" is the
+same as "always false"::
 
     >>> DisjunctionSet([])
     False
@@ -365,9 +373,9 @@ an arbitrary sequence on their contents::
     OrElse([DisjunctionSet([1, 2]), DisjunctionSet([3, 4])])
 
 (The ``disjuncts()`` of an ``OrElse`` are much more complicated, as the
-disjuncts of a Python expression like ``a or b or c``" reduce to ``a``,
-``(not a) and b``, and ``(not a and not b) and c``!  We'll cover this more
-later, in the section on `Predicates`_.)
+disjuncts of a Python expression like ``"a or b or c"`` reduce to ``"a"``,
+``"(not a) and b"``, and ``"(not a and not b) and c"``!  We'll talk more about
+this later, in the section on `Predicates`_ below.)
 
 A disjunction only implies a condition if *all* conditions in the disjunction
 imply the other condition::
@@ -470,8 +478,8 @@ As you can see, this is the heart of the process that allows expressions like
 ``(A or B) and (C or D)`` to be transformed into their disjunctive normal
 form (i.e. ``(A and C) or (A and D) or (B and C) or (B and D)``).
 
-In other words, by using ``Disjunction()`` as an "or" operator and
-``intersect()`` as the "and" operator, we always end up with a DNF result.
+(In other words, by using ``Disjunction()`` as an "or" operator and
+``intersect()`` as the "and" operator, we always end up with a DNF result!)
 
 
 Object Identity
@@ -1202,11 +1210,11 @@ the ``OrElse`` are also expanded::
 
 per this expansion logic (using ``|`` for "symmetric or")::
 
-    (a and b) or (int|str) => (a and b) | not (a and b) and (int or str)
+    (a and b) or (int|str) => (a and b) | not (a and b) and (int|str)
 
-    not (a and b) and (int or str) => (not a or not b) and (int or str)
+    not (a and b) and (int|str) => (not a | not b) and (int|str)
 
-    (not a or not b) and (int or str) => (
+    (not a | not b) and (int|str) => (
         (not a and int) | (not a and str) | (not b and int) | (not b and str)
     )
 

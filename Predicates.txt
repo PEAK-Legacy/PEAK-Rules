@@ -7,7 +7,7 @@ implementation.  Specifically, how it assembles the things we've already seen
 in the `AST Building`_, `Code Generation`_, `Criteria`_ and `Indexing`_
 documents, into a complete implementation.
 
-.. _AST Building: http://peak.telecommunity.com/DevCenter/PEAK-Rules/AST-Building
+.. _AST Building: http://peak.telecommunity.com/DevCenter/PEAK-Rules/AST-Builder
 .. _Code Generation: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Code-Generation
 .. _Criteria: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Criteria
 .. _Indexing: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Indexing
