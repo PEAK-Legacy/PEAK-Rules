@@ -16,9 +16,11 @@ subtrees.
 This document describes the design (and tests the implementation) of the
 ``ast_builder`` module.  You don't need to read it unless you want to use
 this module directly in your own programs.  If you do want to use it directly,
-you should keep in mind that it currently only implements a subset of Python
-*expression* syntax: it does not support lambdas, list comprehensions,
-generator expressions, yield expressions, or any kind of statements.
+you should keep in mind that it currently only implements a **subset** of Python
+*expression* syntax: it does not support lambdas, yield expressions, or any
+kind of statements.
+
+.. contents:: **Table of Contents**
 
 
 ------------------------
@@ -102,7 +104,7 @@ names respectively::
     >>> pe("'xyz'")
     'xyz'
 
-Note that Adjacent string constants are automatically merged::
+Note that adjacent string constants are automatically merged::
 
     >>> pe("'abc' 'xyz'")
     'abcxyz'
@@ -286,6 +288,8 @@ With parens::
 
 Lists
 -----
+
+::
 
     >>> pe("[]")
     List()
