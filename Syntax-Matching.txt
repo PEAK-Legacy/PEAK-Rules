@@ -23,7 +23,7 @@ Bind Variables
 
 Bind variables are placeholders in a pattern that "bind" themselves to the
 value found in that location in the matched data structure.  Thus, in the
-example above, ``\`x\``` and ``\`y\``` are bind variables, and cause "y"
+example above, ```x``` and ```y``` are bind variables, and cause "y"
 in the later part of the expression to refer to the right-hand side of the
 ``is`` operator being matched.  (The arbitrary value ``v2`` in the example
 above.)
@@ -82,7 +82,7 @@ the `binds` will be unchanged::
     >>> b
     {'x': [Local('y'), Local('z')]}
 
-Finally, there is a special exception for bind variables named ``\`_\```: that
+Finally, there is a special exception for bind variables named ```_```: that
 is, a single underscore.  Bind variables of this name are never stored in the
 `binds`, and always return ``True`` as a predicate, allowing you to use them as
 "don't care" placeholders::
@@ -193,6 +193,17 @@ In all other respects, it's essentially the same as ``codegen.ExprBuilder``.
 The ``match()`` Pseudo-function
 -------------------------------
 
+This isn't really a function, but you can use it in a predicate string in order
+to perform a pattern match on a PEAK-Rules AST.  It's mainly intended for use
+in extending PEAK-Rules to recognize and replace various kinds of subexpression
+patterns (e.g. by adding rules to ``predicates.expressionSignature()``), but it
+can of course also be used in any other tools you build atop PEAK-Rules'
+expression machinery.
+
+In this example, we show it being used to define a rule that will recognize
+expressions of the form ``"type(x) is y"``, where x and y are arbitrary
+expressions::
+
     >>> from peak.rules.syntax import match
 
     >>> from peak.rules.predicates import CriteriaBuilder
@@ -245,6 +256,4 @@ The ``match()`` Pseudo-function
     >>> builder.expr_builder.bindings[0]
     {'y': Getitem(Getitem(Getitem(Local('expr'), Const(2)), Const(0)), Const(1)),
      'x': Getitem(Getitem(Getitem(Local('expr'), Const(1)), Const(2)), Const(0))}
-
-
 
