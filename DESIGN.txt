@@ -493,6 +493,118 @@ And invoking an ``AmbiguousMethods`` instance just outputs diagnostic info::
     AmbiguousMethods: ([Method(...), Method(...)], (1, 2), {'x': 'y'})
 
 
+Custom Method Types and Optimization
+------------------------------------
+
+Custom method types can be defined by subclassing ``Method``, and used as a
+generic function's default method type by setting the functions' rules'
+``default_actiontype``::
+
+    >>> class MyMethod(Method):
+    ...     def __call__(self, *args, **kw):
+    ...         print "calling!"
+    ...         return self.body(*args, **kw)
+
+    >>> from peak.rules import when, rules_for, abstract
+
+    >>> tmp = lambda foo: 42
+
+    >>> def func_with(mtype):
+    ...     abstract()
+    ...     def f(foo): """dummy"""
+    ...     rules_for(f).default_actiontype = mtype
+    ...     when(f, (object,))(tmp)
+    ...     return f
+    
+    >>> f = func_with(MyMethod)
+
+    >>> f(1)
+    calling!
+    42
+
+The ``compile_method(action, engine)`` function takes a method and a dispatch
+engine, and returns an optimized version of the action::
+
+    >>> from peak.rules import compile_method, Dispatching
+    >>> engine = Dispatching(f).engine
+
+    >>> compile_method(Method(tmp, ()), engine) is tmp
+    True
+
+However, for our newly defined method type, there is no optimization::
+
+    >>> m = MyMethod(tmp, ())
+    >>> compile_method(m, engine) is tmp
+    False
+
+    >>> compile_method(m, engine) is m
+    True
+
+This is because our method type redefined ``__call__()`` but did not include
+its own ``optimized()`` method.
+
+The ``optimized()`` method of a ``Method`` subclass takes an ``Engine`` as its
+argument, and should return a callable to be used in place of directly calling
+the method itself.  It should pass any objects it plans to call (e.g. its tail
+or individual submethods) through ``compile_method(ob, engine)``, in order to
+ensure that those objects are also compiled::
+
+    >>> class MyMethod2(MyMethod):
+    ...     def optimized(self, engine):
+    ...         print "optimizing"
+    ...         return compile_method(self.body, engine)
+
+    >>> m = MyMethod2(tmp)
+    >>> compile_method(m, engine) is tmp
+    optimizing
+    True
+
+As you can see, ``compile_method()`` invokes our new ``optimized()`` method,
+which ends up returning the original function.  So we can now use our new
+method type in a generic function::
+
+    >>> f = func_with(MyMethod2)
+
+    >>> f(1)
+    optimizing
+    42
+
+    >>> f(1)
+    42
+
+And as you can see above, the method gets "optimized" upon first use, and then
+cached.
+
+(Note: what caching is done, and when the cache is reset is heavily
+dependent on the specific dispatching engine in use; it can also be the case
+that a similar-looking method object will be compiled more than once, because
+in each case it has a different tail or match signature.)
+
+Finally, note that ``Method`` subclasses do NOT inherit their ``optimized``
+method from their base classes, unless they are *also* inheriting ``__call__``.
+This prevents you from ending up with strangely-broken code in the event
+you redefine ``__call__``, but forget to redefine ``optimized``::
+
+    >>> class MyMethod3(MyMethod2):
+    ...     def __call__(self, *args, **kw):
+    ...         print "calling!"
+    ...         return self.body(*args, **kw)
+
+    >>> f = func_with(MyMethod3)
+
+    >>> f(1)
+    calling!
+    42
+
+    >>> f(1)
+    calling!
+    42
+
+As you can see, the new subclass *works*, but  doesn't get optimized.  So, you
+can do your initial debugging and development without optimization, and then
+add in the optimization afterward.
+
+
 Decorators
 ==========
 

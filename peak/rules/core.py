@@ -1,18 +1,19 @@
 __all__ = [
-    'Rule', 'RuleSet', 'Dispatching', 'Engine', 'rules_for',
+    'Rule', 'RuleSet', 'Dispatching', 'Engine', 'rules_for', 'compile_method',
     'Method', 'Around', 'Before', 'After', 'MethodList',
     'DispatchError', 'AmbiguousMethods', 'NoApplicableMethods',
     'abstract', 'when', 'before', 'after', 'around', 'istype', 'parse_rule',
     'implies', 'dominant_signatures', 'combine_actions', 'overrides',
     'always_overrides', 'merge_by_default', 'intersect', 'disjuncts', 'negate'
 ]
-from peak.util.decorators import decorate_assignment, decorate, struct, synchronized, frameinfo, decorate_class
-from peak.util.assembler import Code, Const, Call, Local, Getattr, TryExcept, Suite, with_name
+from peak.util.decorators import decorate_assignment, decorate, struct, \
+            synchronized, frameinfo, decorate_class, classy
+from peak.util.assembler import Code, Const, Call, Local, Getattr, TryExcept, \
+            Suite, with_name
 from peak.util.addons import AddOn
 import inspect, new, itertools, operator
 try:
-    set = set
-    frozenset = frozenset
+    set, frozenset = set, frozenset
 except NameError:
     from sets import Set as set
     from sets import ImmutableSet
@@ -37,6 +38,7 @@ except NameError:
         if key:
             return [v[1] for v in d]
         return d
+
 empty = frozenset()
 
 next_sequence = itertools.count().next
@@ -72,8 +74,6 @@ def clone_function(f):
     return new.function(
       f.func_code, f.func_globals, f.func_name, f.func_defaults, f.func_closure
     )
-
-
 
 
 
@@ -121,7 +121,7 @@ def merge_by_default(t):
     """instances of `t` never imply other instances of `t`"""
     when(overrides, (t, t))(NO)
 
-class Method(object):
+class Method(classy):
     """A simple method w/optional chaining"""
 
     def __init__(self, body, signature=(), precedence=0, tail=None):
@@ -136,7 +136,7 @@ class Method(object):
             pass
         else:
             if args and args[0]=='next_method':
-                if getattr(body, 'im_self', None) is None:
+                if getattr(body, 'im_self', None) is None:  # already bound?
                     self.can_tail = True
 
     decorate(classmethod)
@@ -148,6 +148,7 @@ class Method(object):
         return self.__class__.__name__+repr(data)
 
     def __call__(self, *args, **kw):
+        # raise AssertionError("shouldn't get here")
         if self.can_tail:
             return self.body(self.tail, *args, **kw)
         return self.body(*args, **kw)
@@ -159,7 +160,6 @@ class Method(object):
 
     def tail_with(self, tail):
         return self.__class__(self.body, self.signature, self.precedence, tail)
-
 
 
     def merge(self, other):
@@ -203,9 +203,46 @@ class Method(object):
         decorate.__doc__ = doc
         return decorate
 
+    def __class_init__(cls, name, bases, cdict, supr):
+        if '__call__' in cdict and 'optimized' not in cdict:
+            # Ensure that 'optimized()' is not inherited for changed __call__
+            cls.optimized = lambda self, engine: self
+        return supr()(cls, name, bases, cdict, supr)
+        
+    def optimized(self, engine):
+        body = compile_method(self.body, engine)
+        if not self.can_tail:
+            return body
+        else:
+            return new.instancemethod(body, compile_method(self.tail, engine))
+
+
 when = Method.make_decorator(
     "when", "Extend a generic function with a new action"
 )
+
+
+def compile_method(action, engine):
+    """Convert `action` into an optimized callable for `engine`"""
+    if isinstance(action, Method):
+        return action.optimized(engine)
+    elif action is None:
+        return engine.rules.default_action
+    return action
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class DispatchError(Exception):
     """A dispatch error has occurred"""
@@ -217,11 +254,13 @@ class DispatchError(Exception):
         # This method is needed so doctests for 2.3/2.4 match 2.5
         return self.__class__.__name__+repr(self.args)
 
+
 class NoApplicableMethods(DispatchError):
     """No applicable action has been defined for the given arguments"""
 
     def merge(self, other):
         return AmbiguousMethods([self,other])
+
 
 class AmbiguousMethods(DispatchError):
     """More than one choice of action is possible"""
@@ -244,11 +283,12 @@ class AmbiguousMethods(DispatchError):
 
 
 
+
+
 class RuleSet(object):
     """An observable, stably-ordered collection of rules"""
     default_action = NoApplicableMethods()
     default_actiontype = Method
-    counter = 0
 
     def __init__(self, lock=None):
         self.rules = []
@@ -284,7 +324,8 @@ class RuleSet(object):
     def _notify(self, added=empty, removed=empty):
         for listener in self.listeners[:]:  # must be re-entrant
             listener.actions_changed(added, removed)
-            
+
+
     synchronized()
     def __iter__(self):
         ad = self.actiondefs
@@ -508,15 +549,15 @@ class TypeEngine(Engine):
         cache = self.static_cache
         for sig, act in self.registry.items():
             for key in type_keys(sig):
-                cache[key] = act
+                cache[key] = compile_method(act, self)
         self._changed()
 
     def _add_method(self, signature, rule):
         action = super(TypeEngine, self)._add_method(signature, rule)
         cache = self.static_cache
         for key in cache.keys():
-            if key!=signature and implies(key, signature):
-                cache[key] = combine_actions(cache[key], action)
+            if key==signature or implies(key, signature):
+                del cache[key]
         return action
 
 
@@ -541,7 +582,7 @@ class TypeEngine(Engine):
                 for sig in self.registry:
                     if sig==types or implies(types, sig):
                         action = combine_actions(action, self.registry[sig])
-                f = cache[types] = action
+                f = cache[types] = compile_method(action, self)
             finally:
                 self.__lock__.release()
             return f(*args, **kw)
@@ -656,12 +697,13 @@ always_overrides(Around, Method)
 
 class MethodList(Method):
     """A list of related methods"""
+
+    can_tail = True
+    _sorted_items = None
+
     def __init__(self, items=(), tail=None):
         self.items = list(items)
         self.tail = tail
-        self.can_tail = True
-
-    _sorted_items = None
 
     decorate(classmethod)
     def make(cls, body, signature=(), precedence=0):
@@ -681,9 +723,8 @@ class MethodList(Method):
             self.items+other.items, combine_actions(self.tail, other.tail)
         )
 
-
-
-
+    def __call__(self, *args, **kw):
+        raise NotImplementedError("MethodList subclasses must define __call__")
 
 
 
@@ -740,12 +781,42 @@ class Before(MethodList):
     """Method(s) to be called before the primary method(s)"""
 
     def __call__(self, *args, **kw):
+        # raise AssertionError("shouldn't get here")
         for sig, body in self.sorted():
             body(*args, **kw)
         return self.tail(*args, **kw)
 
+    def optimized(self, engine):
+        tail = compile_method(self.tail, engine)
+        bodies = [compile_method(body,engine) for sig, body in self.sorted()]
+        def call(*args, **kw):
+            for body in bodies:
+                body(*args, **kw)
+            return tail(*args, **kw)
+        return call
+
 before = Before.make_decorator('before')
 merge_by_default(Before)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class After(MethodList):
     """Method(s) to be called after the primary method(s)"""
@@ -759,10 +830,21 @@ class After(MethodList):
         return items
 
     def __call__(self, *args, **kw):
+        # raise AssertionError("shouldn't get here")
         retval = self.tail(*args, **kw)
         for sig, body in self.sorted():
             body(*args, **kw)
         return retval
+
+    def optimized(self, engine):
+        tail = compile_method(self.tail, engine)
+        bodies = [compile_method(body, engine) for sig, body in self.sorted()]
+        def call(*args, **kw):
+            retval = tail(*args, **kw)
+            for body in bodies:
+                body(*args, **kw)
+            return retval
+        return call
 
 after  = After.make_decorator('after')
 merge_by_default(After)
@@ -774,6 +856,8 @@ always_overrides(After, Method)
 merge_by_default(DispatchError)
 when(overrides, (Method, NoApplicableMethods))(YES)
 when(overrides, (NoApplicableMethods, Method))(NO)
+
+
 
 Dispatching(overrides).engine._bootstrap()
 
@@ -814,8 +898,6 @@ def negate(c):
 
 when(negate, (bool,)  )(operator.not_)
 when(negate, (istype,))(lambda c: istype(c.type, not c.match))
-
-
 
 
 def dominant_signatures(cases):

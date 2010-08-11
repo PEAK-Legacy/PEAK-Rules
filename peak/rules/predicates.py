@@ -396,11 +396,11 @@ class IndexedEngine(Engine, TreeBuilder):
     def selectivity(self, expr, cases):
         return BitmapIndex(self, expr).selectivity(cases)
 
-    def optimize(self, action):
-        return action
 
     def to_expression(self, expr):
         return expr
+
+
 
 
 
@@ -416,7 +416,7 @@ class IndexedEngine(Engine, TreeBuilder):
             action = combine_actions(action, registry[signatures[case_no]])
         if action in memo:
             return memo[action]
-        return memo.setdefault(action, (0, self.optimize(action)))
+        return memo.setdefault(action, (0, compile_method(action, self)))
 
 when(bitmap_index_type,  (IndexedEngine, Truth))(lambda en,ex:TruthIndex)
 when(predicate_node_for, (IndexedEngine, Truth))
@@ -518,11 +518,11 @@ def _parse_string(engine, predicate, ctx, cls):
     if cls is not None and engine.argnames:
         cls = type_to_test(cls, engine.arguments[engine.argnames[0]], engine)
         expr = intersect(cls, expr)
+    # XXX rewrap body for bindings here?  problem: CSE isn't ready
+    # XXX so we'd have to make a temporary wrapper that gets replaced later. :(
+    # XXX (the wrapper would just always recalc the values)
+    # XXX Ugly bit at that point is that we're (slowly) generating code TWICE
     return Rule(ctx.body, expr, ctx.actiontype, ctx.sequence)
-
-
-
-
 
 
 
