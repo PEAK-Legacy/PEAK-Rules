@@ -691,7 +691,7 @@ Some useful builtins you might want to use to ``combine_using()`` include:
 (And of course, you can define an arbitrary function of your own.)
 
 By the way, when using "around" methods with a method combination, the
-innermost ``next_method`` will return the the *fully processed* combination of
+innermost ``next_method`` will return the *fully processed* combination of
 all the "when" methods, with the "before/after" methods running before and
 after the result is returned::
 
