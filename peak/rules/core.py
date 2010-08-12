@@ -7,7 +7,7 @@ __all__ = [
     'always_overrides', 'merge_by_default', 'intersect', 'disjuncts', 'negate'
 ]
 from peak.util.decorators import decorate_assignment, decorate, struct, \
-            synchronized, frameinfo, decorate_class, classy
+            synchronized, frameinfo, decorate_class, classy, apply_template
 from peak.util.assembler import Code, Const, Call, Local, Getattr, TryExcept, \
             Suite, with_name
 from peak.util.addons import AddOn
@@ -148,11 +148,9 @@ class Method(classy):
         return self.__class__.__name__+repr(data)
 
     def __call__(self, *args, **kw):
-        # raise AssertionError("shouldn't get here")
-        if self.can_tail:
-            return self.body(self.tail, *args, **kw)
-        return self.body(*args, **kw)
-
+        """Slow way to call a method -- use compile_method instead!"""
+        return compile_method(self)(*args, **kw)
+        
     def override(self, other):
         if not self.can_tail:
             return self
@@ -160,6 +158,8 @@ class Method(classy):
 
     def tail_with(self, tail):
         return self.__class__(self.body, self.signature, self.precedence, tail)
+
+
 
 
     def merge(self, other):
@@ -204,12 +204,12 @@ class Method(classy):
         return decorate
 
     def __class_init__(cls, name, bases, cdict, supr):
-        if '__call__' in cdict and 'optimized' not in cdict:
-            # Ensure that 'optimized()' is not inherited for changed __call__
-            cls.optimized = lambda self, engine: self
+        if '__call__' in cdict and 'compiled' not in cdict:
+            # Ensure that 'compiled()' is not inherited for changed __call__
+            cls.compiled = lambda self, engine: self
         return supr()(cls, name, bases, cdict, supr)
         
-    def optimized(self, engine):
+    def compiled(self, engine):
         body = compile_method(self.body, engine)
         if not self.can_tail:
             return body
@@ -222,20 +222,20 @@ when = Method.make_decorator(
 )
 
 
-def compile_method(action, engine):
+_default_engine = None
+
+def compile_method(action, engine=None):
     """Convert `action` into an optimized callable for `engine`"""
+    if engine is None:
+        global _default_engine
+        if _default_engine is None:
+            _default_engine = Dispatching(abstract(lambda *a, **k: None)).engine
+        engine = _default_engine
     if isinstance(action, Method):
-        return action.optimized(engine)
+        return action.compiled(engine)
     elif action is None:
         return engine.rules.default_action
     return action
-
-
-
-
-
-
-
 
 
 
@@ -279,9 +279,9 @@ class AmbiguousMethods(DispatchError):
 
     def override(self, other):
         return self
-    def __repr__(self): return "AmbiguousMethods(%s)" % self.methods
 
-
+    def __repr__(self):
+        return "AmbiguousMethods(%s)" % self.methods
 
 
 
@@ -457,6 +457,7 @@ class Engine(object):
     def __init__(self, disp):
         self.function = disp.function
         self.registry = {}
+        self.closures = {}
         self.rules = disp.rules
         self.__lock__ = disp.get_lock()
         self.argnames = list(
@@ -489,7 +490,6 @@ class Engine(object):
 
 
 
-
     def _add_method(self, signature, rule):
         """Add a case for the given signature and rule"""
         registry = self.registry
@@ -508,27 +508,28 @@ class Engine(object):
         """Return a code object for the current state of the function"""
         raise NotImplementedError
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    def apply_template(self, template, *args, **kw):
+        try:
+            closure = self.closures[template]
+        except KeyError:
+            if template.func_closure:
+                raise TypeError("Templates cannot use outer-scope variables")
+            import linecache; from peak.util.decorators import cache_source
+            tmp = apply_template(template, self.function, *args, **kw)
+            body = ''.join(linecache.getlines(tmp.func_code.co_filename))
+            filename = "<%s at 0x%08X wrapping %s at 0x%08X>" % (
+                template.__name__, id(template),
+                self.function.__name__, id(self)
+            )
+            d ={}
+            exec compile(body, filename, "exec") in template.func_globals, d
+            tmp, closure = d.popitem()
+            closure.func_defaults = template.func_defaults
+            cache_source(filename, body, closure)
+            self.closures[template] = closure
+        f = closure(self.function, *args, **kw)
+        f.func_defaults = self.function.func_defaults
+        return f
 
 
 class TypeEngine(Engine):
@@ -723,16 +724,16 @@ class MethodList(Method):
             self.items+other.items, combine_actions(self.tail, other.tail)
         )
 
-    def optimized(self, engine):
+    def compiled(self, engine):
         wrappers = tuple(engine.rules.methodlist_wrappers)
         bodies = [compile_method(body,engine) for sig, body in self.sorted()]
-        def call(*args, **kw):
-            def iterate():
-                for body in bodies: yield body(*args, **kw)
-            result = iterate()
-            for wrapper in wrappers: result = wrapper(result)
-            return result
-        return call
+        return engine.apply_template(list_template, bodies, wrappers)
+
+
+
+
+
+
 
 
 
@@ -754,10 +755,6 @@ class MethodList(Method):
                     items.append((s,b))
         return items
 
-    def __call__(self, *args, **kw):
-        if type(self) is MethodList:
-            raise NotImplementedError("MethodList must be compiled first")
-        raise NotImplementedError("MethodList subclasses must define __call__")
 
 merge_by_default(MethodList)
 always_overrides(Around, MethodList)
@@ -777,40 +774,44 @@ when(implies, (bool, bool))(lambda c1, c2: c2 or not c1)
 when(implies, (bool, object))(lambda c1, c2: not c1)
 when(implies, (object, bool))(lambda c1, c2: c2)
 
+
+
+
+
+def list_template(__func, __bodies, __wrappers):
+    return """
+    def __iterate():
+        for __body in __bodies: yield __body($args)
+    __result = __iterate()
+    for __wrapper in __wrappers:
+        __result = __wrapper(__result)
+    return __result"""
+    
+def before_template(__func, __tail, __bodies):
+    return """
+    for __body in __bodies: __body($args)
+    return __tail($args)"""
+    
+def after_template(__func, __tail, __bodies):
+    return """
+    __retval = __tail($args)
+    for __body in __bodies: __body($args)
+    return __retval"""
+
+
 class Before(MethodList):
     """Method(s) to be called before the primary method(s)"""
 
     can_tail = True
 
-    def __call__(self, *args, **kw):
-        # raise AssertionError("shouldn't get here")
-        for sig, body in self.sorted():
-            body(*args, **kw)
-        return self.tail(*args, **kw)
-
-    def optimized(self, engine):
+    def compiled(self, engine):
         tail = compile_method(self.tail, engine)
         bodies = [compile_method(body,engine) for sig, body in self.sorted()]
-        def call(*args, **kw):
-            for body in bodies:
-                body(*args, **kw)
-            return tail(*args, **kw)
-        return call
+        return engine.apply_template(before_template, tail, bodies)
 
 before = Before.make_decorator('before')
 merge_by_default(Before)
-
 always_overrides(Before, MethodList)
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -831,25 +832,15 @@ class After(MethodList):
         items.reverse()
         return items
 
-    def __call__(self, *args, **kw):
-        # raise AssertionError("shouldn't get here")
-        retval = self.tail(*args, **kw)
-        for sig, body in self.sorted():
-            body(*args, **kw)
-        return retval
-
-    def optimized(self, engine):
+    def compiled(self, engine):
         tail = compile_method(self.tail, engine)
         bodies = [compile_method(body, engine) for sig, body in self.sorted()]
-        def call(*args, **kw):
-            retval = tail(*args, **kw)
-            for body in bodies:
-                body(*args, **kw)
-            return retval
-        return call
+        return engine.apply_template(after_template, tail, bodies)
 
 after  = After.make_decorator('after')
+
 merge_by_default(After)
+
 always_overrides(Around, Before)
 always_overrides(Before, After)
 always_overrides(After, Method)
@@ -858,6 +849,16 @@ always_overrides(After, MethodList)
 merge_by_default(DispatchError)
 when(overrides, (Method, NoApplicableMethods))(YES)
 when(overrides, (NoApplicableMethods, Method))(NO)
+
+
+
+
+
+
+
+
+
+
 
 Dispatching(overrides).engine._bootstrap()
 

@@ -276,74 +276,163 @@ the sequence described in the previous section.  For example::
     Transferring 45 from overdraft protection
 
 
+Method Combination
+------------------
+
+The ``combine_using()`` decorator marks a function as yielding its method
+results (most-specific to least-specific, with later-defined methods taking
+precedence), and optionally specifies how the resulting iteration will be
+post-processed::
+
+    >>> from peak.rules import combine_using
+
+Let's take a look at how it works, by trying it with different ways of
+postprocessing on an example generic function.  We'll start by defining a
+function to recreate a generic function with the same set of methods, so
+you can see what happens when we pass different arguments to ``combine_using``::
+
+    >>> class A: pass
+    >>> class B(A): pass
+    >>> class C(A, B): pass
+    >>> class D(B, A): pass
+
+    >>> def demo(*args):
+    ...     """We'll be setting this function up multiple times, so we do it in
+    ...        a function.  In normal code, you won't need this outer function!
+    ...     """
+    ...     @combine_using(*args)
+    ...     def func(ob):
+    ...         return "default"
+    ...
+    ...     when(func, (object,))(lambda ob: "object")
+    ...     when(func, (int,))   (lambda ob: "int")
+    ...     when(func, (str,))   (lambda ob: "str")
+    ...     when(func, (A,))     (lambda ob: "A")
+    ...     when(func, (B,))     (lambda ob: "B")
+    ...
+    ...     return func
+
+In the simplest case, you can just call ``@combine_using()`` with no arguments,
+and get a generic function that yields the results returned by its methods,
+in order from most-specific to least-specific::
+
+    >>> func = demo()
+
+    >>> list(func(A()))
+    ['A', 'object', 'default']
+
+    >>> list(func(42))
+    ['int', 'object', 'default']
+
+In the event of ambiguity between methods, methods defined later are called
+first::
+
+    >>> list(func(C()))
+    ['B', 'A', 'object', 'default']
+
+    >>> list(func(D()))
+    ['B', 'A', 'object', 'default']
+
+Passing a function to ``@combine_using()``, however, makes it wrap the result
+iterator with that function, e.g.::
+
+    >>> func = demo(list)
+
+    >>> func(A())
+    ['A', 'object', 'default']
+
+While including ``abstract`` anywhere in the wrapper sequence makes the
+function abstract (i.e., it omits the original function's body from the defined
+methods)::
+
+    >>> func = demo(abstract, list)
+
+    >>> func(A())  # 'default' isn't included any more:
+    ['A', 'object']
+    
+You can also include more than one function in the wrapper list, and they
+will be called on the result iterator, first function outermost, ignoring
+any ``abstract`` in the sequence::
+
+    >>> func = demo(str.title, ' '.join)
+
+    >>> func(B())
+    'B A Object Default'
+
+    >>> func = demo(str.title, abstract, ' '.join)
+    
+    >>> func(B())
+    'B A Object'
+
+Some stdlib functions you might find useful for ``combine_using()`` include:
+
+* ``itertools.chain``
+* ``sorted``
+* ``reversed``
+* ``list``
+* ``set``
+* ``"".join`` (or other string)
+* ``any``
+* ``all``
+* ``sum``
+* ``min``
+* ``max``
+
+(And of course, you can write and use arbitrary functions of your own.)
+
+By the way, when using "around" methods with a method combination, the
+innermost ``next_method`` will return the *fully processed* combination of
+all the "when" methods, with the "before/after" methods running before and
+after the result is returned::
+
+    >>> from peak.rules import before, after, around
+
+    >>> def b(ob): print "before"
+    >>> def a(ob): print "after"
+    >>> def ar(next_method, ob):
+    ...     print "entering around"
+    ...     print next_method(ob)
+    ...     print "leaving around"
+
+    >>> b = before(func, ())(b)
+    >>> a = after(func, ())(a)
+    >>> ar = around(func, ())(ar) 
+
+    >>> func(B())
+    entering around
+    before
+    after
+    B A Object
+    leaving around
+
+
 Custom Method Types
 -------------------
 
-If the standard before/after/around/when decorators don't work for your
-application, you can create custom ones by defining your own "method types".
+If the standard before/after/around/when/combine_using decorators don't work
+for your application, you can create custom ones by defining your own "method
+types" and decorators.
 
-XXX
+Suppose, for example, that you are using a "pricing rules" generic function
+that operates by summing its methods' return values to produce a total::
 
-``peak.rules.implies()`` and ``peak.rules.overrides()`` are the generic
-functions used to define implication relationships and method overriding, and
-they are user-extensible.  There are two different engines available: one that
-only handles type tuples, and one that supports arbitrary predicates.  Using
-a string as a condition automatically upgrades a function's engine from one
-type to the other.
-
-XXX
-
-Here's an example of a "pricing rules" generic function that accomodates tax
-and discounts as well as upcharges.  (Don't worry if you don't understand it at
-first glance; we'll go over the individual parts in detail later.)::
-
-    >>> from peak.rules.core import Method, MethodList
-    >>> from peak.rules.core import always_overrides, combine_actions
-
-    >>> class DiscountMethod(Method):
-    ...      """Subtract a discount"""
-    ...
-    ...      def override(self, other):
-    ...          if self.__class__ == other.__class__:
-    ...              return self.override(other.tail)  # drop the other one
-    ...          return self.tail_with(combine_actions(self.tail, other))
-    ...
-    ...      def __call__(self, *args, **kw):
-    ...          price = self.tail(*args, **kw)
-    ...          return price - self.body(*args, **kw) * price
-    
-    >>> discount_when = DiscountMethod.make_decorator(
-    ...     "discount_when", "Add the result of this calculation"
-    ... )
-
-    >>> class AddMethod(MethodList):
-    ...     """Add the calculated values"""
-    ...     def __call__(self, *args, **kw):
-    ...         return sum(body(*args, **kw) for sig,prec,body in self.items)
-
-    >>> add_when = AddMethod.make_decorator(
-    ...     "add_when", "Add the result of this calculation"
-    ... )
-
-    >>> always_overrides(DiscountMethod, AddMethod)
-    >>> always_overrides(AddMethod, Method)
-
-The ``make_decorator()`` method of ``Method`` objects lets you create decorators
-similar to ``when()`` et al.
-
-XXX
-
-We can now use these decorators to implement a generic function::
-
-    >>> @abstract()
-    ... def getPrice(product,customer=None,options=()):
+    >>> @combine_using(sum)
+    ... def getPrice(product, customer=None, options=()):
     ...     """Get this product's price"""
+    ...     return 0    # base price for arbitrary items
 
     >>> class Product:
-    ...     @add_when(getPrice)
-    ...     def __addBasePrice(product,customer,options):
+    ...     @when(getPrice)
+    ...     def __addBasePrice(self, customer, options):
     ...         """Always include the product's base price"""
-    ...         return product.base_price
+    ...         return self.base_price
+
+    >>> @when(getPrice, "'blue suede' in options")
+    ... def blueSuedeUpcharge(product,customer,options):
+    ...     return 24
+
+    >>> getPrice("arbitrary thing")
+    0
 
     >>> shoes = Product()
     >>> shoes.base_price = 42
@@ -351,12 +440,64 @@ We can now use these decorators to implement a generic function::
     >>> getPrice(shoes)
     42
 
-And then we can create some pricing rules::
+    >>> getPrice(shoes, options=['blue suede'])
+    66
 
-    >>> @add_when(getPrice, "'blue suede' in options")
-    ... def blueSuedeUpcharge(product,customer,options):
-    ...     return 24
+This is useful, sure, but what if you also want to be able to compute discounts
+or tax as a percentage of the total, rather than as flat additional amounts?
+
+We can do this by implementing a custom "method type" and a corresponding
+decorator, to let us mark rules as computing a discount instead of a flat
+amount.
+
+We'll start by defining the template that will be used to generate our
+method's implementation.
+
+This format for method templates is taken from the DecoratorTools package's
+``@template_method`` decorator.  ``$args`` is used in places where the original
+generic function's calling signature is needed, and all local variables should
+be named so as not to conflict with possible argument names.  The first
+argument of the template method will be the generic function the method is
+being used with, and all other arguments are defined by the method type's
+creator.
+
+In our case, we'll need two arguments: one for the "body" (the discount
+method being decorated) and one for the "next method" that will be called to
+get the base price::
+
+    >>> def discount_template(__func, __body, __next_method):
+    ...     return """
+    ...     __price = __next_method($args)
+    ...     return __price - (__body($args) * __price)
+    ...     """
+
+Okay, that's the easy bit.  Now we need to define a bunch of other stuff to
+turn it into a method type and a decorator::
+
+    >>> from peak.rules.core import Around, MethodList, compile_method, \
+    ...     always_overrides, combine_actions
+
+    >>> class DiscountMethod(Around):
+    ...     """Subtract a discount"""
     ...
+    ...     def override(self, other):
+    ...         if self.__class__ == other.__class__:
+    ...             return self.override(other.tail)  # drop the other one
+    ...         return self.tail_with(combine_actions(self.tail, other))
+    ...
+    ...     def compiled(self, engine):
+    ...         body = compile_method(self.body, engine)
+    ...         next = compile_method(self.tail, engine)
+    ...         return engine.apply_template(discount_template, body, next)
+    
+    >>> discount_when = DiscountMethod.make_decorator(
+    ...     "discount_when", "Discount price by the returned multiplier"
+    ... )
+
+    >>> always_overrides(DiscountMethod, MethodList)
+
+The ``make_decorator()`` method of ``Method`` objects lets you create
+decorators similar to ``when()``, that we can now use to add a discount::
 
     >>> @discount_when(getPrice, 
     ...    "customer=='Elvis' and 'blue suede' in options and product is shoes"
@@ -364,22 +505,19 @@ And then we can create some pricing rules::
     ... def ElvisGetsTenPercentOff(product,customer,options):
     ...     return .1
 
-    >>> @add_when(getPrice)
-    ... def everything_else_is_free(product, customer, options):
-    ...     return 0
-
-And try them out::
-
-    >>> getPrice("something")
-    0
     >>> getPrice(shoes)
     42
-    >>> getPrice(shoes, options=['blue suede'])
-    66
-    >>> print getPrice(shoes, 'Elvis',options=['blue suede'])
+
+    >>> print getPrice(shoes, 'Elvis', options=['blue suede'])
     59.4
+
     >>> getPrice(shoes, 'Elvis')     # no suede, no discount!
     42
+
+
+XXX
+    This is still pretty hard; but without some real-world use cases for
+    custom methods, it's hard to tell how to streamline the common cases.
 
 
 Porting Code from RuleDispatch

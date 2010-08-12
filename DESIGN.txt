@@ -284,7 +284,7 @@ The resulting chain is a callable ``Method``, and the ``next_method`` is passed
 in to the first function of the chain::
 
     >>> chain(42)
-    calling Method(<...dummy...>, (), 0, None)
+    calling <function dummy at...>
     called with (42,) {}
 
 
@@ -384,7 +384,7 @@ The combination of before, after, primary, and around methods is as shown::
     >>> p = Method.make(primary)
     >>> o = Around.make(overriding_fn)
     >>> combine_actions(b, combine_actions(a, combine_actions(p, o)))(17)
-    calling Before(...dummy..., After(...dummy..., Method(...primary...)))
+    calling <function before_template at ...>
     called with (17,) {}
     primary method called
     called with (17,) {}
@@ -493,8 +493,8 @@ And invoking an ``AmbiguousMethods`` instance just outputs diagnostic info::
     AmbiguousMethods: ([Method(...), Method(...)], (1, 2), {'x': 'y'})
 
 
-Custom Method Types and Optimization
-------------------------------------
+Custom Method Types and Compilation
+-----------------------------------
 
 Custom method types can be defined by subclassing ``Method``, and used as a
 generic function's default method type by setting the functions' rules'
@@ -524,7 +524,7 @@ generic function's default method type by setting the functions' rules'
     42
 
 The ``compile_method(action, engine)`` function takes a method and a dispatch
-engine, and returns an optimized version of the action::
+engine, and returns a compiled version of the action::
 
     >>> from peak.rules.core import compile_method, Dispatching
     >>> engine = Dispatching(f).engine
@@ -532,7 +532,7 @@ engine, and returns an optimized version of the action::
     >>> compile_method(Method(tmp, ()), engine) is tmp
     True
 
-However, for our newly defined method type, there is no optimization::
+However, for our newly defined method type, there is no compilation::
 
     >>> m = MyMethod(tmp, ())
     >>> compile_method(m, engine) is tmp
@@ -542,49 +542,55 @@ However, for our newly defined method type, there is no optimization::
     True
 
 This is because our method type redefined ``__call__()`` but did not include
-its own ``optimized()`` method.
+its own ``compiled()`` method.
 
-The ``optimized()`` method of a ``Method`` subclass takes an ``Engine`` as its
+The ``compiled()`` method of a ``Method`` subclass takes an ``Engine`` as its
 argument, and should return a callable to be used in place of directly calling
 the method itself.  It should pass any objects it plans to call (e.g. its tail
 or individual submethods) through ``compile_method(ob, engine)``, in order to
 ensure that those objects are also compiled::
 
-    >>> class MyMethod2(MyMethod):
-    ...     def optimized(self, engine):
-    ...         print "optimizing"
+    >>> class MyMethod2(Method):
+    ...     def compiled(self, engine):
+    ...         print "compiling"
     ...         return compile_method(self.body, engine)
 
     >>> m = MyMethod2(tmp)
     >>> compile_method(m, engine) is tmp
-    optimizing
+    compiling
     True
 
-As you can see, ``compile_method()`` invokes our new ``optimized()`` method,
-which ends up returning the original function.  So we can now use our new
-method type in a generic function::
+As you can see, ``compile_method()`` invokes our new ``compiled()`` method,
+which ends up returning the original function.  And, if we don't define a
+``__call__()`` method of our own, we end up inheriting one from ``Method``
+that compiles the method and invokes it for us::
+
+    >>> m(1)
+    compiling
+    42
+
+However, if we use this method type in a generic function, then the generic
+function will cache the compiled version of its methods so they don't have to
+be compiled every time they're called::
 
     >>> f = func_with(MyMethod2)
 
     >>> f(1)
-    optimizing
+    compiling
     42
 
     >>> f(1)
     42
-
-And as you can see above, the method gets "optimized" upon first use, and then
-cached.
 
 (Note: what caching is done, and when the cache is reset is heavily
 dependent on the specific dispatching engine in use; it can also be the case
 that a similar-looking method object will be compiled more than once, because
 in each case it has a different tail or match signature.)
 
-Finally, note that ``Method`` subclasses do NOT inherit their ``optimized``
-method from their base classes, unless they are *also* inheriting ``__call__``.
-This prevents you from ending up with strangely-broken code in the event
-you redefine ``__call__``, but forget to redefine ``optimized``::
+Now, ``Method`` subclasses do NOT inherit their ``compiled()`` method from
+their base classes, unless they are *also* inheriting ``__call__``.  This
+prevents you from ending up with strangely-broken code in the event
+you redefine ``__call__()``, but forget to redefine ``compiled()``::
 
     >>> class MyMethod3(MyMethod2):
     ...     def __call__(self, *args, **kw):
@@ -601,119 +607,70 @@ you redefine ``__call__``, but forget to redefine ``optimized``::
     calling!
     42
 
-As you can see, the new subclass *works*, but doesn't get optimized.  So, you
-can do your initial debugging and development without optimization, and then
-add in the optimization afterward.
+As you can see, the new subclass *works*, but doesn't get compiled.  So, you
+can do your initial debugging and development without compilation by defining
+``__call__()``, and then switch over to ``compiled()`` once you're happy with
+your prototype.
 
+Now, let's define a method type that works like ``MyMethod3``, but is
+compiled using a template::
 
-Method Combination
-------------------
+    >>> class NoisyMethod(Method):
+    ...     def compiled(self, engine):
+    ...         print "compiling"
+    ...         body = compile_method(self.body, engine)
+    ...         return engine.apply_template(noisy_template, body)
 
-The ``combine_using()`` decorator marks a function as iterating over its method
-results (most-specific to least-specific, with later-defined methods taking
-precedence)::
+So far, it looks a little like our earlier compilation.  We compile the
+body like before, but then, what's that ``apply_template`` stuff?
 
-    >>> from peak.rules import combine_using
+The ``apply_template()`` method of engine objects takes a "template" function
+and one or more arguments representing values that need to be accessible in
+our compiled function.  Let's go ahead and define ``noisy_template`` now::
 
-    >>> class A: pass
-    >>> class B(A): pass
-    >>> class C(A, B): pass
-    >>> class D(B, A): pass
+    >>> def noisy_template(__func, __body):
+    ...     return """
+    ...         print "calling!"
+    ...         return __body($args)
+    ...     """
 
-    >>> def demo(*args):
-    ...     combine_using(*args)
-    ...     def func(ob):
-    ...         return "default"
-    ...
-    ...     when(func, (object,))(lambda ob: "object")
-    ...     when(func, (int,))(lambda ob: "int")
-    ...     when(func, (str,))(lambda ob: "str")
-    ...     when(func, (A,))(lambda ob: "A")
-    ...     when(func, (B,))(lambda ob: "B")
-    ...
-    ...     return func
+Template functions are defined using the conventions of DecoratorTools's
+``@template_function`` decorator, only without the decorator.  The first
+positional argument is the generic function the compiled method is being
+used with, and any others are up to you.
 
-    >>> f = demo()
-    >>> list(f(A()))
-    ['A', 'object', 'default']
+Any use of ``$args`` is replaced with the correct calling signature for
+invoking a method of the corresponding generic function, and you *must*
+name all of your arguments and local variables such that they won't conflict
+with any actual argument names.  (In practice, this means you want to use
+``__``-prefixed names, which is why we're defining the template outside
+the class, to prevent Python from mangling our parameter names and messing up
+the template.)
 
-    >>> list(f(42))
-    ['int', 'object', 'default']
+Note, too, that all the other caveats regarding ``@template_function``
+functions apply, including the fact that the function cannot actually *use* any
+of its arguments (or any variables from its containing scope) to determine the
+return string -- it must simply return a constant string.  (It can, however,
+refer to globals in its defining module, as long as they're not shadowed by
+the generic function's argument names.)
 
-In the event of ambiguity between methods, methods defined later are called
-first::
+Okay, let's see our new method type in action::
 
-    >>> list(f(C()))
-    ['B', 'A', 'object', 'default']
+    >>> f = func_with(NoisyMethod)
 
-    >>> list(f(D()))
-    ['B', 'A', 'object', 'default']
+    >>> f(1)
+    compiling
+    calling!
+    42
 
-Passing a function to ``combine_using`` makes it wrap the result iterator with
-that function, e.g.::
-
-    >>> f = demo(list)
-    >>> f(A())
-    ['A', 'object', 'default']
-
-While including ``abstract`` in the wrapper sequence makes the function
-abstract (i.e., it omits the original function body from the defined methods)::
-
-    >>> f = demo(abstract, list)
-    >>> f(A())
-    ['A', 'object']
+    >>> f(1)
+    calling!
+    42
     
-You can also include more than one function in the wrapper list, and they
-will be called on the result iterator, first function outermost, ignoring
-any ``abstract`` in the sequence::
+As you can see, the method is still compiled just once, but still prints
+"calling!" every time it's invoked, as the compiled form of the method is
+a purpose-built wrapper function.
 
-    >>> f = demo(str.title, ' '.join)
-    >>> f(B())
-    'B A Object Default'
-
-    >>> f = demo(str.title, abstract, ' '.join)
-    >>> f(B())
-    'B A Object'
-
-Some useful builtins you might want to use with ``combine_using()`` include:
-
-* ``itertools.chain``
-* ``sorted``
-* ``reversed``
-* ``list``
-* ``set``
-* ``"".join`` (or other string)
-* ``any``
-* ``all``
-* ``sum``
-* ``min``
-* ``max``
-
-(And of course, you can write and use arbitrary functions of your own.)
-
-By the way, when using "around" methods with a method combination, the
-innermost ``next_method`` will return the *fully processed* combination of
-all the "when" methods, with the "before/after" methods running before and
-after the result is returned::
-
-    >>> from peak.rules import before, after, around
-
-    >>> def b(ob): print "before"
-    >>> def a(ob): print "after"
-    >>> def ar(next_method, ob):
-    ...     print "entering around"
-    ...     print next_method(ob)
-    ...     print "leaving around"
-
-    >>> b = before(f, ())(b)
-    >>> a = after(f, ())(a)
-    >>> ar = around(f, ())(ar) 
-    >>> f(B())
-    entering around
-    before
-    after
-    B A Object
-    leaving around
 
 
 Decorators
@@ -776,7 +733,7 @@ RuleSet
 =======
 
 ``RuleSet`` objects hold the rules and policy information for a generic
-function, including the default action type and optional optimziation hints.
+function, including the default action type and optional optimization hints.
 
 Iterating over a ruleset yields its actions::
 
