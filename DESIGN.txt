@@ -155,7 +155,7 @@ Method Combination
 
 Method combination is performed using the ``combine_actions()`` API function::
 
-    >>> from peak.rules import combine_actions
+    >>> from peak.rules.core import combine_actions
 
 ``combine_actions()`` takes two arguments: a pair of actions.  They are
 compared using the ``overrides()`` generic function to see if one is more
@@ -184,7 +184,7 @@ section below for more details.)
 For the simplest signatures (tuples of types), this corresponds to a subclass
 relationship between the elements of the tuples::
 
-    >>> from peak.rules import implies
+    >>> from peak.rules.core import implies
 
     >>> implies(int, object)
     True
@@ -239,7 +239,7 @@ The default action type (for rules with no specified action type) is
 optional "chained" action that it can fall back to.  All of these values
 are optional, except for the body::
 
-    >>> from peak.rules import Method, overrides
+    >>> from peak.rules.core import Method, overrides
 
     >>> def dummy(*args, **kw):
     ...     print "called with", args, kw
@@ -296,7 +296,7 @@ whenever an ``Around`` method and a regular ``Method`` are combined, the
 ``Around`` method overrides the regular one.  This forces all the regular
 methods to be further down the chain than all of the "around" methods.
 
-    >>> from peak.rules import Around
+    >>> from peak.rules.core import Around
 
     >>> combine_actions(Method.make(dummy), Around(overriding_fn))
     Around(<...overriding_fn...>, (), 0, Method(<...dummy...>, (), 0, None))
@@ -353,7 +353,7 @@ The ``Before`` and ``After`` action types are both ``MethodList`` subclasses.
 ``Before`` actions are invoked before their tail action, and ``After`` actions
 are invoked afterward::
 
-    >>> from peak.rules import Before, After
+    >>> from peak.rules.core import Before, After
 
     >>> def primary(*args,**kw):
     ...     print "primary method called"
@@ -505,7 +505,8 @@ generic function's default method type by setting the functions' rules'
     ...         print "calling!"
     ...         return self.body(*args, **kw)
 
-    >>> from peak.rules import when, rules_for, abstract
+    >>> from peak.rules import when, abstract
+    >>> from peak.rules.core import rules_for 
 
     >>> tmp = lambda foo: 42
 
@@ -525,7 +526,7 @@ generic function's default method type by setting the functions' rules'
 The ``compile_method(action, engine)`` function takes a method and a dispatch
 engine, and returns an optimized version of the action::
 
-    >>> from peak.rules import compile_method, Dispatching
+    >>> from peak.rules.core import compile_method, Dispatching
     >>> engine = Dispatching(f).engine
 
     >>> compile_method(Method(tmp, ()), engine) is tmp
@@ -600,7 +601,7 @@ you redefine ``__call__``, but forget to redefine ``optimized``::
     calling!
     42
 
-As you can see, the new subclass *works*, but  doesn't get optimized.  So, you
+As you can see, the new subclass *works*, but doesn't get optimized.  So, you
 can do your initial debugging and development without optimization, and then
 add in the optimization afterward.
 
@@ -655,7 +656,7 @@ that function, e.g.::
     >>> f(A())
     ['A', 'object', 'default']
 
-While including ``abstract`` in the wrapper  sequence makes the function
+While including ``abstract`` in the wrapper sequence makes the function
 abstract (i.e., it omits the original function body from the defined methods)::
 
     >>> f = demo(abstract, list)
@@ -674,7 +675,7 @@ any ``abstract`` in the sequence::
     >>> f(B())
     'B A Object'
 
-Some useful builtins you might want to use to ``combine_using()`` include:
+Some useful builtins you might want to use with ``combine_using()`` include:
 
 * ``itertools.chain``
 * ``sorted``
@@ -688,7 +689,7 @@ Some useful builtins you might want to use to ``combine_using()`` include:
 * ``min``
 * ``max``
 
-(And of course, you can define an arbitrary function of your own.)
+(And of course, you can write and use arbitrary functions of your own.)
 
 By the way, when using "around" methods with a method combination, the
 innermost ``next_method`` will return the *fully processed* combination of
@@ -759,7 +760,7 @@ for the rule.  At minimum, all a rule needs is a body, so there's a convenience
 constructor (``Rule``) that allows you to create a rule with defaults.  The
 predicate and action type default to ``()`` and ``None`` if not specified::
 
-    >>> from peak.rules import Rule
+    >>> from peak.rules.core import Rule
     >>> def dummy(): pass
     >>> r = Rule(dummy, sequence=0)
     >>> r
@@ -779,7 +780,7 @@ function, including the default action type and optional optimziation hints.
 
 Iterating over a ruleset yields its actions::
 
-    >>> from peak.rules import RuleSet
+    >>> from peak.rules.core import RuleSet
     >>> rs = RuleSet()
     >>> list(rs)
     []

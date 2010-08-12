@@ -297,8 +297,8 @@ Here's an example of a "pricing rules" generic function that accomodates tax
 and discounts as well as upcharges.  (Don't worry if you don't understand it at
 first glance; we'll go over the individual parts in detail later.)::
 
-    >>> from peak.rules import Method, MethodList
-    >>> from peak.rules import always_overrides, combine_actions
+    >>> from peak.rules.core import Method, MethodList
+    >>> from peak.rules.core import always_overrides, combine_actions
 
     >>> class DiscountMethod(Method):
     ...      """Subtract a discount"""

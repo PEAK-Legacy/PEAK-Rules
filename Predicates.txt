@@ -55,7 +55,7 @@ manipulation to select the correct subnode.
 
 The ``disjuncts()`` of a Truth Test is the Test itself::
 
-    >>> from peak.rules import disjuncts
+    >>> from peak.rules.core import disjuncts
     >>> from peak.rules.criteria import Test, Signature, Value
 
     >>> disjuncts(Test(Truth(88), Value(True)))
@@ -713,7 +713,8 @@ subclass, and use it in expressions of the form ``isisntance(foo, Bar) and
 priority(3)``, that will then have precedence over an identical expression with
 a lower priority::
 
-    >>> from peak.rules.core import when, implies
+    >>> from peak.rules import when
+    >>> from peak.rules.core import implies
     
     >>> class priority(int):
     ...     """A simple priority"""

@@ -1,5 +1,5 @@
 import unittest, sys
-from peak.rules import *
+from peak.rules.core import *
 
 x2 = lambda a: a*2
 x3 = lambda next_method, a: next_method(a)*3
