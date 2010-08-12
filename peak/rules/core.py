@@ -800,7 +800,7 @@ class Before(MethodList):
 before = Before.make_decorator('before')
 merge_by_default(Before)
 
-
+always_overrides(Before, MethodList)
 
 
 
@@ -850,10 +850,10 @@ class After(MethodList):
 
 after  = After.make_decorator('after')
 merge_by_default(After)
-
 always_overrides(Around, Before)
 always_overrides(Before, After)
 always_overrides(After, Method)
+always_overrides(After, MethodList)
 
 merge_by_default(DispatchError)
 when(overrides, (Method, NoApplicableMethods))(YES)
