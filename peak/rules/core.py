@@ -1,6 +1,6 @@
 __all__ = [
     'Rule', 'RuleSet', 'Dispatching', 'Engine', 'rules_for', 'compile_method',
-    'Method', 'Around', 'Before', 'After', 'MethodList',
+    'Method', 'Around', 'Before', 'After', 'MethodList', 'combine_using',
     'DispatchError', 'AmbiguousMethods', 'NoApplicableMethods',
     'abstract', 'when', 'before', 'after', 'around', 'istype', 'parse_rule',
     'implies', 'dominant_signatures', 'combine_actions', 'overrides',
@@ -698,7 +698,7 @@ always_overrides(Around, Method)
 class MethodList(Method):
     """A list of related methods"""
 
-    can_tail = True
+    can_tail = False
     _sorted_items = None
 
     def __init__(self, items=(), tail=None):
@@ -723,16 +723,16 @@ class MethodList(Method):
             self.items+other.items, combine_actions(self.tail, other.tail)
         )
 
-    def __call__(self, *args, **kw):
-        raise NotImplementedError("MethodList subclasses must define __call__")
-
-
-
-
-
-
-
-
+    def optimized(self, engine):
+        wrappers = tuple(engine.rules.methodlist_wrappers)
+        bodies = [compile_method(body,engine) for sig, body in self.sorted()]
+        def call(*args, **kw):
+            def iterate():
+                for body in bodies: yield body(*args, **kw)
+            result = iterate()
+            for wrapper in wrappers: result = wrapper(result)
+            return result
+        return call
 
 
 
@@ -754,7 +754,13 @@ class MethodList(Method):
                     items.append((s,b))
         return items
 
+    def __call__(self, *args, **kw):
+        if type(self) is MethodList:
+            raise NotImplementedError("MethodList must be compiled first")
+        raise NotImplementedError("MethodList subclasses must define __call__")
+
 merge_by_default(MethodList)
+always_overrides(Around, MethodList)
 
 abstract()
 def intersect(c1, c2):
@@ -771,14 +777,10 @@ when(implies, (bool, bool))(lambda c1, c2: c2 or not c1)
 when(implies, (bool, object))(lambda c1, c2: not c1)
 when(implies, (object, bool))(lambda c1, c2: c2)
 
-
-
-
-
-
-
 class Before(MethodList):
     """Method(s) to be called before the primary method(s)"""
+
+    can_tail = True
 
     def __call__(self, *args, **kw):
         # raise AssertionError("shouldn't get here")
@@ -816,10 +818,10 @@ merge_by_default(Before)
 
 
 
-
-
 class After(MethodList):
     """Method(s) to be called after the primary method(s)"""
+
+    can_tail = True
 
     def sorted(self):
         # Reverse the sorting for after methods
@@ -856,8 +858,6 @@ always_overrides(After, Method)
 merge_by_default(DispatchError)
 when(overrides, (Method, NoApplicableMethods))(YES)
 when(overrides, (NoApplicableMethods, Method))(NO)
-
-
 
 Dispatching(overrides).engine._bootstrap()
 
@@ -898,6 +898,47 @@ def negate(c):
 
 when(negate, (bool,)  )(operator.not_)
 when(negate, (istype,))(lambda c: istype(c.type, not c.match))
+
+
+def combine_using(*wrappers):
+    """Designate a generic function that wraps the iteration of its methods
+
+    Standard "when" methods will be combined by iteration in precedence order,
+    and the resulting iterator will be passed to the supplied wrapper(s), last
+    first.  (e.g. ``combine_using(sorted, itertools.chain)`` will chain the
+    sequences supplied by each method into one giant list, and then sort it).
+
+    As a special case, if you include ``abstract`` in the wrapper list, it
+    will be removed, and the decorated function will be marked as abstract.
+
+    This decorator can only be used once per function, and can't be used if
+    the generic function already has methods (even the default method) or if
+    a custom method type has already been set (e.g. if you already called
+    ``combine_using()`` on it before).
+    """
+    is_abstract = abstract in wrappers
+    if is_abstract:
+        wrappers = tuple([w for w in wrappers if w is not abstract])
+
+    def callback(frame, name, func, old_locals):
+        if Dispatching.exists_for(func) and list(rules_for(func)):
+            raise RuntimeError("Methods already defined for", func)
+        if is_abstract:
+            func = abstract(func)
+        r = Dispatching(func).rules
+        if r.default_actiontype is not Method:
+            raise RuntimeError("Method type already defined for", func)
+        r.default_actiontype = MethodList.make
+        r.methodlist_wrappers = wrappers[::-1]
+        if not is_abstract:
+            r.add(Rule(clone_function(func)))
+        return func
+    return decorate_assignment(callback)
+
+
+
+
+
 
 
 def dominant_signatures(cases):
