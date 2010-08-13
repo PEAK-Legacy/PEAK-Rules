@@ -115,15 +115,58 @@ def always_overrides(a, b):
         if sig[1]==a: to_add.append((sig[0], b))
     for (p1,p2) in to_add:
         if (p1,p2) not in pairs:
-            always_overrides(p1.type, p2.type)
+            when(overrides, (p1, p2))(YES); when(overrides, (p2, p1))(NO)
 
 def merge_by_default(t):
     """instances of `t` never imply other instances of `t`"""
     when(overrides, (t, t))(NO)
 
-class Method(classy):
+class MethodType(type):
+    """Metaclass for method types
+
+    This allows precedence to be declared between method types, and ensures
+    that ``compiled()`` methods aren't inherited when ``__call__`` is redefined
+    in a Method subclass.
+    """
+
+    def __init__(cls, name, bases, cdict):
+        if '__call__' in cdict and 'compiled' not in cdict:
+            # Ensure 'compiled()' is not inherited for changed __call__
+            cls.compiled = lambda self, engine: self
+        return type.__init__(cls, name, bases, cdict)
+
+    def __rshift__(self, other):
+        if type(other) is tuple:
+            for item in other:
+                always_overrides(self, item)
+        else:
+            always_overrides(self, other)
+        return other
+
+    def __rrshift__(self, other):
+        if type(other) is tuple:
+            for item in other:
+                always_overrides(item, self)
+        else:
+            always_overrides(other, self)
+        return self
+
+
+
+
+
+
+
+
+
+
+
+
+class Method(object):
     """A simple method w/optional chaining"""
 
+    __metaclass__ = MethodType
+    
     def __init__(self, body, signature=(), precedence=0, tail=None):
         self.body = body
         self.signature = signature
@@ -160,8 +203,6 @@ class Method(classy):
         return self.__class__(self.body, self.signature, self.precedence, tail)
 
 
-
-
     def merge(self, other):
         #if self.__class__ is other.__class__ and self.body is other.body:
         #    XXX precedence should also match; need to merge signatures
@@ -183,11 +224,10 @@ class Method(classy):
             def callback(frame, name, func, old_locals):
                 assert f is not func    # XXX
                 rules = rules_for(f)
-                engine = Dispatching(f).engine
                 kind, module, locals_, globals_ = frameinfo(frame)
                 context = ParseContext(func, maker, locals_, globals_)
                 def register_for_class(cls):
-                    rules.add(parse_rule(engine, pred, context, cls))
+                    rules.add(parse_rule(Dispatching(f).engine, pred, context, cls))
                     return cls
 
                 if kind=='class':
@@ -203,12 +243,7 @@ class Method(classy):
         decorate.__doc__ = doc
         return decorate
 
-    def __class_init__(cls, name, bases, cdict, supr):
-        if '__call__' in cdict and 'compiled' not in cdict:
-            # Ensure that 'compiled()' is not inherited for changed __call__
-            cls.compiled = lambda self, engine: self
-        return supr()(cls, name, bases, cdict, supr)
-        
+
     def compiled(self, engine):
         body = compile_method(self.body, engine)
         if not self.can_tail:
@@ -216,11 +251,9 @@ class Method(classy):
         else:
             return new.instancemethod(body, compile_method(self.tail, engine))
 
-
 when = Method.make_decorator(
     "when", "Extend a generic function with a new action"
 )
-
 
 _default_engine = None
 
@@ -236,6 +269,14 @@ def compile_method(action, engine=None):
     elif action is None:
         return engine.rules.default_action
     return action
+
+
+
+
+
+
+
+
 
 
 
@@ -531,7 +572,6 @@ class Engine(object):
         f.func_defaults = self.function.func_defaults
         return f
 
-
 class TypeEngine(Engine):
     """Simple type-based dispatching"""
 
@@ -546,7 +586,13 @@ class TypeEngine(Engine):
             Dispatching(self.function).request_regeneration()
 
     def _bootstrap(self):
-        """Bootstrap a self-referential generic function"""
+        # Bootstrap a self-referential generic function by ensuring an exact
+        # list of signatures is always in the function's dispatch cache.
+        #
+        # Only peak.rules.core generic functions used in the implementation of
+        # other generic functions need this; currently that's just implies()
+        # and overrides(), which control method order and combining.
+        #
         cache = self.static_cache
         for sig, act in self.registry.items():
             for key in type_keys(sig):
@@ -560,12 +606,6 @@ class TypeEngine(Engine):
             if key==signature or implies(key, signature):
                 del cache[key]
         return action
-
-
-
-
-
-
 
 
 
@@ -676,7 +716,7 @@ class Around(Method):
 
 around = Around.make_decorator('around')
 
-always_overrides(Around, Method)
+
 
 
 
@@ -757,7 +797,7 @@ class MethodList(Method):
 
 
 merge_by_default(MethodList)
-always_overrides(Around, MethodList)
+
 
 abstract()
 def intersect(c1, c2):
@@ -810,8 +850,8 @@ class Before(MethodList):
         return engine.apply_template(before_template, tail, bodies)
 
 before = Before.make_decorator('before')
-merge_by_default(Before)
-always_overrides(Before, MethodList)
+
+
 
 
 
@@ -839,28 +879,26 @@ class After(MethodList):
 
 after  = After.make_decorator('after')
 
-merge_by_default(After)
 
-always_overrides(Around, Before)
-always_overrides(Before, After)
-always_overrides(After, Method)
-always_overrides(After, MethodList)
+# Define the overall method order
+Around >> Before >> After >> (Method, MethodList)
 
-merge_by_default(DispatchError)
+# These are necessary to ensure that any added Method subclasses will
+# automatically override NoApplicableMethods (and any subclasses thereof):
+#
 when(overrides, (Method, NoApplicableMethods))(YES)
 when(overrides, (NoApplicableMethods, Method))(NO)
 
-
-
-
-
-
-
-
-
-
-
+# And now we can bootstrap method combining!
 Dispatching(overrides).engine._bootstrap()
+
+
+
+
+
+
+
+
 
 when(overrides, (AmbiguousMethods, Method))
 def ambiguous_overrides(a1, a2):
@@ -881,9 +919,12 @@ def override_ambiguous(a1, a2):
 merge_by_default(AmbiguousMethods)
 
 
-when(parse_rule, (TypeEngine, basestring))
-def parse_string_rule_by_upgrade(engine, predicate, context, cls):
+when(parse_rule, (TypeEngine, istype(tuple, False)))
+def parse_upgrade(engine, predicate, context, cls):
     """Upgrade to predicate dispatch engine and do the parse"""
+    if isinstance(predicate, (type, ClassType, istype)):
+        # convert single item to tuple
+        return parse_rule(engine, (predicate,), context, cls)
     from peak.rules.predicates import IndexedEngine
     return parse_rule(
         Dispatching(engine.function).create_engine(IndexedEngine),
@@ -891,7 +932,6 @@ def parse_string_rule_by_upgrade(engine, predicate, context, cls):
     )
 
 when(rules_for, type(After.sorted))(lambda f: rules_for(f.im_func))
-
 
 abstract()
 def negate(c):

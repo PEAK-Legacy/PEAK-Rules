@@ -830,6 +830,50 @@ If you implement a new kind of class test for use in type tuples, you'll need
 to add the appropriate method(s) to ``type_to_test`` if you want it to also
 work with the predicate engine.
 
+So, let's test the actual upgrade process, and also confirm that you can
+still pass in type tuples (or precomputed tests, signatures, etc.) after
+upgrading::
+
+    >>> def demo(ob): pass
+    >>> tmp = when(demo, (int,))(lambda ob: 'int')
+    >>> tmp = when(demo, (str,))(lambda ob: 'str')
+
+    >>> demo(42)
+    'int'
+
+    >>> demo('test')
+    'str'
+
+    >>> tmp = when(demo, "ob in int and ob==42")(lambda ob: 'Ultimate answer')
+    >>> tmp = when(demo, (list,))(lambda ob: 'list')
+    >>> tmp = when(demo, Test(IsInstance(Local('ob')), Class(tuple)))(
+    ...     lambda ob: 'tuple'
+    ... )
+
+    >>> demo(42)
+    'Ultimate answer'
+
+    >>> demo([])
+    'list'    
+
+    >>> demo(())
+    'tuple'    
+
+    >>> demo('test'), demo(23)
+    ('str', 'int')
+
+And, just for the heck of it, let's make sure that you can upgrade to an
+IndexedEngine by using any other values on a TypeEngine function::
+
+    >>> def demo(ob): pass
+    >>> tmp = when(demo, Test(IsInstance(Local('ob')), Class(tuple)))(
+    ...     lambda ob: 'tuple'
+    ... )
+
+    >>> demo(())
+    'tuple'    
+
+
 
 Criterion Ordering
 ==================

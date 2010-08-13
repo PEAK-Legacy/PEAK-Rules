@@ -475,7 +475,7 @@ Okay, that's the easy bit.  Now we need to define a bunch of other stuff to
 turn it into a method type and a decorator::
 
     >>> from peak.rules.core import Around, MethodList, compile_method, \
-    ...     always_overrides, combine_actions
+    ...     combine_actions
 
     >>> class DiscountMethod(Around):
     ...     """Subtract a discount"""
@@ -494,7 +494,8 @@ turn it into a method type and a decorator::
     ...     "discount_when", "Discount price by the returned multiplier"
     ... )
 
-    >>> always_overrides(DiscountMethod, MethodList)
+    >>> DiscountMethod >> MethodList    # mark precedence
+    <class 'peak.rules.core.MethodList'>
 
 The ``make_decorator()`` method of ``Method`` objects lets you create
 decorators similar to ``when()``, that we can now use to add a discount::
