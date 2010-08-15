@@ -235,9 +235,9 @@ Method
 ------
 
 The default action type (for rules with no specified action type) is
-``Method``.  A ``Method`` combines a body, signature, precedence, and an
-optional "chained" action that it can fall back to.  All of these values
-are optional, except for the body::
+``Method``.  A ``Method`` combines a body, a signature, a definition-order
+serial number, and an optional "chained" action that it can fall back to.  All
+of these values are optional, except for the body::
 
     >>> from peak.rules.core import Method, overrides
 
@@ -777,7 +777,7 @@ methods::
 Observers can be added with the ``subscribe()`` and ``unsubscribe()`` methods.
 Observers have their ``actions_changed`` method called with an "added" set
 and a "removed" set of action definitions.  (An action definition is a
-tuple of the form ``(actiontype, body, signature, precedence)``, and can thus
+tuple of the form ``(actiontype, body, signature, serial)``, and can thus
 be used to create action objects.)
 
 ::

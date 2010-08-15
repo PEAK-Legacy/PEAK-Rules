@@ -208,10 +208,10 @@ class Method(object):
 
     __metaclass__ = MethodType
     
-    def __init__(self, body, signature=(), precedence=0, tail=None):
+    def __init__(self, body, signature=(), serial=0, tail=None):
         self.body = body
         self.signature = signature
-        self.precedence = precedence
+        self.serial = serial
         self.tail = tail
         self.can_tail = False
         try:
@@ -224,11 +224,11 @@ class Method(object):
                     self.can_tail = True
 
     decorate(classmethod)
-    def make(cls, body, signature=(), precedence=0):
-        return cls(body, signature, precedence)
+    def make(cls, body, signature=(), serial=0):
+        return cls(body, signature, serial)
 
     def __repr__(self):
-        data = (self.body, self.signature, self.precedence, self.tail)
+        data = (self.body, self.signature, self.serial, self.tail)
         return self.__class__.__name__+repr(data)
 
     def __call__(self, *args, **kw):
@@ -241,12 +241,12 @@ class Method(object):
         return self.tail_with(combine_actions(self.tail, other))
 
     def tail_with(self, tail):
-        return self.__class__(self.body, self.signature, self.precedence, tail)
+        return self.__class__(self.body, self.signature, self.serial, tail)
 
 
     def merge(self, other):
         #if self.__class__ is other.__class__ and self.body is other.body:
-        #    XXX precedence should also match; need to merge signatures
+        #    XXX need to merge signatures?
         #    return self.__class__(
         #        self.body, ???, ???, combine_actions(self.tail, other.tail)
         #    )
@@ -788,8 +788,8 @@ class MethodList(Method):
         self.tail = tail
 
     decorate(classmethod)
-    def make(cls, body, signature=(), precedence=0):
-        return cls( [(signature, precedence, body)] )
+    def make(cls, body, signature=(), serial=0):
+        return cls( [(signature, serial, body)] )
 
     def __repr__(self):
         data = self.items, self.tail
