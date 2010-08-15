@@ -789,7 +789,7 @@ class MethodList(Method):
 
     decorate(classmethod)
     def make(cls, body, signature=(), serial=0):
-        return cls( [(signature, serial, body)] )
+        return cls( [(serial, signature, body)] )
 
     def __repr__(self):
         data = self.items, self.tail
@@ -822,8 +822,8 @@ class MethodList(Method):
         if self._sorted_items is not None:
             return self._sorted_items
 
-        self.items.sort(lambda a,b: cmp(a[1],b[1]))
-        rest = [(s,b) for (s,p,b) in self.items]
+        self.items.sort()
+        rest = [(s,b) for (serial, s, b) in self.items]
 
         self._sorted_items = items = []
         seen = set()
