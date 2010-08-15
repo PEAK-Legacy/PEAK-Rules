@@ -754,17 +754,19 @@ So, we need to register a method that handles priorities appropriately::
     
 Okay, let's try out our new condition::
 
+    >>> from peak.rules import value
+
     >>> def dummy(arg): return "default"
-    >>> when(dummy, "arg==1 and priority(1)")(lambda arg: "1 @ 1")
-    <function <lambda> ...>    
+    >>> when(dummy, "arg==1 and priority(1)")(value("1 @ 1"))
+    value('1 @ 1',)
 
     >>> dummy(1)
     '1 @ 1'
     >>> dummy(2)
     'default'
 
-    >>> when(dummy, "arg==1 and priority(2)")(lambda arg: "1 @ 2")
-    <function <lambda> ...>    
+    >>> when(dummy, "arg==1 and priority(2)")(value("1 @ 2"))
+    value('1 @ 2',)
 
     >>> dummy(1)
     '1 @ 2'
@@ -772,15 +774,17 @@ Okay, let's try out our new condition::
     'default'
 
 
-    >>> when(dummy, "arg==2 and priority(2)")(lambda arg: "2 @ 2")
-    <function <lambda> ...>    
+    >>> when(dummy, "arg==2 and priority(2)")(value("2 @ 2"))
+    value('2 @ 2',)
+
     >>> dummy(1)
     '1 @ 2'
     >>> dummy(2)
     '2 @ 2'
 
-    >>> when(dummy, "arg==2 and priority(1)")(lambda arg: "2 @ 1")
-    <function <lambda> ...>    
+    >>> when(dummy, "arg==2 and priority(1)")(value("2 @ 1"))
+    value('2 @ 1',)
+
     >>> dummy(1)
     '1 @ 2'
     >>> dummy(2)
@@ -835,8 +839,8 @@ still pass in type tuples (or precomputed tests, signatures, etc.) after
 upgrading::
 
     >>> def demo(ob): pass
-    >>> tmp = when(demo, (int,))(lambda ob: 'int')
-    >>> tmp = when(demo, (str,))(lambda ob: 'str')
+    >>> tmp = when(demo, (int,))(value('int'))
+    >>> tmp = when(demo, (str,))(value('str'))
 
     >>> demo(42)
     'int'
@@ -844,10 +848,10 @@ upgrading::
     >>> demo('test')
     'str'
 
-    >>> tmp = when(demo, "ob in int and ob==42")(lambda ob: 'Ultimate answer')
-    >>> tmp = when(demo, (list,))(lambda ob: 'list')
+    >>> tmp = when(demo, "ob in int and ob==42")(value('Ultimate answer'))
+    >>> tmp = when(demo, (list,))(value('list'))
     >>> tmp = when(demo, Test(IsInstance(Local('ob')), Class(tuple)))(
-    ...     lambda ob: 'tuple'
+    ...     value('tuple')
     ... )
 
     >>> demo(42)
@@ -867,7 +871,7 @@ IndexedEngine by using any other values on a TypeEngine function::
 
     >>> def demo(ob): pass
     >>> tmp = when(demo, Test(IsInstance(Local('ob')), Class(tuple)))(
-    ...     lambda ob: 'tuple'
+    ...     value('tuple')
     ... )
 
     >>> demo(())
@@ -891,7 +895,7 @@ variable (i.e., a plain function argument), do not have such restrictions::
 
     >>> def f(a,b): pass
     >>> f = abstract(f)
-    >>> m = when(f, "isinstance(a, int) and a+b==42")(lambda a,b: None)
+    >>> m = when(f, "isinstance(a, int) and a+b==42")(value(None))
     >>> engine = Dispatching(f).engine
     >>> list(Ordering(engine, IsInstance(Local('a'))).constraints)
     [frozenset([])]
@@ -902,7 +906,7 @@ variable (i.e., a plain function argument), do not have such restrictions::
     >>> def f(a,b): pass
     >>> f = abstract(f)
     >>> m = when(f, "isinstance(b, str) and a+b==42 and isinstance(a, int)")(
-    ...     lambda a,b: None
+    ...     value(None)
     ... )
     >>> engine = Dispatching(f).engine
     >>> list(Ordering(engine, IsInstance(Local('a'))).constraints)
@@ -915,7 +919,7 @@ variable (i.e., a plain function argument), do not have such restrictions::
     >>> def f(a,b): pass
     >>> f = abstract(f)
     >>> m = when(f, "isinstance(a, int) and isinstance(b, str) and a+b==42")(
-    ...     lambda a,b: None
+    ...     value(None)
     ... )
     >>> engine = Dispatching(f).engine
 

@@ -275,6 +275,51 @@ the sequence described in the previous section.  For example::
     Adding overdraft fee of $25
     Transferring 45 from overdraft protection
 
+Values
+------
+
+Sometimes, if you're defining a generic function whose job is to classify
+things, it can get to be a pain defining a bunch of functions or lambdas just
+to return a few values -- especially if the generic function has a complex
+signature!  So ``peak.rules`` provides a convenience function, ``value()``
+for doing this::
+
+    >>> from peak.rules import value
+    >>> value(42)
+    value(42,)
+
+    >>> value(42)('whatever')
+    42
+
+    >>> classify = abstract(lambda age:None)
+    
+    >>> when(classify, "age<2")(value("infant"))
+    value('infant',)
+    
+    >>> when(classify, "age<13")(value("preteen"))
+    value('preteen',)
+
+    >>> when(classify, "age<5")(value("preschooler"))
+    value('preschooler',)
+
+    >>> when(classify, "age<20")(value("teenager"))
+    value('teenager',)
+
+    >>> when(classify, "age>=20")(value("adult"))
+    value('adult',)
+
+    >>> when(classify, "age>=55")(value("senior"))
+    value('senior',)
+    
+    >>> when(classify, "age==16")(value("sweet sixteen"))
+    value('sweet sixteen',)
+
+    >>> classify(17)
+    'teenager'
+
+    >>> classify(42)
+    'adult'
+
 
 Method Combination
 ------------------

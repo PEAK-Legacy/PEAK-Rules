@@ -671,6 +671,26 @@ As you can see, the method is still compiled just once, but still prints
 "calling!" every time it's invoked, as the compiled form of the method is
 a purpose-built wrapper function.
 
+To save time and memory, the ``engine.apply_template()`` tries to memoize calls
+so that it will return the same function, given the same inputs, so long as the
+function still exists::
+
+    >>> from peak.rules import value
+    >>> m = NoisyMethod((), value(42))
+
+    >>> m1 = compile_method(m)
+    compiling
+
+    >>> m2 = compile_method(m)
+    compiling
+
+    >>> m1 is m2
+    True
+
+This will only work, however, if all the arguments passed to ``apply_template``
+are usable as dictionary keys.  So, it's best to use tuples instead of lists,
+frozensets instead of sets, etc.  (Also, this means you can't pass in keyword
+arguments.)
 
 
 Decorators

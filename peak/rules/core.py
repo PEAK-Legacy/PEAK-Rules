@@ -1,6 +1,6 @@
 __all__ = [
     'Rule', 'RuleSet', 'Dispatching', 'Engine', 'rules_for', 'compile_method',
-    'Method', 'Around', 'Before', 'After', 'MethodList',
+    'Method', 'Around', 'Before', 'After', 'MethodList', 'value',
     'DispatchError', 'AmbiguousMethods', 'NoApplicableMethods',
     'abstract', 'when', 'before', 'after', 'around', 'istype', 'parse_rule',
     'implies', 'dominant_signatures', 'combine_actions', 'overrides',
@@ -97,15 +97,11 @@ def type_keys(sig):
     if None not in key:
         yield key
 
-def YES(s1,s2): return True
-def NO(s1,s2):  return False
-
 def always_overrides(a, b):
     """`a` instances always override `b`s; `b` instances never override `a`s"""
     a,b = istype(a), istype(b)
-    when(overrides, (a, b))(YES)
-    when(overrides, (b, a))(NO)
-    pairs = {}; to_add = []
+    pairs = {}
+    to_add = [(a,b)]
     for rule in rules_for(overrides):
         sig = rule.predicate
         if type(sig) is not tuple or len(sig)!=2 or rule.body is not YES:
@@ -115,11 +111,15 @@ def always_overrides(a, b):
         if sig[1]==a: to_add.append((sig[0], b))
     for (p1,p2) in to_add:
         if (p1,p2) not in pairs:
-            when(overrides, (p1, p2))(YES); when(overrides, (p2, p1))(NO)
+            when(overrides, (p1, p2))(YES)
+            when(overrides, (p2, p1))(NO)
 
 def merge_by_default(t):
     """instances of `t` never imply other instances of `t`"""
     when(overrides, (t, t))(NO)
+
+
+
 
 class MethodType(type):
     """Metaclass for method types
@@ -255,6 +255,17 @@ when = Method.make_decorator(
     "when", "Extend a generic function with a new action"
 )
 
+def value_template(__func,__value): return "return __value"
+
+[struct(
+    __call__=lambda self,*a,**kw: self.value,
+    compiled=lambda self, engine:
+                engine.apply_template(value_template, self.value)
+)]
+def value(value):
+    """Method body returning a constant value"""
+    return value,
+
 _default_engine = None
 
 def compile_method(action, engine=None):
@@ -263,26 +274,15 @@ def compile_method(action, engine=None):
         global _default_engine
         if _default_engine is None:
             _default_engine = Dispatching(abstract(lambda *a, **k: None)).engine
-        engine = _default_engine
-    if isinstance(action, Method):
+        # allow any rules on non-None engines to apply
+        return compile_method(action, _default_engine)
+    if isinstance(action, (Method, value)):
         return action.compiled(engine)
     elif action is None:
         return engine.rules.default_action
     return action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+YES, NO = value(True), value(False)
 
 
 class DispatchError(Exception):
@@ -549,14 +549,44 @@ class Engine(object):
         """Return a code object for the current state of the function"""
         raise NotImplementedError
 
-    def apply_template(self, template, *args, **kw):
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    compiled_cache = None
+
+    def apply_template(self, template, *args):
+        try:
+            return self.compiled_cache[template, args]
+        except (KeyError, TypeError, AttributeError):
+            pass
+
         try:
             closure = self.closures[template]
         except KeyError:
             if template.func_closure:
                 raise TypeError("Templates cannot use outer-scope variables")
             import linecache; from peak.util.decorators import cache_source
-            tmp = apply_template(template, self.function, *args, **kw)
+            tmp = apply_template(template, self.function, *args)
             body = ''.join(linecache.getlines(tmp.func_code.co_filename))
             filename = "<%s at 0x%08X wrapping %s at 0x%08X>" % (
                 template.__name__, id(template),
@@ -568,9 +598,22 @@ class Engine(object):
             closure.func_defaults = template.func_defaults
             cache_source(filename, body, closure)
             self.closures[template] = closure
-        f = closure(self.function, *args, **kw)
+        f = closure(self.function, *args)
         f.func_defaults = self.function.func_defaults
+
+        try:
+            hash(args)
+        except TypeError:
+            pass
+        else:
+            if self.compiled_cache is None:
+                from weakref import WeakValueDictionary
+                self.compiled_cache = WeakValueDictionary()
+            self.compiled_cache[template, args] = f
         return f
+
+
+
 
 class TypeEngine(Engine):
     """Simple type-based dispatching"""
@@ -767,7 +810,7 @@ class MethodList(Method):
     def compiled(self, engine):
         wrappers = tuple(engine.rules.methodlist_wrappers)
         bodies = [compile_method(body,engine) for sig, body in self.sorted()]
-        return engine.apply_template(list_template, bodies, wrappers)
+        return engine.apply_template(list_template, tuple(bodies), wrappers)
 
 
 
@@ -847,7 +890,7 @@ class Before(MethodList):
     def compiled(self, engine):
         tail = compile_method(self.tail, engine)
         bodies = [compile_method(body,engine) for sig, body in self.sorted()]
-        return engine.apply_template(before_template, tail, bodies)
+        return engine.apply_template(before_template, tail, tuple(bodies))
 
 before = Before.make_decorator('before')
 
@@ -875,7 +918,7 @@ class After(MethodList):
     def compiled(self, engine):
         tail = compile_method(self.tail, engine)
         bodies = [compile_method(body, engine) for sig, body in self.sorted()]
-        return engine.apply_template(after_template, tail, bodies)
+        return engine.apply_template(after_template, tail, tuple(bodies))
 
 after  = After.make_decorator('after')
 

@@ -2,7 +2,7 @@
 
 import peak.rules.core
 from peak.rules.core import abstract, when, before, after, around, istype, \
-    DispatchError, AmbiguousMethods, NoApplicableMethods
+    DispatchError, AmbiguousMethods, NoApplicableMethods, value
 
 def combine_using(*wrappers):
     """Designate a generic function that wraps the iteration of its methods
