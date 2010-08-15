@@ -349,11 +349,11 @@ you can see what happens when we pass different arguments to ``combine_using``::
     ...     def func(ob):
     ...         return "default"
     ...
-    ...     when(func, (object,))(lambda ob: "object")
-    ...     when(func, (int,))   (lambda ob: "int")
-    ...     when(func, (str,))   (lambda ob: "str")
-    ...     when(func, (A,))     (lambda ob: "A")
-    ...     when(func, (B,))     (lambda ob: "B")
+    ...     when(func, (object,))(value("object"))
+    ...     when(func, (int,))   (value("int"))
+    ...     when(func, (str,))   (value("str"))
+    ...     when(func, (A,))     (value("A"))
+    ...     when(func, (B,))     (value("B"))
     ...
     ...     return func
 
