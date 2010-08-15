@@ -414,9 +414,10 @@ class IndexedEngine(Engine, TreeBuilder):
         registry = self.registry
         for case_no in from_bits(cases):
             action = combine_actions(action, registry[signatures[case_no]])
-        if action in memo:
-            return memo[action]
-        return memo.setdefault(action, (0, compile_method(action, self)))
+        # No need to memoize here, since the combined action probably isn't
+        # a meaningful key, and template-compiled methods are memoized at a
+        # lower level anyway.
+        return (0, compile_method(action, self))
 
 when(bitmap_index_type,  (IndexedEngine, Truth))(lambda en,ex:TruthIndex)
 when(predicate_node_for, (IndexedEngine, Truth))
@@ -446,7 +447,6 @@ def range_node(builder, expr, cases, remaining_exprs, memo):
 
 try: frozenset
 except NameError: from core import frozenset
-
 
 
 when(bitmap_index_type,  (IndexedEngine, type(None)))(lambda en,ex:None)
