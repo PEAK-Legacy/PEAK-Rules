@@ -25,7 +25,7 @@ except NameError:
             return self
         def __init__(self, iterable=None):
             pass    # all immutable initialization should be done by __new__!
-
+empty = frozenset()
 try:
     sorted = sorted
 except NameError:
@@ -39,24 +39,7 @@ except NameError:
             return [v[1] for v in d]
         return d
 
-empty = frozenset()
-
-next_sequence = itertools.count().next
-
-struct()
-def Rule(body, predicate=(), actiontype=None, sequence=None):
-    if sequence is None:
-        sequence = next_sequence()
-    return body, predicate, actiontype, sequence
-
-struct()
-def ParseContext(
-    body, actiontype=None, localdict=(), globaldict=(), sequence=None
-):
-    """Hold information needed to parse a predicate"""
-    if sequence is None:
-        sequence = next_sequence()
-    return body, actiontype, dict(localdict), dict(globaldict), sequence
+# Core logic -- many of these are generics to be specialized w/"when" later
 
 def disjuncts(ob):
     """Return a *list* of the logical disjunctions of `ob`"""
@@ -64,61 +47,130 @@ def disjuncts(ob):
     if ob is False: return []
     return [ob]
 
-def parse_rule(engine, predicate, context, cls):
-    """Hook for pre-processing predicates, e.g. parsing string expressions"""
-    if cls is not None and type(predicate) is tuple:
-        predicate = (cls,) + predicate        
-    return Rule(context.body, predicate, context.actiontype, context.sequence)
+def implies(s1,s2):
+    """Is s2 always true if s1 is true?"""
+    return s1==s2
 
-def clone_function(f):
-    return new.function(
-      f.func_code, f.func_globals, f.func_name, f.func_defaults, f.func_closure
-    )
+def overrides(a1, a2):
+    """Does action a1 take precedence over action a2?"""
+    return False
 
+def combine_actions(a1,a2):
+    """Return a new action for the combination of a1 and a2"""
+    if a1 is None:
+        return a2
+    elif a2 is None:
+        return a1
+    elif overrides(a1,a2):
+        if not overrides(a2,a1):
+            return a1.override(a2)
+    elif overrides(a2,a1):
+        return a2.override(a1)
+    return a1.merge(a2)
 
-
-
-
-
-[struct()]
-def istype(type, match=True):
-    return type, match
-
-def type_key(arg):
-    if isinstance(arg, (type, ClassType)):
-        return arg
-    elif type(arg) is istype and arg.match:
-        return arg.type
-
-def type_keys(sig):
-    if type(sig) is not tuple:
-        return
-    key = tuple(map(type_key, sig))
-    if None not in key:
-        yield key
-
-def always_overrides(a, b):
-    """`a` instances always override `b`s; `b` instances never override `a`s"""
-    a,b = istype(a), istype(b)
-    pairs = {}
-    to_add = [(a,b)]
-    for rule in rules_for(overrides):
-        sig = rule.predicate
-        if type(sig) is not tuple or len(sig)!=2 or rule.body is not YES:
-            continue
-        pairs[sig]=1
-        if sig[0]==b: to_add.append((a, sig[1]))
-        if sig[1]==a: to_add.append((sig[0], b))
-    for (p1,p2) in to_add:
-        if (p1,p2) not in pairs:
-            when(overrides, (p1, p2))(YES)
-            when(overrides, (p2, p1))(NO)
-
-def merge_by_default(t):
-    """instances of `t` never imply other instances of `t`"""
-    when(overrides, (t, t))(NO)
+def rules_for(f):
+    """Return the initialized ruleset for a generic function"""
+    if not Dispatching.exists_for(f):
+        d = Dispatching(f)
+        d.rules.add(Rule(clone_function(f)))
+    return Dispatching(f).rules
 
 
+
+
+
+
+class Dispatching(AddOn):
+    """Manage a generic function's rules, engine, locking, and code"""
+    engine = None
+    def __init__(self, func):
+        self.function = func
+        self._regen   = self._regen_code()  # callback to regenerate code
+        self.rules    = RuleSet(self.get_lock())
+        self.backup   = None  # allows func to call itself during regeneration
+        self.create_engine(TypeEngine)
+
+    synchronized()
+    def get_lock(self):
+        return self.__lock__
+
+    def create_engine(self, engine_type):
+        """Create a new engine of `engine_type`, unsubscribing old"""
+        if self.engine is not None and self.engine in self.rules.listeners:
+            self.rules.unsubscribe(self.engine)
+        self.engine = engine_type(self)
+        return self.engine
+
+    synchronized()
+    def request_regeneration(self):
+        """Ensure code regeneration occurs on next call of the function"""
+        if self.backup is None:
+            self.backup = self.function.func_code
+            self.function.func_code = self._regen
+
+    def _regen_code(self):
+        c = Code.from_function(self.function, copy_lineno=True)
+        c.return_(
+            call_thru(
+                self.function,
+                Call(Getattr(
+                    Call(Const(Dispatching), (Const(self.function),), fold=False),
+                    '_regenerate'
+                ))
+            )
+        )
+        return c.code()
+
+    synchronized()
+    def as_abstract(self):
+        for action in self.rules:
+            raise AssertionError("Can't make abstract: rules already exist")
+
+        c = Code.from_function(self.function, copy_lineno=True)
+        c.return_(call_thru(self.function, Const(self.rules.default_action)))
+
+        if self.backup is None:
+            self.function.func_code = c.code()
+        else:
+            self.backup = c.code()
+        return self.function
+
+    synchronized()
+    def _regenerate(self):
+        func = self.function
+        assert self.backup is not None
+        func.func_code = self.backup    # ensure re-entrant calls work
+
+        try:
+            # try to replace the code with new code
+            func.func_code = self.engine._generate_code()
+        except:
+            # failure: we'll try to regen again, next time we're called
+            func.func_code = self._regen
+            raise
+        else:
+            # success!  get rid of the old backup code and return the function
+            self.backup = None
+            return func
+
+
+
+
+
+
+
+
+
+
+class DispatchError(Exception):
+    """A dispatch error has occurred"""
+
+    def __call__(self,*args,**kw):
+        raise self.__class__(*self.args+(args,kw))  # XXX
+
+    def __repr__(self):
+        # This method is needed so doctests for 2.3/2.4 match 2.5
+        return self.__class__.__name__+repr(self.args)
 
 
 class MethodType(type):
@@ -150,17 +202,6 @@ class MethodType(type):
         else:
             always_overrides(other, self)
         return self
-
-
-
-
-
-
-
-
-
-
-
 
 class Method(object):
     """A simple method w/optional chaining"""
@@ -255,46 +296,6 @@ when = Method.make_decorator(
     "when", "Extend a generic function with a new action"
 )
 
-def value_template(__func,__value): return "return __value"
-
-[struct(
-    __call__=lambda self,*a,**kw: self.value,
-    compiled=lambda self, engine:
-                engine.apply_template(value_template, self.value)
-)]
-def value(value):
-    """Method body returning a constant value"""
-    return value,
-
-_default_engine = None
-
-def compile_method(action, engine=None):
-    """Convert `action` into an optimized callable for `engine`"""
-    if engine is None:
-        global _default_engine
-        if _default_engine is None:
-            _default_engine = Dispatching(abstract(lambda *a, **k: None)).engine
-        # allow any rules on non-None engines to apply
-        return compile_method(action, _default_engine)
-    if isinstance(action, (Method, value)):
-        return action.compiled(engine)
-    elif action is None:
-        return engine.rules.default_action
-    return action
-
-YES, NO = value(True), value(False)
-
-
-class DispatchError(Exception):
-    """A dispatch error has occurred"""
-
-    def __call__(self,*args,**kw):
-        raise self.__class__(*self.args+(args,kw))  # XXX
-
-    def __repr__(self):
-        # This method is needed so doctests for 2.3/2.4 match 2.5
-        return self.__class__.__name__+repr(self.args)
-
 
 class NoApplicableMethods(DispatchError):
     """No applicable action has been defined for the given arguments"""
@@ -325,7 +326,6 @@ class AmbiguousMethods(DispatchError):
         return "AmbiguousMethods(%s)" % self.methods
 
 
-
 class RuleSet(object):
     """An observable, stably-ordered collection of rules"""
     default_action = NoApplicableMethods()
@@ -351,21 +351,21 @@ class RuleSet(object):
         self.rules.remove(rule)
         self._notify(removed=actiondefs)
 
-    synchronized()
-    def clear(self):
-        actiondefs = frozenset(self)
-        del self.rules[:]; self.actiondefs.clear()
-        self._notify(removed=actiondefs)
     #def changed(self, rule):
     #    sequence, actions = self.actions[rule]
     #    new_actions = frozenset(self._actions_for(rule, sequence))
     #    self.actions[rule] = sequence, new_actions
     #    self.notify(new_actions-actions, actions-new_actions)
 
+    synchronized()
+    def clear(self):
+        actiondefs = frozenset(self)
+        del self.rules[:]; self.actiondefs.clear()
+        self._notify(removed=actiondefs)
+
     def _notify(self, added=empty, removed=empty):
         for listener in self.listeners[:]:  # must be re-entrant
             listener.actions_changed(added, removed)
-
 
     synchronized()
     def __iter__(self):
@@ -388,98 +388,16 @@ class RuleSet(object):
         self.listeners.remove(listener)
 
 
-def rules_for(f):
-    """Return the initialized ruleset for a generic function"""
-    if not Dispatching.exists_for(f):
-        d = Dispatching(f)
-        d.rules.add(Rule(clone_function(f)))
-    return Dispatching(f).rules
-
-def abstract(func=None):
-    """Declare a function to be abstract"""
-    if func is None:
-        return decorate_assignment(
-            lambda f,n,func,old: Dispatching(func).as_abstract()
-        )
-    else:
-        return Dispatching(func).as_abstract()
 
 
 
 
 
-class Dispatching(AddOn):
-    """Hold the dispatching attributes of a generic function"""
-    engine = None
-    def __init__(self, func):
-        self.function = func
-        self._regen   = self._regen_code()
-        self.rules    = RuleSet(self.get_lock())
-        self.backup   = None
-        self.create_engine(TypeEngine)
 
-    synchronized()
-    def get_lock(self):
-        return self.__lock__
 
-    def create_engine(self, engine_type):
-        """Create a new engine of `engine_type`, unsubscribing old"""
-        if self.engine is not None and self.engine in self.rules.listeners:
-            self.rules.unsubscribe(self.engine)
-        self.engine = engine_type(self)
-        return self.engine
 
-    synchronized()
-    def request_regeneration(self):
-        """Ensure code regeneration occurs on next call of the function"""
-        if self.backup is None:
-            self.backup = self.function.func_code
-            self.function.func_code = self._regen
 
-    def _regen_code(self):
-        c = Code.from_function(self.function, copy_lineno=True)
-        c.return_(
-            call_thru(
-                self.function,
-                Call(Getattr(
-                    Call(Const(Dispatching), (Const(self.function),), fold=False),
-                    '_regenerate'
-                ))
-            )
-        )
-        return c.code()
 
-    synchronized()
-    def as_abstract(self):
-        for action in self.rules:
-            raise AssertionError("Can't make abstract: rules already exist")
-
-        c = Code.from_function(self.function, copy_lineno=True)
-        c.return_(call_thru(self.function, Const(self.rules.default_action)))
-
-        if self.backup is None:
-            self.function.func_code = c.code()
-        else:
-            self.backup = c.code()
-        return self.function
-
-    synchronized()
-    def _regenerate(self):
-        func = self.function
-        assert self.backup is not None
-        func.func_code = self.backup    # ensure re-entrant calls work
-
-        try:
-            # try to replace the code with new code
-            func.func_code = self.engine._generate_code()
-        except:
-            # failure: we'll try to regen next time we're called
-            func.func_code = self._regen
-            raise
-        else:
-            # success!  get rid of the old backup code and return the function
-            self.backup = None
-            return func
 
 
 
@@ -531,47 +449,6 @@ class Engine(object):
 
 
 
-    def _add_method(self, signature, rule):
-        """Add a case for the given signature and rule"""
-        registry = self.registry
-        action = rule.actiontype(rule.body, signature, rule.sequence)
-        if signature in registry:
-            registry[signature] = combine_actions(registry[signature], action)
-        else:
-            registry[signature] = action
-        return action
-
-    def _remove_method(self, signature, rule):
-        """Remove the case for the given signature and rule"""
-        raise NotImplementedError
-
-    def _generate_code(self):
-        """Return a code object for the current state of the function"""
-        raise NotImplementedError
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     compiled_cache = None
 
     def apply_template(self, template, *args):
@@ -611,6 +488,45 @@ class Engine(object):
                 self.compiled_cache = WeakValueDictionary()
             self.compiled_cache[template, args] = f
         return f
+
+
+    def _add_method(self, signature, rule):
+        """Add a case for the given signature and rule"""
+        registry = self.registry
+        action = rule.actiontype(rule.body, signature, rule.sequence)
+        if signature in registry:
+            registry[signature] = combine_actions(registry[signature], action)
+        else:
+            registry[signature] = action
+        return action
+
+    def _remove_method(self, signature, rule):
+        """Remove the case for the given signature and rule"""
+        raise NotImplementedError
+
+    def _generate_code(self):
+        """Return a code object for the current state of the function"""
+        raise NotImplementedError
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -678,6 +594,27 @@ class TypeEngine(Engine):
         c.return_(call_thru(self.function, target))
         return c.code()
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Code generation stuff
+
 def flatten(v):
     if isinstance(v,basestring): yield v; return
     for i in v:
@@ -697,25 +634,84 @@ def class_or_type_of(expr):
         [(Const(AttributeError), Call(Const(type), (Code.ROT_TWO,)))]
     )])
 
-def overrides(a1, a2):
-    return False
+def clone_function(f):
+    return new.function(
+      f.func_code, f.func_globals, f.func_name, f.func_defaults, f.func_closure
+    )
 
-def combine_actions(a1,a2):
-    """Return a new action for the combination of a1 and a2"""
-    if a1 is None:
-        return a2
-    elif a2 is None:
-        return a1
-    elif overrides(a1,a2):
-        if not overrides(a2,a1):
-            return a1.override(a2)
-    elif overrides(a2,a1):
-        return a2.override(a1)
-    return a1.merge(a2)
+_default_engine = None
+def compile_method(action, engine=None):
+    """Convert `action` into an optimized callable for `engine`"""
+    if engine is None:
+        global _default_engine
+        if _default_engine is None:
+            _default_engine = Dispatching(abstract(lambda *a, **k: None)).engine
+        # allow any rules on non-None engines to apply
+        return compile_method(action, _default_engine)
+    if isinstance(action, (Method, value)):
+        return action.compiled(engine)
+    elif action is None:
+        return engine.rules.default_action
+    return action
 
-def implies(s1,s2):
-    """Is s2 always true if s1 is true?"""
-    return s1==s2
+# Rules management
+
+def abstract(func=None):
+    """Declare a function to be abstract"""
+    if func is None:
+        return decorate_assignment(
+            lambda f,n,func,old: Dispatching(func).as_abstract()
+        )
+    else:
+        return Dispatching(func).as_abstract()
+
+next_sequence = itertools.count().next
+
+struct()
+def Rule(body, predicate=(), actiontype=None, sequence=None):
+    if sequence is None:
+        sequence = next_sequence()
+    return body, predicate, actiontype, sequence
+
+struct()
+def ParseContext(
+    body, actiontype=None, localdict=(), globaldict=(), sequence=None
+):
+    """Hold information needed to parse a predicate"""
+    if sequence is None:
+        sequence = next_sequence()
+    return body, actiontype, dict(localdict), dict(globaldict), sequence
+
+def parse_rule(engine, predicate, context, cls):
+    """Hook for pre-processing predicates, e.g. parsing string expressions"""
+    if cls is not None and type(predicate) is tuple:
+        predicate = (cls,) + predicate        
+    return Rule(context.body, predicate, context.actiontype, context.sequence)
+
+
+
+
+
+
+
+
+# Class/type rules and implications
+
+[struct()]
+def istype(type, match=True):
+    return type, match
+
+def type_key(arg):
+    if isinstance(arg, (type, ClassType)):
+        return arg
+    elif type(arg) is istype and arg.match:
+        return arg.type
+
+def type_keys(sig):
+    if type(sig) is tuple:
+        key = tuple(map(type_key, sig))
+        if None not in key:
+            yield key
 
 when(implies, (istype(tuple), istype(tuple)))
 def tuple_implies(s1,s2):
@@ -735,46 +731,48 @@ when(implies, (type,      istype)   )(lambda s1,s2: s2.match==(s1 is s2.type))
 when(implies, (istype,    istype)   )(lambda s1,s2:
     s1==s2 or (s1.type is not s2.type and s1.match and not s2.match))
 when(implies, (istype,type))(lambda s1,s2: s1.match and issubclass(s1.type,s2))
+# A classic class only implies a new-style one if it's ``object``
+# or ``InstanceType``; this is an exception to the general rule that
+# isinstance(X,Y) implies issubclass(X.__class__,Y)
+when(implies, (ClassType, type))(lambda s1,s2: s2 is object or s2 is InstanceType)
+
+# Rule precedence
+
+[struct(
+    __call__ = lambda self,*a,**kw: self.value,
+    compiled = lambda self, engine:
+                      engine.apply_template(value_template, self.value)
+)]
+def value(value):
+    """Method body returning a constant value"""
+    return value,
+
+def value_template(__func,__value):
+    return "return __value"
 
 
+YES, NO = value(True), value(False)
 
-when(implies, (ClassType, type))
-def classic_implies_new(s1, s2):
-    # A classic class only implies a new-style one if it's ``object``
-    # or ``InstanceType``; this is an exception to the general rule that
-    # isinstance(X,Y) implies issubclass(X.__class__,Y)
-    return s2 is object or s2 is InstanceType
+def always_overrides(a, b):
+    """`a` instances always override `b`s; `b` instances never override `a`s"""
+    a,b = istype(a), istype(b)
+    pairs = {}
+    to_add = [(a,b)]
+    for rule in rules_for(overrides):
+        sig = rule.predicate
+        if type(sig) is not tuple or len(sig)!=2 or rule.body is not YES:
+            continue
+        pairs[sig]=1
+        if sig[0]==b: to_add.append((a, sig[1]))
+        if sig[1]==a: to_add.append((sig[0], b))
+    for (p1,p2) in to_add:
+        if (p1,p2) not in pairs:
+            when(overrides, (p1, p2))(YES)
+            when(overrides, (p2, p1))(NO)
 
-# ok, implies() is now ready to rumble
-Dispatching(implies).engine._bootstrap()
-
-when(overrides, (Method,Method))
-def method_overrides(a1, a2):
-    if a1.__class__ is a2.__class__:
-        return implies(a1.signature, a2.signature)
-    raise TypeError("Incompatible action types", a1, a2)
-
-class Around(Method):
-    """'Around' Method (takes precedence over regular methods)"""
-
-around = Around.make_decorator('around')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+def merge_by_default(t):
+    """instances of `t` never imply other instances of `t`"""
+    when(overrides, (t, t))(NO)
 
 
 
@@ -838,29 +836,6 @@ class MethodList(Method):
                     items.append((s,b))
         return items
 
-
-merge_by_default(MethodList)
-
-
-abstract()
-def intersect(c1, c2):
-    """Return the logical intersection of two conditions"""
-
-around(intersect, (object, object))
-def intersect_if_implies(next_method, c1, c2):
-    if implies(c1,c2):      return c1
-    elif implies(c2, c1):   return c2
-    return next_method(c1, c2)
-
-# These are needed for boolean intersects to work correctly
-when(implies, (bool, bool))(lambda c1, c2: c2 or not c1)
-when(implies, (bool, object))(lambda c1, c2: not c1)
-when(implies, (object, bool))(lambda c1, c2: c2)
-
-
-
-
-
 def list_template(__func, __bodies, __wrappers):
     return """
     def __iterate():
@@ -869,22 +844,23 @@ def list_template(__func, __bodies, __wrappers):
     for __wrapper in __wrappers:
         __result = __wrapper(__result)
     return __result"""
-    
-def before_template(__func, __tail, __bodies):
-    return """
-    for __body in __bodies: __body($args)
-    return __tail($args)"""
-    
-def after_template(__func, __tail, __bodies):
-    return """
-    __retval = __tail($args)
-    for __body in __bodies: __body($args)
-    return __retval"""
+
+merge_by_default(MethodList)
+
+
+class Around(Method):
+    """'Around' Method (takes precedence over regular methods)"""
+
+around = Around.make_decorator('around')
+
+
+
+
+
 
 
 class Before(MethodList):
     """Method(s) to be called before the primary method(s)"""
-
     can_tail = True
 
     def compiled(self, engine):
@@ -892,19 +868,15 @@ class Before(MethodList):
         bodies = [compile_method(body,engine) for sig, body in self.sorted()]
         return engine.apply_template(before_template, tail, tuple(bodies))
 
+def before_template(__func, __tail, __bodies):
+    return """
+    for __body in __bodies: __body($args)
+    return __tail($args)"""
+    
 before = Before.make_decorator('before')
-
-
-
-
-
-
-
-
 
 class After(MethodList):
     """Method(s) to be called after the primary method(s)"""
-
     can_tail = True
 
     def sorted(self):
@@ -920,8 +892,13 @@ class After(MethodList):
         bodies = [compile_method(body, engine) for sig, body in self.sorted()]
         return engine.apply_template(after_template, tail, tuple(bodies))
 
-after  = After.make_decorator('after')
+def after_template(__func, __tail, __bodies):
+    return """
+    __retval = __tail($args)
+    for __body in __bodies: __body($args)
+    return __retval"""
 
+after  = After.make_decorator('after')
 
 # Define the overall method order
 Around >> Before >> After >> (Method, MethodList)
@@ -932,16 +909,11 @@ Around >> Before >> After >> (Method, MethodList)
 when(overrides, (Method, NoApplicableMethods))(YES)
 when(overrides, (NoApplicableMethods, Method))(NO)
 
-# And now we can bootstrap method combining!
-Dispatching(overrides).engine._bootstrap()
-
-
-
-
-
-
-
-
+when(overrides, (Method,Method))
+def method_overrides(a1, a2):
+    if a1.__class__ is a2.__class__:
+        return implies(a1.signature, a2.signature)
+    raise TypeError("Incompatible action types", a1, a2)
 
 when(overrides, (AmbiguousMethods, Method))
 def ambiguous_overrides(a1, a2):
@@ -961,12 +933,19 @@ def override_ambiguous(a1, a2):
 # needed to disambiguate the above two methods if combining a pair of AM's:
 merge_by_default(AmbiguousMethods)
 
+# And now we can bootstrap the core!  These two functions are used in the
+# TypeEngine implementation, so we force them to statically cache all their
+# current methods.  That way, they'll still work even if they're called during
+# one of their own cache misses or code regenerations:
+Dispatching(implies).engine._bootstrap()
+Dispatching(overrides).engine._bootstrap()
+
 
 when(parse_rule, (TypeEngine, istype(tuple, False)))
 def parse_upgrade(engine, predicate, context, cls):
-    """Upgrade to predicate dispatch engine and do the parse"""
+    """Upgrade to predicate dispatch engine when called w/unrecognized args"""
     if isinstance(predicate, (type, ClassType, istype)):
-        # convert single item to tuple
+        # convert single item to tuple - no need to upgrade engine
         return parse_rule(engine, (predicate,), context, cls)
     from peak.rules.predicates import IndexedEngine
     return parse_rule(
@@ -976,12 +955,31 @@ def parse_upgrade(engine, predicate, context, cls):
 
 when(rules_for, type(After.sorted))(lambda f: rules_for(f.im_func))
 
+
+# Logical functions needed for extensions to the core, but that should be
+# shared by all extensions.
+
 abstract()
 def negate(c):
     """Return the logical negation of criterion `c`"""
 
 when(negate, (bool,)  )(operator.not_)
 when(negate, (istype,))(lambda c: istype(c.type, not c.match))
+
+abstract()
+def intersect(c1, c2):
+    """Return the logical intersection of two conditions"""
+
+around(intersect, (object, object))
+def intersect_if_implies(next_method, c1, c2):
+    if implies(c1,c2):      return c1
+    elif implies(c2, c1):   return c2
+    return next_method(c1, c2)
+
+# These are needed for boolean intersects to work correctly
+when(implies, (bool, bool))(lambda c1, c2: c2 or not c1)
+when(implies, (bool, object))(lambda c1, c2: not c1)
+when(implies, (object, bool))(lambda c1, c2: c2)
 
 
 def dominant_signatures(cases):
