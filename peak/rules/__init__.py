@@ -39,6 +39,10 @@ def combine_using(*wrappers):
         return func
     return core.decorate_assignment(callback)
 
+class priority(int):
+    """An integer priority for manually resolving a rule ambiguity"""
+
+
 def let(**kw):
     """Define temporary variables for use in rules and methods
 
@@ -73,7 +77,44 @@ def let(**kw):
     variable would be shadowed by the as-yet-undefined variable.
     """
     raise NotImplementedError("`let` can only be used in rules, not code!")
-    
+
+
+
+# TEMPORARY BACKWARDS COMPATIBILITY - PLEASE IMPORT THIS DIRECTLY FROM CORE
+# (or better still, use the '>>' operator that method types now have)
+#
+from peak.rules.core import always_overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

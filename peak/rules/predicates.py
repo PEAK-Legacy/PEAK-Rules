@@ -80,6 +80,9 @@ def Truth(expr, code=None):
          Code.ROT_TWO, Code.POP_TOP)
 
 
+from peak.rules import priority
+when(implies, (priority, priority))(lambda p1,p2: p1>p2)
+
 class ExprBuilder(ExprBuilder):
     """Extended expression builder with support for meta-functions"""
 
@@ -103,9 +106,6 @@ def meta_function(*stub, **parsers):
         )
         return func
     return decorate_assignment(callback)
-
-
-
 
 
 
@@ -609,7 +609,7 @@ when(compileIs,
 def compileTypeIsX(expr, criterion):
     return Test(IsInstance(expr.args[0]), istype(criterion))
 
-
-
-
+@when(expressionSignature, "expr in Const and expr.value in priority")
+def test_for_priority(expr):
+    return Test(None, expr.value)
 
