@@ -1,13 +1,13 @@
 from peak.util.assembler import *
 from core import *
-from core import class_or_type_of
+from core import class_or_type_of, call_thru
 from criteria import *
 from indexing import *
-from codegen import SMIGenerator, ExprBuilder, Getitem, IfElse
+from codegen import SMIGenerator, ExprBuilder, Getitem, IfElse, Tuple
 from peak.util.decorators import decorate, synchronized, decorate_assignment
 from types import InstanceType, ClassType
 from ast_builder import build, parse_expr
-import inspect
+import inspect, new
 
 __all__ = [
     'IsInstance', 'IsSubclass', 'Truth', 'Identity', 'Comparison',
@@ -515,6 +515,7 @@ when(parse_rule, (IndexedEngine, basestring))
 def _parse_string(engine, predicate, ctx, cls):
     b = CriteriaBuilder(engine.arguments, ctx.localdict, ctx.globaldict, __builtins__)
     expr = parse_expr(predicate, b)
+    bindings = b.expr_builder.bindings[0]
     if cls is not None and engine.argnames:
         cls = type_to_test(cls, engine.arguments[engine.argnames[0]], engine)
         expr = intersect(cls, expr)
@@ -522,9 +523,49 @@ def _parse_string(engine, predicate, ctx, cls):
     # XXX so we'd have to make a temporary wrapper that gets replaced later. :(
     # XXX (the wrapper would just always recalc the values)
     # XXX Ugly bit at that point is that we're (slowly) generating code TWICE
-    return Rule(ctx.body, expr, ctx.actiontype, ctx.sequence)
+    return Rule(
+        maybe_bind(ctx.body, bindings), expr, ctx.actiontype, ctx.sequence
+    )
 
 
+
+
+
+def maybe_bind(func, bindings):
+    """Apply expression bindings to arguments, if applicable"""
+
+    if not bindings or not hasattr(func, 'func_code'):
+        return func     # no bindings or not a function
+
+    args, varargs, varkw, defaults = inspect.getargspec(func) 
+    if not args or isinstance(args[0], basestring):
+        return func # no args or first arg isn't a tuple
+
+    for arg in args[0]:
+        if not isinstance(arg, basestring):  # nested tuple arg, not a binding
+            return func
+
+    for arg in args[0]:
+        if arg in bindings:
+            for arg in args[0]:
+                if arg not in bindings:
+                    raise TypeError("Missing binding for %r" % arg)
+            break
+    else:
+        return func     # none of the tuple args are in the binding
+
+    argtuple = Tuple([bindings[arg] for arg in args[0]])
+
+    c = Code.from_spec(func.func_name, args[1:], varargs, varkw)
+    f = new.function(
+        c.code(), func.func_globals, func.func_name, func.func_defaults
+    )
+    f.func_code = c.code()  # make f's signature match func w/out tuple
+    c.return_(call_thru(f, Const(func), [argtuple]))    # call to match that
+    f.func_code = c.code()  # now include the actual body
+    f.__predicate_bindings__ = bindings, func   # mark for later optimization
+
+    return f
 
 
 

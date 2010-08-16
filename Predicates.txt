@@ -697,6 +697,61 @@ previous bindings in effect are restored.  So in this example ``x<q`` becomes
     Test(Comparison(Local('x')), Range((Min, -1), (2, -1)))
 
 
+Method Argument Binding
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Any bindings defined in an expression can be converted into arguments for the
+function associated with the rule that defined the bindings., by having its
+first positional argument be a named argument tuple::
+
+    >>> from peak.rules import abstract, when, around
+    >>> def f(x): pass
+    >>> f = abstract(f)
+
+    >>> def dummy((q,z), x):
+    ...     print "Got q =", q, "and z =", z
+    ...     print "x was", x
+
+    >>> when(f, "let(q=x*2, z='whatever') and True")(dummy)
+    <function dummy ...>
+
+    >>> f(42)
+    Got q = 84 and z = whatever
+    x was 42
+
+This even works when you have a ``next_method`` argument after the tuple, and
+even if your method is defined inside a closure::
+
+    >>> def closure(y):
+    ...     def dummy2((a,b,c), next_method, x):
+    ...         print "a, b, c =", (a,b,c)
+    ...         print "y was", y
+    ...         return next_method(x)
+    ...     return dummy2
+
+    >>> around(f, "let(a='a', b=x*3, c=23)")(closure(99))
+    <function dummy2 ...>
+
+    >>> f(42)
+    a, b, c = ('a', 126, 23)
+    y was 99
+    Got q = 84 and z = whatever
+    x was 42
+
+At the moment, this actually works by recalculating the expressions in a
+wrapper function that then invokes your original method, so it's more of a DRY
+thing than an efficiency thing.  That is, it keeps you from accidentally
+getting your rule and your function out of sync, and saves on retyping or
+copy-pasting.
+
+(Future versions of PEAK-Rules, however, may improve this so that the bindings
+aren't recalculated at every method level, or perhaps aren't recalculated at
+all.  It's tricky, though, because depending on the calculations involved, it
+might be more efficient to redo them than to do the dynamic stack inspection
+that would be needed to locate the active expression cache!  So, in that event,
+the main value would be supporting at-most-once execution of expressions with
+side-effects.)
+
 
 Expression to Predicate Conversion
 ==================================

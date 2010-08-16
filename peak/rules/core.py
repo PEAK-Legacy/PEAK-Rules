@@ -624,9 +624,9 @@ def gen_arg(v):
     if isinstance(v,basestring): return Local(v)
     if isinstance(v,list): return tuple(map(gen_arg,v))
 
-def call_thru(sigfunc, target):
+def call_thru(sigfunc, target, prefix=()):
     args, star, dstar, defaults = inspect.getargspec(sigfunc)
-    return Call(target, map(gen_arg,args), (), gen_arg(star), gen_arg(dstar), fold=False)
+    return Call(target, list(prefix)+map(gen_arg,args), (), gen_arg(star), gen_arg(dstar), fold=False)
 
 def class_or_type_of(expr):
     return Suite([expr, TryExcept(
