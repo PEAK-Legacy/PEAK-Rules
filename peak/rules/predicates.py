@@ -97,12 +97,12 @@ def meta_function(*stub, **parsers):
                 raise TypeError(
                     "Meta-functions cannot have packed-tuple arguments"
                 )
-        meta_functions[stub] = func, parsers, inspect.getargspec(func)
+        what = func, parsers, inspect.getargspec(func)
+        meta_functions[stub] = (
+            lambda builder, *args: apply_meta(builder, what, *args)
+        )
         return func
     return decorate_assignment(callback)
-
-
-
 
 
 
@@ -195,90 +195,90 @@ class CriteriaBuilder:
         b = build.__get__(self.expr_builder)
         target = b(func)
         if isinstance(target, Const) and target.value in meta_functions:
-            return self.apply_meta(
-                meta_functions[target.value], args, kw, star_node, dstar_node
+            return meta_functions[target.value](
+                self, args, kw, star_node, dstar_node
             )
         return expressionSignature(Call(
             target, map(b,args), [(b(k),b(v)) for k,v in kw],
             star_node and b(star_node), dstar_node and b(dstar_node)
         ))
 
-    def apply_meta(self,
-        (func, parsers, (argnames, varargs, varkw, defaults)), args, kw, star, dstar
-    ):
-        # NB: tuple-args not allowed!
-        def parse(arg, node):
-            if not node:
-                return None
-            return parsers.get(arg, build)(self.expr_builder, node)
+def apply_meta(builder,
+    (func, parsers, (argnames, varargs, varkw, defaults)), args, kw, star, dstar
+):
+    # NB: tuple-args not allowed!
+    def parse(arg, node):
+        if not node:
+            return None
+        return parsers.get(arg, build)(builder.expr_builder, node)
 
-        data = {}
-        extra = []
-        offset = 0
-        for name in argnames:
-            if name=='__builder__': data[name] = self.expr_builder
-            elif name=='__star__':  data[name] = parse(name, star)
-            elif name=='__dstar__': data[name] = parse(name, dstar)
-            else:
-                break
-            offset += 1
+    data = {}
+    extra = []
+    offset = 0
+    for name in argnames:
+        if name=='__builder__': data[name] = builder.expr_builder
+        elif name=='__star__':  data[name] = parse(name, star)
+        elif name=='__dstar__': data[name] = parse(name, dstar)
+        else:
+            break
+        offset += 1
 
-        for k, v in zip(argnames[offset:], args):
+    for k, v in zip(argnames[offset:], args):
+        data[k] = parse(k, v)
+
+    varargpos = len(argnames)-offset
+    if len(args)> varargpos:
+        if not varargs:
+            raise TypeError("Too many arguments for %r" % (func,))
+        extra.extend([parse(varargs, node) for node in args[varargpos:]])
+
+    for k,v in kw:
+        k = build(builder.expr_builder, k)
+        assert type(k) is Const and isinstance(k.value, basestring)
+        k = k.value
+        if k in data:
+            raise TypeError("Duplicate keyword %s for %r" % (k,func))
+
+        if varkw and k not in argnames and k not in parsers:
+            data[k] = parse(varkw,  v)
+        else:
             data[k] = parse(k, v)
 
-        varargpos = len(argnames)-offset
-        if len(args)> varargpos:
-            if not varargs:
-                raise TypeError("Too many arguments for %r" % (func,))
-            extra.extend([parse(varargs, node) for node in args[varargpos:]])
+    if star and '__star__' not in data:
+        raise TypeError("%r does not support parsing *args" % (func,))
 
-        for k,v in kw:
-            k = build(self.expr_builder, k)
-            assert type(k) is Const and isinstance(k.value, basestring)
-            k = k.value
-            if k in data:
-                raise TypeError("Duplicate keyword %s for %r" % (k,func))
+    if dstar and '__dstar__' not in data:
+        raise TypeError("%r does not support parsing **kw" % (func,))
 
-            if varkw and k not in argnames and k not in parsers:
-                data[k] = parse(varkw,  v)
-            else:
-                data[k] = parse(k, v)
+    if defaults:
+        for k,v in zip(argnames[-len(defaults):], defaults):
+            data.setdefault(k, v)
 
-        if star and '__star__' not in data:
-            raise TypeError("%r does not support parsing *args" % (func,))
-
-        if dstar and '__dstar__' not in data:
-            raise TypeError("%r does not support parsing **kw" % (func,))
-
-        if defaults:
-            for k,v in zip(argnames[-len(defaults):], defaults):
-                data.setdefault(k, v)
-
-        try:
-            args = map(data.pop, argnames)+extra
-        except KeyError, e:
-            raise TypeError(
-                "Missing positional argument %s for %r"%(e.args[0], func)
-            )
-        return func(*args, **data)
+    try:
+        args = map(data.pop, argnames)+extra
+    except KeyError, e:
+        raise TypeError(
+            "Missing positional argument %s for %r"%(e.args[0], func)
+        )
+    return func(*args, **data)
 
 
+def compile_let(builder, args, kw, star, dstar):
+    """Compile the let() function"""
+    if args or star or dstar:
+        raise TypeError("let() only accepts inline keyword arguments")
 
+    b = builder.expr_builder
+    for k,v in kw:
+        k = build(b, k)
+        assert type(k) is Const and isinstance(k.value, basestring)
+        k = k.value
+        v = build(builder.expr_builder, v)
+        b.bind({k:v})
+    return True
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+from peak.rules import let
+meta_functions[let] = compile_let
 
 
 

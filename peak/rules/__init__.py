@@ -39,3 +39,44 @@ def combine_using(*wrappers):
         return func
     return core.decorate_assignment(callback)
 
+def let(**kw):
+    """Define temporary variables for use in rules and methods
+
+    Usage::
+
+        @when(somefunc, "let(x=foo(y), z=y*2) and x>z")
+        def some_method((x,z), next_method, y):
+            # do something here
+
+    The keywords used in the let() expression become available for use in
+    any part of the rule that is joined to the ``let()`` by an ``and``
+    expression, but will not be available in expressions joined by ``or`` or
+    ``not`` branches.  Any ``let()`` calls at the top level of the expression
+    will also be available for use in the method body, if you place them in
+    a tuple argument in the *very first* argument position -- even before
+    ``next_method`` and ``self``.
+
+    Note that variables defined by ``let()`` are **lazy** - their values are
+    not computed until/unless they are actually needed by the relevant part
+    of the rule, so it does not slow things down at runtime to list all your
+    variables up front.  Likewise, only the variables actually listed in your
+    first-argument tuple are calculated, and only when the method is actually
+    invoked.
+
+    (Currently, this feature is mainly to support easy-to-understand rules,
+    and DRY method bodies, as variables used in the rule's criteria may be
+    calculated a second time when the method is invoked.)
+
+    Note that while variable calculation is lazy, there *is* an evaluation
+    order *between* variables in a let; you can't use a let-variable before
+    it's been defined; you'll instead get whatever argument, local, or global
+    variable would be shadowed by the as-yet-undefined variable.
+    """
+    raise NotImplementedError("`let` can only be used in rules, not code!")
+    
+
+
+
+
+
+

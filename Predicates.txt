@@ -491,6 +491,11 @@ at the beginning named ``__builder__``, ``__star__`` and/or ``__dstar__``.
     ...     __builder__.bind(kw)
     ...     return True
 
+(Note: the above is not the actual implementation of the ``peak.rules.let()``
+pseudo-function; the actual implementation uses a lower-level interface that
+allows the keywords to be seen in definition order, so this is just a demo
+to illustrate the operation of the ``meta_function`` decorator.)
+
 To register your "meta function", you use ``@meta_function(stub_function)``::
 
     >>> from peak.rules.predicates import meta_function
@@ -704,7 +709,7 @@ Any bindings defined in an expression can be converted into arguments for the
 function associated with the rule that defined the bindings., by having its
 first positional argument be a named argument tuple::
 
-    >>> from peak.rules import abstract, when, around
+    >>> from peak.rules import abstract, when, around, let
     >>> def f(x): pass
     >>> f = abstract(f)
 
@@ -729,11 +734,11 @@ even if your method is defined inside a closure::
     ...         return next_method(x)
     ...     return dummy2
 
-    >>> around(f, "let(a='a', b=x*3, c=23)")(closure(99))
+    >>> around(f, "let(a='a', b=x*3, c=b+23)")(closure(99))
     <function dummy2 ...>
 
     >>> f(42)
-    a, b, c = ('a', 126, 23)
+    a, b, c = ('a', 126, 149)
     y was 99
     Got q = 84 and z = whatever
     x was 42
