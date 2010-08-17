@@ -253,7 +253,7 @@ expressions::
                                        Const(0))),
                                Value('is', True))])
 
-    >>> builder.expr_builder.bindings[0]
+    >>> builder.bindings[0]
     {'y': Getitem(Getitem(Getitem(Local('expr'), Const(2)), Const(0)), Const(1)),
      'x': Getitem(Getitem(Getitem(Local('expr'), Const(1)), Const(2)), Const(0))}
 

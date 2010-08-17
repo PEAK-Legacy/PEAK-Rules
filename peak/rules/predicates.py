@@ -7,7 +7,7 @@ from codegen import SMIGenerator, ExprBuilder, Getitem, IfElse, Tuple
 from peak.util.decorators import decorate, synchronized, decorate_assignment
 from types import InstanceType, ClassType
 from ast_builder import build, parse_expr
-import inspect, new
+import inspect, new, codegen
 
 __all__ = [
     'IsInstance', 'IsSubclass', 'Truth', 'Identity', 'Comparison',
@@ -107,101 +107,101 @@ def meta_function(*stub, **parsers):
         return func
     return decorate_assignment(callback)
 
+def expressionSignature(expr):
+    """Convert raw Python code into logical conditions"""
+    # Default is to simply test the truth of the expression
+    return Test(Truth(expr), Value(True))
+
+when(expressionSignature, (Const,))(lambda expr: bool(expr.value))
+when(expressionSignature, bool)
+when(expressionSignature, Test)
+when(expressionSignature, Signature)
+when(expressionSignature, Disjunction)
+def pass_through(expr):
+    return expr
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-class CriteriaBuilder:
-
+class CriteriaBuilder(ExprBuilder):
     simplify_comparisons = True
-    parse = ExprBuilder.parse.im_func
-    def __init__(self, arguments, *namespaces):
-        self.expr_builder = ExprBuilder(arguments, *namespaces)
 
-    def mkOp(name):
-        op = getattr(ExprBuilder,name)
-        def method(self, *args):
-            return expressionSignature(op(self.expr_builder, *args))
-        return method
-
-    for opname in dir(ExprBuilder):
-        if opname[0].isalpha() and opname[0]==opname[0].upper():
-            locals()[opname] = mkOp(opname)
-
-    def Not(self, expr):
-        return negate(self.build_with(expr))
-
-    def build_with(self, expr, ):
-        self.expr_builder.push()
+    def build_with(self, expr):
+        self.push()
         try:
             return build(self, expr)
         finally:
-            self.expr_builder.pop()
+            self.pop()
 
-    _mirror_ops = {
-        '>': '<', '>=': '<=', '=>':'<=',
-        '<': '>', '<=': '>=', '=<':'>=',
-        '<>': '<>', '!=': '<>', '==':'==',
-        'is': 'is', 'is not': 'is not'
-    }
-
-
-
-
-
-
-
-
-    def Compare(self, initExpr, ((op,other),)):
-        old_op = [op, '!='][op=='<>']
-        left = initExpr = build(self.expr_builder, initExpr)
-        right = other = build(self.expr_builder, other)
-        if isinstance(left,Const) and op in self._mirror_ops:
-            left, right, op = right, left, self._mirror_ops[op]
-
-        if isinstance(right,Const):
-            if op=='in' or op=='not in':
-                cond = compileIn(left, right.value)
-                if cond is not None:
-                    return maybe_invert(cond, op=='in')
-            elif op=='is' or op=='is not':
-                return maybe_invert(compileIs(left, right.value), op=='is')
-            else:
-                return Test(Comparison(left), Inequality(op, right.value))
-
-        # Both sides involve variables or an un-optimizable constant,
-        #  so it's a generic boolean criterion  :(
-        return expressionSignature(
-            Compare(initExpr, ((old_op, other),))
-        )
-
-    def And(self, items):
-        return reduce(intersect, [build(self,expr) for expr in items], True)
+    def Not(self, expr):
+        return codegen.Not(self.build_with(expr))
 
     def Or(self, items):
-        return OrElse(map(self.build_with, items))
+        return codegen.Or(map(self.build_with, items))
 
     def CallFunc(self, func, args, kw, star_node, dstar_node):
-        b = build.__get__(self.expr_builder)
+        b = build.__get__(self)
         target = b(func)
         if isinstance(target, Const) and target.value in meta_functions:
             return meta_functions[target.value](
                 self, args, kw, star_node, dstar_node
             )
-        return expressionSignature(Call(
+        return Call(
             target, map(b,args), [(b(k),b(v)) for k,v in kw],
             star_node and b(star_node), dstar_node and b(dstar_node)
-        ))
+        )
+
+    def parse(self, expr):
+        return expressionSignature(ExprBuilder.parse(self, expr))
+
+
+when(expressionSignature, codegen.And)
+def do_intersect(expr):
+    return reduce(intersect, map(expressionSignature, expr.values), True)
+
+when(expressionSignature, codegen.Or)
+def do_union(expr):
+    return OrElse(map(expressionSignature, expr.values))
+
+
+when(expressionSignature, codegen.Not)
+def do_negate(expr):
+    return negate(expressionSignature(expr.expr))
+
+_mirror_ops = {
+    '>': '<', '>=': '<=', '=>':'<=',
+    '<': '>', '<=': '>=', '=<':'>=',
+    '<>': '<>', '!=': '<>', '==':'==',
+    'is': 'is', 'is not': 'is not'
+}
+
+when(expressionSignature, codegen.Compare)
+def do_compare(expr):
+    left = expr.expr
+    (op, right), = expr.ops
+
+    if isinstance(left, Const) and op in _mirror_ops:
+        left, right, op = right, left, _mirror_ops[op]
+
+    if isinstance(right, Const):
+        if op=='in' or op=='not in':
+            cond = compileIn(left, right.value)
+            if cond is not None:
+                return maybe_invert(cond, op=='in')
+        elif op=='is' or op=='is not':
+            return maybe_invert(compileIs(left, right.value), op=='is')
+        else:
+            return Test(Comparison(left), Inequality(op, right.value))
+
+    # Both sides involve variables or an un-optimizable constant,
+    #  so it's a generic boolean criterion  :(
+    return Test(Truth(expr), Value(True))
+
+
+
+
+
+
+
+
 
 def apply_meta(builder,
     (func, parsers, (argnames, varargs, varkw, defaults)), args, kw, star, dstar
@@ -210,13 +210,13 @@ def apply_meta(builder,
     def parse(arg, node):
         if not node:
             return None
-        return parsers.get(arg, build)(builder.expr_builder, node)
+        return parsers.get(arg, build)(builder, node)
 
     data = {}
     extra = []
     offset = 0
     for name in argnames:
-        if name=='__builder__': data[name] = builder.expr_builder
+        if name=='__builder__': data[name] = builder
         elif name=='__star__':  data[name] = parse(name, star)
         elif name=='__dstar__': data[name] = parse(name, dstar)
         else:
@@ -233,7 +233,7 @@ def apply_meta(builder,
         extra.extend([parse(varargs, node) for node in args[varargpos:]])
 
     for k,v in kw:
-        k = build(builder.expr_builder, k)
+        k = build(builder, k)
         assert type(k) is Const and isinstance(k.value, basestring)
         k = k.value
         if k in data:
@@ -268,17 +268,17 @@ def compile_let(builder, args, kw, star, dstar):
     if args or star or dstar:
         raise TypeError("let() only accepts inline keyword arguments")
 
-    b = builder.expr_builder
     for k,v in kw:
-        k = build(b, k)
+        k = build(builder, k)
         assert type(k) is Const and isinstance(k.value, basestring)
         k = k.value
-        v = build(builder.expr_builder, v)
-        b.bind({k:v})
+        v = build(builder, v)
+        builder.bind({k:v})
     return True
 
 from peak.rules import let
 meta_functions[let] = compile_let
+
 
 
 
@@ -295,13 +295,6 @@ def compileIs(expr, criterion):
 def maybe_invert(cond, truth):
     if not truth: return negate(cond)
     return cond
-
-def expressionSignature(expr):
-    """Return a test that tests `expr` in truth `mode`"""
-    # Default is to simply test the truth of the expression
-    return Test(Truth(expr), Value(True))
-
-when(expressionSignature, (Const,))(lambda expr: bool(expr.value))
 
 def compileIn(expr, criterion):
     """Return a signature or predicate (or None) for 'expr in criterion'"""
@@ -321,6 +314,13 @@ def compileInClass(expr, criterion):
 when(compileIn, (object, istype))
 def compileInIsType(expr, criterion):
     return Test(IsInstance(expr), criterion)
+
+
+
+
+
+
+
 
 
 
@@ -514,8 +514,8 @@ when(always_testable, (Const,))(lambda expr:True)
 when(parse_rule, (IndexedEngine, basestring))
 def _parse_string(engine, predicate, ctx, cls):
     b = CriteriaBuilder(engine.arguments, ctx.localdict, ctx.globaldict, __builtins__)
-    expr = parse_expr(predicate, b)
-    bindings = b.expr_builder.bindings[0]
+    expr = b.parse(predicate)
+    bindings = b.bindings[0]
     if cls is not None and engine.argnames:
         cls = type_to_test(cls, engine.arguments[engine.argnames[0]], engine)
         expr = intersect(cls, expr)
@@ -609,7 +609,7 @@ when(compileIs,
 def compileTypeIsX(expr, criterion):
     return Test(IsInstance(expr.args[0]), istype(criterion))
 
-@when(expressionSignature, "expr in Const and expr.value in priority")
+when(expressionSignature, "expr in Const and expr.value in priority")
 def test_for_priority(expr):
     return Test(None, expr.value)
 

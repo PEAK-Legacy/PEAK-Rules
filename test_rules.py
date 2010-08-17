@@ -252,8 +252,7 @@ class MiscTests(unittest.TestCase):
         builder = CriteriaBuilder(
             dict(x=Local('x'), y=Local('y')), locals(), globals(), __builtins__
         )
-        def pe(expr):
-            return parse_expr(expr, builder)
+        pe = builder.parse
 
         x_cmp_y = lambda op, t=True: Test(
             Truth(Compare(Local('x'), ((op, Local('y')),))), Value(True, t)
@@ -283,6 +282,7 @@ class MiscTests(unittest.TestCase):
 
             self.assertEqual(pe('not x %s y' % op),x_cmp_y(stdop,False))
             self.assertEqual(pe('not x %s y' % not_op),x_cmp_y(not_stdop,False))
+
 
 
     def testInheritance(self):
