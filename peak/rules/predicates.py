@@ -1,13 +1,13 @@
 from peak.util.assembler import *
 from core import *
-from core import class_or_type_of, call_thru
+from core import class_or_type_of, call_thru, flatten
 from criteria import *
 from indexing import *
 from codegen import SMIGenerator, ExprBuilder, Getitem, IfElse, Tuple
 from peak.util.decorators import decorate, synchronized, decorate_assignment
 from types import InstanceType, ClassType
 from ast_builder import build, parse_expr
-import inspect, new, codegen
+import inspect, new, codegen, parser
 
 __all__ = [
     'IsInstance', 'IsSubclass', 'Truth', 'Identity', 'Comparison',
@@ -284,6 +284,47 @@ meta_functions[let] = compile_let
 
 
 
+
+def _expand_as(func, predicate_string, *namespaces):
+    """Pre-parse predicate string and register meta function"""
+
+    args, varargs, kw, defaults = arginfo = inspect.getargspec(func)
+    argnames = list(flatten(filter(None, [args, varargs, kw])))
+    parsed = parser.expr(predicate_string).totuple(1)[1]
+    builder = CriteriaBuilder(
+        dict([(arg,Local(arg)) for arg in argnames]), *namespaces
+    )
+    bindings = {}
+    for b in builder.bindings[-len(namespaces):][::-1]:
+        bindings.update(b)
+
+    # Make a function that just gets the arguments we want
+    c = Code.from_function(func)
+    c.return_(Call(Const(locals),fold=False))
+    getargs = new.function(
+        c.code(), func.func_globals, func.func_name, func.func_defaults,
+        func.func_closure
+    )
+
+    def expand(builder, *args):        
+        builder.push(bindings)   # globals, locals, etc.
+        builder.bind(apply_meta(builder, (getargs, {}, arginfo), *args))
+
+        # build in the newly-isolated namespace
+        result = build(builder, parsed) 
+        builder.pop()
+        return result
+
+    meta_functions[func] = expand
+
+    c = Code.from_function(func)
+    c.return_()
+    if func.func_code.co_code == c.code().co_code:  # function body is empty
+        c = Code.from_function(func)
+        c.return_(build(builder, parsed))
+        func.func_code = c.code()
+
+    return func
 
 def compileIs(expr, criterion):
     """Return a signature or predicate for 'expr is criterion'"""

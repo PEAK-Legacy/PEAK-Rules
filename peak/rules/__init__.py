@@ -1,6 +1,5 @@
 """The PEAK Rules Framework"""
 
-import peak.rules.core
 from peak.rules.core import abstract, when, before, after, around, istype, \
     DispatchError, AmbiguousMethods, NoApplicableMethods, value
 
@@ -39,8 +38,46 @@ def combine_using(*wrappers):
         return func
     return core.decorate_assignment(callback)
 
+
+def expand_as(predicate_string):
+    """In rules, use the supplied condition in place of the decorated function
+
+    Usage::
+        @expand_as('filter is None or value==filter')
+        def check(filter, value):
+            "Check whether value matches filter"
+
+    When the above function is used in a rule, the supplied condition will
+    be "inlined", so that PEAK-Rules can expand the function call without
+    losing its ability to index the rule or determine its precedence relative
+    to other rules.
+
+    When the condition is inlined, it's done in a namespace-safe manner.
+    Names in the supplied condition will refer to either the arguments of the
+    decorated function, or to locals/globals in the frame where ``expand_as``
+    was called.  Names defined in the condition body (e.g. via ``let``) will
+    not be visible to the caller.
+
+    To prevent needless code duplication, you do not need to provide a body for
+    your funtion, unless it is to behave differently than the supplied
+    condition when it's called outside a rule.  If the decorated function has
+    no body of its own (i.e. it's a ``pass`` or just a docstring), the supplied
+    condition will be compiled to provide one automatically.  (That's why the
+    above example usage has no body for the ``check()`` function.)
+    """    
+    def callback(frame, name, func, old_locals):
+        from peak.rules.predicates import _expand_as
+        kind, module, locals_, globals_ = core.frameinfo(frame)
+        return _expand_as(
+            func, predicate_string, locals_, globals_, __builtins__
+        )
+    return core.decorate_assignment(callback)
+
+
 class priority(int):
     """An integer priority for manually resolving a rule ambiguity"""
+
+
 
 
 def let(**kw):
@@ -78,46 +115,9 @@ def let(**kw):
     """
     raise NotImplementedError("`let` can only be used in rules, not code!")
 
-
-
+__all__ = [_k for _k in list(globals()) if not _k.startswith('_') and _k!='core']
 # TEMPORARY BACKWARDS COMPATIBILITY - PLEASE IMPORT THIS DIRECTLY FROM CORE
 # (or better still, use the '>>' operator that method types now have)
 #
 from peak.rules.core import always_overrides
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

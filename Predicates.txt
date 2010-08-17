@@ -758,6 +758,92 @@ the main value would be supporting at-most-once execution of expressions with
 side-effects.)
 
 
+Custom Predicate Functions
+==========================
+
+The ``@expand_as`` decorator lets you specify a string that will be used in
+place of a function, when the function is referenced in a condition.
+
+Here's a trivial example::
+
+    >>> from peak.rules import expand_as, value
+
+    >>> def just(arg): pass
+
+    >>> expand_as("arg")(just)
+    <function just ...>
+    
+    >>> def f(x): pass
+
+    >>> when(f, "x==just(42)")(value(23))
+    value(23)
+
+    >>> f(42)
+    23
+
+In the above, the ``just(arg)`` function is defined as being the same as its
+argument.  So, the ``"x==just(42)`` is treated as though you'd just said
+``"x==42"``.
+
+And, although we never defined an actual *implementation* of the ``just()``
+function, it actually still works::
+
+    >>> just(42)
+    42
+
+This is because if you decorate an empty function with ``@expand_as``, the
+supplied condition will be compiled and attached to the existing function
+object for you.  (This saves you having to actually write the body.)
+
+Of course, if you decorate, say, an already-existing function that you want
+to replace, then nothing happens to that function::
+
+    >>> def isint(ob):
+    ...     print "called!"
+    ...     return isinstance(ob, int)
+
+    >>> expand_as("isinstance(x, int)")(isint)
+    <function isint ...>
+    
+    >>> isint(42)
+    called!
+    True
+
+But, the correct expansion still happens when you use that function in a rule::
+
+    >>> around(f, "isint(x)")(value(99))
+    value(99)
+
+    >>> f(42)
+    99
+
+Note that it's ok to use ``let()`` or other binding-creating expressions inside
+an expansion string, and they won't interfere with the surrounding conditions::
+
+    >>> def oddment(a, b): pass
+
+    >>> expand_as("let(x=a*2, y=x+b+1) and y")(oddment)
+    <function oddment ...>
+
+    >>> oddment(27, 51)  # prove bindings work even in a function
+    106
+
+    >>> around(f, "x==oddment(27, 51) and x==106 and isint(x)")(value('yeah!'))
+    value('yeah!')
+
+    >>> f(106)  # prove that x doesn't get redefined after oddment
+    'yeah!'
+
+In the above, temporary variables ``x`` and ``y`` are created in the
+expansion, but they don't affect the original value of x in the rule where
+the function is expanded.
+
+Of course, this also means that you can't implement something like a
+pattern-matching feature or the ``let()`` function using ``@expand_as``.
+It's just an easier way to handle the sort of common cases where meta-functions
+would be overkill.
+
+
 Expression to Predicate Conversion
 ==================================
 
@@ -818,7 +904,7 @@ Okay, let's try out our new condition::
 
     >>> def dummy(arg): return "default"
     >>> when(dummy, "arg==1 and priority(1)")(value("1 @ 1"))
-    value('1 @ 1',)
+    value('1 @ 1')
 
     >>> dummy(1)
     '1 @ 1'
@@ -826,7 +912,7 @@ Okay, let's try out our new condition::
     'default'
 
     >>> when(dummy, "arg==1 and priority(2)")(value("1 @ 2"))
-    value('1 @ 2',)
+    value('1 @ 2')
 
     >>> dummy(1)
     '1 @ 2'
@@ -835,7 +921,7 @@ Okay, let's try out our new condition::
 
 
     >>> when(dummy, "arg==2 and priority(2)")(value("2 @ 2"))
-    value('2 @ 2',)
+    value('2 @ 2')
 
     >>> dummy(1)
     '1 @ 2'
@@ -843,7 +929,7 @@ Okay, let's try out our new condition::
     '2 @ 2'
 
     >>> when(dummy, "arg==2 and priority(1)")(value("2 @ 1"))
-    value('2 @ 1',)
+    value('2 @ 1')
 
     >>> dummy(1)
     '1 @ 2'

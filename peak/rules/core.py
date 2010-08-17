@@ -741,7 +741,8 @@ when(implies, (ClassType, type))(lambda s1,s2: s2 is object or s2 is InstanceTyp
 [struct(
     __call__ = lambda self,*a,**kw: self.value,
     compiled = lambda self, engine:
-                      engine.apply_template(value_template, self.value)
+                      engine.apply_template(value_template, self.value),
+    __repr__ = lambda self: 'value(%r)' % self[1:]
 )]
 def value(value):
     """Method body returning a constant value"""
@@ -773,7 +774,6 @@ def always_overrides(a, b):
 def merge_by_default(t):
     """instances of `t` never imply other instances of `t`"""
     when(overrides, (t, t))(NO)
-
 
 
 
