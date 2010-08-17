@@ -82,7 +82,7 @@ def Truth(expr, code=None):
 
 class priority(int):
     """An integer priority for manually resolving a rule ambiguity"""
-when(implies, (priority, priority))(lambda p1,p2: p1>p2)
+when(implies, (priority, priority))(lambda p1,p2: p1>=p2)
 
 class ExprBuilder(ExprBuilder):
     """Extended expression builder with support for meta-functions"""

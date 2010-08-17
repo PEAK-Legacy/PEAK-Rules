@@ -333,17 +333,17 @@ class MiscTests(unittest.TestCase):
         when(func,(str,))(fstr)
         self.assertEqual(func('x',s='7'), ('x',{'s':'7'}))
 
-
-
-
-
-
-
-
-
-
-
-
+    def testFlatPriorities(self):
+        from peak.rules import value, AmbiguousMethods
+        from peak.rules.predicates import priority
+        
+        f = lambda n, m: 0
+        f1, f2, f3 = value(1), value(2), value(3)
+        
+        when(f, "n==5 and priority(1)")(f1)
+        when(f, "m==5 and priority(1)")(f2)
+        when(f, "n==5 and m==5 and priority(1)")(f3)
+        self.assertEqual(f(5,5), 3)
 
 
 
