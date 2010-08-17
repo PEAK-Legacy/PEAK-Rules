@@ -74,8 +74,8 @@ def expand_as(predicate_string):
     return core.decorate_assignment(callback)
 
 
-class priority(int):
-    """An integer priority for manually resolving a rule ambiguity"""
+
+
 
 
 

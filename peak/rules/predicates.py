@@ -10,7 +10,7 @@ from ast_builder import build, parse_expr
 import inspect, new, codegen, parser
 
 __all__ = [
-    'IsInstance', 'IsSubclass', 'Truth', 'Identity', 'Comparison',
+    'IsInstance', 'IsSubclass', 'Truth', 'Identity', 'Comparison', 'priority',
     'IndexedEngine', 'predicate_node_for', 'meta_function', 'expressionSignature',
 ]
 
@@ -80,7 +80,8 @@ def Truth(expr, code=None):
          Code.ROT_TWO, Code.POP_TOP)
 
 
-from peak.rules import priority
+class priority(int):
+    """An integer priority for manually resolving a rule ambiguity"""
 when(implies, (priority, priority))(lambda p1,p2: p1>p2)
 
 class ExprBuilder(ExprBuilder):
@@ -119,7 +120,6 @@ when(expressionSignature, Signature)
 when(expressionSignature, Disjunction)
 def pass_through(expr):
     return expr
-
 
 class CriteriaBuilder(ExprBuilder):
     simplify_comparisons = True
