@@ -130,6 +130,7 @@ class MiscTests(unittest.TestCase):
         ind = TypeIndex(eng, 'classes')
         ind.add_case(0, Class(MyEngine))
         ind.add_case(1, Class(object))
+        ind.reseed(Class(InstanceType))
         self.assertEqual(
             dict(ind.expanded_sets()),
             {MyEngine: [[0,1],[]], InstanceType: [[1],[]], object: [[1],[]]}
@@ -158,7 +159,6 @@ class MiscTests(unittest.TestCase):
         self.failUnless(implies(istype(int), object))
         self.failIf(implies(istype(object, False), object))
         self.failIf(implies(istype(int, False), object))
-
 
 
 

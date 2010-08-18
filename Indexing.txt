@@ -1197,7 +1197,7 @@ non-match::
     >>> ind.selectivity([2])
     (3, 1)
     >>> dict(ind.expanded_sets()) == {
-    ...     int: [[0], [2]], object: [[2], []], myint: [[0, 1], [2]]
+    ...     int: [[0], []], object: [[2], []], myint: [[0, 1], []]
     ... }
     True
 
@@ -1209,14 +1209,10 @@ non-match::
     (4, 2)
 
     >>> dict(ind.expanded_sets()) == {
-    ...     int: [[0], [2]], object: [[2], []], other: [[3], []],
-    ...     myint: [[0, 1], [2]]
+    ...     int: [[0], []], object: [[2], []], other: [[2, 3], []],
+    ...     myint: [[0, 1], []]
     ... }
     True
-
-    # the default cases should include all of the "not isinstance" criteria
-    >>> list(from_bits(ind.seed_bits(to_bits(range(4)))[0]))
-    [2]
 
 
 Multiple Classes
@@ -1268,34 +1264,34 @@ index, because there's no easy way to incrementally update a set intersection::
 
 
     >>> ind.selectivity([0])    # c, e
-    (6, 2)
+    (5, 2)
     >>> ind.selectivity([2])
-    (6, 1)
+    (5, 1)
     >>> ind.selectivity([3])
-    (6, 1)
+    (5, 1)
     >>> dict(ind.expanded_sets()) == {
     ...     a: [[], []], b: [[], []], c: [[0, 1], []], object: [[], []],
-    ...     d: [[], []], e: [[0, 2, 3], []]
+    ...     e: [[0, 2, 3], []]
     ... }
     True
 
 
     >>> ind.add_case(4, Class(f))
     >>> ind.selectivity([0])    # c, e, f
-    (7, 3)
+    (6, 3)
     >>> ind.selectivity([2])
-    (7, 1)
+    (6, 1)
     >>> dict(ind.expanded_sets()) == {
     ...     a: [[], []], b: [[], []], c: [[0, 1], []], object: [[], []],
-    ...     d: [[], []], e: [[0, 2, 3], []], f: [[0, 1, 3, 4], []]
+    ...     e: [[0, 2, 3], []], f: [[0, 1, 3, 4], []]
     ... }
     True
 
     >>> ind.add_case(5, Class(g))
     >>> ind.selectivity([0])    # c, e, f, g
-    (8, 4)
+    (7, 4)
     >>> ind.selectivity([2])    # still just 'e'
-    (8, 1)
+    (7, 1)
 
     >>> Classes([Class(d, False), Class(e, False)])
     Class(<class 'd'>, False)
@@ -1304,14 +1300,11 @@ index, because there's no easy way to incrementally update a set intersection::
     >>> ind.selectivity([6])    # all but d, e, f
     (8, 5)
     >>> dict(ind.expanded_sets()) == {
-    ...     a: [[], []], b: [[], []], c: [[0, 1], []], object: [[6], []],
-    ...     d: [[], [6]], e: [[0, 2, 3], [6]], f: [[0, 1, 3, 4], [6]], g: [[0, 1, 5], []]
+    ...     a: [[6], []], b: [[6], []], c: [[0, 1, 6], []], object: [[6], []],
+    ...     d: [[], []], e: [[0, 2, 3], []], f: [[0, 1, 3, 4], []],
+    ...     g: [[0, 1, 5, 6], []],
     ... }
     True
-
-    # the default cases should include all of the "not isinstance" criteria
-    >>> list(from_bits(ind.seed_bits(to_bits(range(7)))[0]))
-    [6]
 
 
 Reseeding
@@ -1342,9 +1335,9 @@ the appropriate caches.  The result is that the index now includes correct
 information for the new ``x`` class::
 
     >>> dict(ind.expanded_sets()) == {
-    ...     a: [[], []], b: [[], []], c: [[0, 1], []], object: [[6], []],
-    ...     d: [[], [6]], e: [[0, 2, 3], [6]], f: [[0, 1, 3, 4], [6]], g: [[0, 1, 5], []],
-    ...     x: [[0, 2], []]
+    ...     a: [[6], []], b: [[6], []], c: [[0, 1, 6], []], object: [[6], []],
+    ...     d: [[], []], e: [[0, 2, 3], []], f: [[0, 1, 3, 4], []],
+    ...     g: [[0, 1, 5, 6], []], x: [[0, 2, 6], []]
     ... }
     True
 
@@ -1377,8 +1370,8 @@ criteria, to make sure they interoperate::
     (3, 4)
 
     >>> dict(ind.expanded_sets()) == {
-    ...     a:[[0, 2], []],
-    ...     b:[[], [1]],
+    ...     a:[[0, 1, 2], []],
+    ...     b:[[], []],
     ...     object:[[1], []]
     ... }
     True
@@ -1391,8 +1384,8 @@ criteria, to make sure they interoperate::
     (3, 6)
 
     >>> dict(ind.expanded_sets()) == {
-    ...     a:[[0, 2], [3]],
-    ...     b:[[], [1]],
+    ...     a:[[0, 1, 2], []],
+    ...     b:[[3], []],
     ...     object:[[1, 3], []]
     ... }
     True
@@ -1402,9 +1395,9 @@ criteria, to make sure they interoperate::
     (4, 1)
 
     >>> dict(ind.expanded_sets()) == {    
-    ...     a:[[0, 2, 4], [3]],
-    ...     b:[[], [1]],
-    ...     c:[[2], [3]],
+    ...     a:[[0, 1, 2, 4], []],
+    ...     b:[[3], []],
+    ...     c:[[1, 2], []],
     ...     object:[[1, 3], []]
     ... }
     True
@@ -1412,20 +1405,15 @@ criteria, to make sure they interoperate::
     >>> ind.reseed(Class(e))
     
     >>> dict(ind.expanded_sets()) == {    
-    ...     a:[[0, 2, 4], [3]],
-    ...     b:[[], [1]],
-    ...     c:[[2], [3]],
-    ...     d:[[], []],
-    ...     e:[[2, 4], [3]],
+    ...     a:[[0, 1, 2, 4], []],
+    ...     b:[[3], []],
+    ...     c:[[1, 2], []],
+    ...     e:[[1, 2, 4], []],
     ...     object:[[1, 3], []]
     ... }
     True
 
     >>> ind.add_case(5, istype(object))
-    
-    # the default cases should include all of the "not isinst/type" criteria
-    >>> list(from_bits(ind.seed_bits(to_bits(range(6)))[0]))
-    [1, 3]
 
 
     

@@ -7,7 +7,7 @@ from peak.util.extremes import Min, Max
 __all__ = [
     'Range', 'Value', 'IsObject', 'Class', 'Classes', 'tests_for',
     'NotObjects',  'Conjunction', 'Disjunction', 'Test', 'Signature',
-    'Inequality', 'DisjunctionSet', 'OrElse',
+    'Inequality', 'DisjunctionSet', 'OrElse', 'Intersection',
 ]
 
 class Intersection(object):
@@ -110,7 +110,7 @@ def class_implies(c1, c2):
 when(intersect, (Class, Class))(lambda c1,c2: Classes([c1, c2]))
 
 when(implies, (istype, Class))(lambda c1,c2:
-    c1.match and (c2.match == issubclass(c1.type, c2.cls))
+    c1.match and (c2.match == implies(c1.type, c2.cls)) # use ob/inst rules
 )
 when(implies, (Class, istype))(lambda c1,c2:
     c1.match and not c2.match and c1.cls is not c2.type

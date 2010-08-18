@@ -298,21 +298,21 @@ class BitmapIndex(AddOn):
 
 
 
-class _ExclusionSet(object):
-    __slots__ = 'parent', 'exclude'
 
-    def __init__(self, parent, exclude):
-        self.parent = parent
-        self.exclude = exclude
 
-    def __iter__(self):
-        exclude = self.exclude
-        for item in self.parent:
-            if item!=exclude:
-                yield item
 
-    def __len__(self):
-        return len(self.parent)-1
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -329,7 +329,7 @@ class _ExclusionSet(object):
 def split_ranges(dont_cares, bitmap, node=lambda b:b):
     """Return (exact, ranges) where `exact` is a dict[value]->node and `ranges`
     is a sorted list of ``((lo,hi),node)`` tuples expressing non-inclusive
-    ranges.  `dont_cares` and `seedmap` should be the return values from
+    ranges.  `dont_cares` and `bitmap` should be the return values from
     a bitmap index's ``seed_bits()`` method.  `node(bits)` should return
     the value to be used as a node in the output; the default is to just return
     a bitmap of cases.
@@ -408,86 +408,45 @@ def bitmap_index_type(engine, expr):
 
 
 
+def class_seeds_for(criterion):
+    """Yield class objects that 'criterion' thinks are relevant"""
+    if isinstance(criterion, istype):
+        yield criterion.type
+    elif isinstance(criterion, Class):
+        yield criterion.cls
+    elif isinstance(criterion, Intersection):
+        for c in criterion:
+            for seed in class_seeds_for(c):
+                yield seed
+
 class TypeIndex(BitmapIndex):
     """Index for istype(), Class(), and Classes() criteria"""
 
-    def add_class(self, cls):
-        if cls in self.all_seeds:
-            return
-
+    def add_class(self, cls):        
         t = istype(cls)
-        self.include(cls, t)    # exact type match
+        for criterion, seeds in self.criteria_seeds.iteritems():
+            if implies(t, criterion):
+                self.include(cls, criterion)
+                seeds.add(cls)
+        self.include(cls, t)    # ensure it's in all_seeds
 
-        csmap = self.criteria_seeds
-        intersects = self.extra
-        all_seeds = self.all_seeds
-
-        for base in _get_mro(cls):
-            if base not in all_seeds:
-                self.add_class(base)
-
-            self.exclude(cls, Class(base, False))   # issubclass non-match
-
-            c = Class(base)
-            if c not in csmap:
-                csmap[c] = set()
-            csmap[c].add(cls)     # issubclass match
-            self.include(cls, c)  # issubclass match
-
-            if base in intersects:
-                # multi-class matches
-                for c2 in intersects[base]:
-                    if implies(t, c2):
-                        self.include(cls, c2)
-                        csmap[c2].add(cls)
-
-    def seed_bits(self, cases):
-        bits = self.criteria_bits
-        io = istype(object)
-        dontcares, seedbits = super(TypeIndex, self).seed_bits(cases)
-        for cri in self.all_seeds[object][0]:
-            if cri!=io: dontcares |= bits[cri]
-        return dontcares & cases, seedbits
+    def reseed(self, criterion):
+        map(self.add_class, class_seeds_for(criterion))
+        if object not in self.all_seeds:
+            self.include(object, istype(object))
 
     def add_criterion(self, criterion):
-        if isinstance(criterion, istype):
-            self.add_class(criterion.type)
-            if criterion.match:
-                return self.match
-            else:
-                self.include(object, criterion)
-                self.exclude(criterion.type, criterion)
-                return _ExclusionSet(self.all_seeds, criterion.type)
+        my_seeds = self.criteria_seeds.setdefault(criterion, set())
+        self.reseed(criterion)
+        for seed in self.all_seeds:
+            if implies(istype(seed), criterion):
+                self.include(seed, criterion)
+                my_seeds.add(seed)
+        return my_seeds
 
-        elif isinstance(criterion, Class):
-            self.add_class(criterion.cls)
-            if criterion.match:
-                return self.criteria_seeds[criterion]
-            else:
-                self.include(object, criterion)
-                return _DiffSet(
-                    self.all_seeds, self.criteria_seeds[Class(criterion.cls)]
-                )
 
-        elif isinstance(criterion, Classes):
-            t, m = object, 1    # find Class() w/longest mro to use as target
-            for c in criterion:
-                self.add_criterion(c)
-                if isinstance(c, Class) and c.match:
-                    n = len(_get_mro(c.cls))
-                    if n > m:
-                        t, m = c.cls, n
-            seeds = set()
-            for cls in self.all_seeds:
-                # only look within the relevant subtree
-                if t is object or issubclass(cls, t):
-                    if implies(istype(cls), criterion):
-                        seeds.add(cls)
-                        self.include(cls, criterion)
-            self.extra.setdefault(t, set()).add(criterion)
-            return seeds
 
-        raise TypeError(criterion)
+
 
 
 class RangeIndex(BitmapIndex):
@@ -552,23 +511,23 @@ class RangeIndex(BitmapIndex):
         return (len(self.all_seeds), sum(map(extras.__getitem__, cases)))
 
 
-class _DiffSet(object):
-    def __init__(self, base, subtract):
-        self.base = base
-        self.subtract = subtract
-        self.baselen = -1
-        self.cache = None
 
-    def __len__(self):
-        if len(self.base) != self.baselen:
-            self.cache = set(self.base) - self.subtract
-            self.baselen = len(self.base)
-        return len(self.cache)
 
-    def __iter__(self):
-        if len(self.base) != self.baselen:
-            len(self)   # recache
-        return iter(self.cache)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
