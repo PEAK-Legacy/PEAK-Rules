@@ -371,17 +371,33 @@ class PointerIndex(BitmapIndex):
     """Index for pointer equality"""
 
     def add_criterion(self, criterion):
-        seed = id(criterion.ref)
-        self.extra[seed] = 1
-        if criterion.match:
-            self.include(seed, criterion)
-            self.exclude(None, criterion)
-            return self.match
+        if isinstance(criterion, Intersection):
+            match = False
+            items = criterion
         else:
-            self.include(None, criterion)
-            self.exclude(seed, criterion)
-            return self.extra
+            match = criterion.match
+            items = [criterion]
+        for cri in items:
+            seed = id(cri.ref)
+            self.extra[seed] = 1
+            if match:
+                self.include(seed, criterion)
+                self.exclude(None, criterion)
+            else:
+                self.include(None, criterion)
+                self.exclude(seed, criterion)
+        if match:
+            return self.match
+        return self.extra
 
+    def seed_bits(self, cases):
+        dontcares, seedmap = BitmapIndex.seed_bits(self, cases)
+        defaults = seedmap[None][0] # default inclusions
+        for seed, (inc, exc) in seedmap.items():
+            if seed is not None:
+                inc |= defaults ^ (defaults & exc)
+                seedmap[seed] = inc, exc
+        return dontcares, seedmap
 
 class TruthIndex(BitmapIndex):
     """Index for simple boolean expression tests"""
@@ -392,21 +408,10 @@ class TruthIndex(BitmapIndex):
         self.include(not criterion.match, not criterion)
         return self.match
 
-
-def _get_mro(cls):
-    if isinstance(cls, type):
-        mro = cls.__mro__
-    else:
-        class tmp(cls, object): pass
-        mro = tmp.__mro__[1:-1] + (InstanceType, object)
-    return mro
-
 abstract()
 def bitmap_index_type(engine, expr):
     """Get the BitmapIndex subclass to use for the given engine and `expr`"""
     raise NotImplementedError(engine, expr)
-
-
 
 def class_seeds_for(criterion):
     """Yield class objects that 'criterion' thinks are relevant"""
@@ -443,11 +448,6 @@ class TypeIndex(BitmapIndex):
                 self.include(seed, criterion)
                 my_seeds.add(seed)
         return my_seeds
-
-
-
-
-
 
 class RangeIndex(BitmapIndex):
 

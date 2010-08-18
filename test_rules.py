@@ -345,14 +345,14 @@ class MiscTests(unittest.TestCase):
         when(f, "n==5 and m==5 and priority(1)")(f3)
         self.assertEqual(f(5,5), 3)
 
-
-
-
-
-
-
-
-
+    def testIsNot(self):
+        def func(x): pass
+        p,q,r = object(),object(),object()
+        when(func,"x is not p")(value('~p'))
+        when(func,"x is not p and x is not q and x is not r")(value('nada'))
+        self.assertEqual(func(23),'nada')
+        self.assertEqual(func(q),'~p')
+        
 
 
 
