@@ -1,5 +1,4 @@
 """RuleDispatch Emulation API"""
-
 from peak.util.decorators import decorate_assignment
 from peak.rules import core
 from warnings import warn
@@ -21,6 +20,8 @@ def generic(combiner=None):
         value.around = core.around.__get__(value)
         value.before = core.before.__get__(value)
         value.after  = core.after.__get__(value)
+        def clear(): core.rules_for(value).clear()
+        value.clear = clear
         return core.abstract(value)
 
     return decorate_assignment(callback)
@@ -37,7 +38,6 @@ def as_(*decorators):
     return decorate_assignment(callback)
 
 globals()['as'] = as_  
-
 
 def make_module():
     def callback(frm, name, value, old_locals):
