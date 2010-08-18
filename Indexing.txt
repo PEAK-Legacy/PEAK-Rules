@@ -947,7 +947,7 @@ Indexing Criteria
 All of the criterion objects provided by ``peak.rules.criteria`` have
 ``BitmapIndex`` subclasses suitable for indexing them::
 
-    >>> from peak.rules.criteria import Value, Range, IsObject, Class, Classes
+    >>> from peak.rules.criteria import Value, Range, IsObject, Class, Conjunction
 
 To demonstrate them, we'll use a dummy engine object::
 
@@ -1242,9 +1242,10 @@ non-match::
 Multiple Classes
 ================
 
-``Classes`` objects hold sets of 2 or more ``Class`` criteria, and represent
-the "and" of those criteria.  This is the most complex type of criteria to
-index, because there's no easy way to incrementally update a set intersection::
+``Conjunction`` objects can hold sets of 2 or more ``Class`` criteria, and
+represent the "and" of those criteria.  This is the most complex type of
+criteria to index, because there's no easy way to incrementally update a set
+intersection::
 
     >>> class a(object): pass
     >>> class b(object): pass
@@ -1256,7 +1257,7 @@ index, because there's no easy way to incrementally update a set intersection::
 
     >>> ind = TypeIndex(eng, 'classes')
 
-    >>> ind.add_case(0, Classes([Class(a), Class(b)]))
+    >>> ind.add_case(0, Conjunction([Class(a), Class(b)]))
     >>> ind.selectivity([0])
     (3, 0)
     >>> dict(ind.expanded_sets()) == {
@@ -1275,7 +1276,7 @@ index, because there's no easy way to incrementally update a set intersection::
     True
 
 
-    >>> ind.add_case(2, Classes([Class(a), Class(b), Class(c, False)]))
+    >>> ind.add_case(2, Conjunction([Class(a), Class(b), Class(c, False)]))
     >>> ind.selectivity([2])
     (4, 0)
 
@@ -1317,10 +1318,10 @@ index, because there's no easy way to incrementally update a set intersection::
     >>> ind.selectivity([2])    # still just 'e'
     (7, 1)
 
-    >>> Classes([Class(d, False), Class(e, False)])
+    >>> Conjunction([Class(d, False), Class(e, False)])
     Class(<class 'd'>, False)
 
-    >>> ind.add_case(6, Classes([Class(d, False), Class(e, False)]))
+    >>> ind.add_case(6, Conjunction([Class(d, False), Class(e, False)]))
     >>> ind.selectivity([6])    # all but d, e, f
     (8, 5)
     >>> dict(ind.expanded_sets()) == {
@@ -1414,7 +1415,7 @@ criteria, to make sure they interoperate::
     ... }
     True
 
-    >>> ind.add_case(4, Classes([Class(a), istype(c, False)]))
+    >>> ind.add_case(4, Conjunction([Class(a), istype(c, False)]))
     >>> ind.selectivity([4])
     (4, 1)
 

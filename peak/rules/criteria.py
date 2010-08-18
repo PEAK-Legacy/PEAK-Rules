@@ -5,8 +5,8 @@ from weakref import ref
 from sys import maxint
 from peak.util.extremes import Min, Max
 __all__ = [
-    'Range', 'Value', 'IsObject', 'Class', 'Classes', 'tests_for',
-    'NotObjects',  'Conjunction', 'Disjunction', 'Test', 'Signature',
+    'Range', 'Value', 'IsObject', 'Class', 'tests_for',
+    'Conjunction', 'Disjunction', 'Test', 'Signature',
     'Inequality', 'DisjunctionSet', 'OrElse', 'Intersection',
 ]
 
@@ -107,7 +107,7 @@ def class_implies(c1, c2):
         # not isinstance(x) implies not isinstance(y) if issubclass(y, x)
         return implies(c2.cls, c1.cls)
 
-when(intersect, (Class, Class))(lambda c1,c2: Classes([c1, c2]))
+when(intersect, (Class, Class))(lambda c1,c2: Conjunction([c1, c2]))
 
 when(implies, (istype, Class))(lambda c1,c2:
     c1.match and (c2.match == implies(c1.type, c2.cls)) # use ob/inst rules
@@ -240,7 +240,7 @@ def intersect_objects(c1, c2):
         return False
     else:
         # "is not x and is not y"
-        return NotObjects([c1,c2])
+        return Conjunction([c1,c2])
 
 
 
@@ -371,12 +371,12 @@ when(negate, (Conjunction,))(lambda c: Disjunction(map(negate, c)))
 
 when(intersect, (istype,Class))
 def intersect_type_class(c1, c2):
-    if not c1.match: return Classes([c1,c2])
+    if not c1.match: return Conjunction([c1,c2])
     return False
 
 when(intersect, (Class, istype))
 def intersect_type_class(c1, c2):
-    if not c2.match: return Classes([c1,c2])
+    if not c2.match: return Conjunction([c1,c2])
     return False
 
 when(intersect, (istype,istype))
@@ -384,7 +384,7 @@ def intersect_type_type(c1, c2):
     # This is only called if there's no implication
     if c1.match or c2.match:
         return False    # so unless both are False matches, it's an empty set
-    return Classes([c1, c2])
+    return Conjunction([c1, c2])
 
 def mutually_exclusive(c1, c2):
     """Is the intersection of c1 and c2 known to be always false?"""
@@ -427,22 +427,22 @@ around(intersect, (object, Intersection))(
 # Default intersection is a Conjunction
 when(intersect, (object, object))(lambda c1, c2: Conjunction([c1,c2]))
 
-class Classes(Conjunction):
-    """A set of related Class instances"""
-    if __debug__:
-        def __init__(self, input):
-            for item in self:
-                assert isinstance(item, (Class, istype)), (
-                    "Classes() items must be ``criteria.Class``" 
-                    " or ``istype`` instances")
 
-class NotObjects(Conjunction):
-    """Collection of and-ed "is not" conditions"""
-    if __debug__:
-        def __init__(self, input):
-            for item in self:
-                assert isinstance(item, IsObject) and not item.match, \
-                    "NotObjects() items must be false ``IsObject`` instances"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

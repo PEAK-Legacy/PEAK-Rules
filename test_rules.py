@@ -616,7 +616,7 @@ class NodeBuildingTests(unittest.TestCase):
     def testClassNode(self):
         from peak.rules.indexing import TypeIndex, to_bits
         from peak.rules.predicates import class_node
-        from peak.rules.criteria import Class, Classes
+        from peak.rules.criteria import Class, Conjunction
         from types import InstanceType
         ind = TypeIndex(self, 'expr')
         class a: pass
@@ -625,9 +625,9 @@ class NodeBuildingTests(unittest.TestCase):
         class x(a,b,object): pass
 
         ind.add_case(0, Class(InstanceType))
-        ind.add_case(1, Classes([Class(a), Class(b), Class(c,False)]))
+        ind.add_case(1, Conjunction([Class(a), Class(b), Class(c,False)]))
         ind.add_case(2, Class(object))
-        ind.add_case(3, Classes([Class(a), Class(b)]))
+        ind.add_case(3, Conjunction([Class(a), Class(b)]))
         ind.add_case(4, Class(a))
         ind.selectivity(range(6))
         cases = to_bits(range(6))

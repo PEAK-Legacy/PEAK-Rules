@@ -413,7 +413,7 @@ At the moment, the only patterns matched are ``isinstance`` and ``issubclass``
 calls where the second argument is a constant, and ``type(x) is y`` expressions
 where `y` is a constant::
 
-    >>> from peak.rules.criteria import Test, Signature, Classes
+    >>> from peak.rules.criteria import Test, Signature, Conjunction
 
     >>> pe('isinstance(x,int)')
     Test(IsInstance(Local('x')), Class(<type 'int'>, True))
@@ -431,7 +431,7 @@ where `y` is a constant::
     Test(IsInstance(Local('x')), istype(<type 'str'>, False))
 
     >>> pe('not isinstance(x,(int,(str,unicode)))') == Test(
-    ...     IsInstance(Local('x')), Classes([
+    ...     IsInstance(Local('x')), Conjunction([
     ...         Class(unicode, False), Class(int, False), Class(str, False)])
     ... )
     True
@@ -460,7 +460,7 @@ where `y` is a constant::
     True
 
     >>> pe('not issubclass(x,(int,(str,unicode)))') == Test(
-    ...     IsSubclass(Local('x')), Classes([
+    ...     IsSubclass(Local('x')), Conjunction([
     ...         Class(unicode, False), Class(int, False), Class(str, False)])
     ... )
     True
