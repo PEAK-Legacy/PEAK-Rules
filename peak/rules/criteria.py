@@ -182,12 +182,12 @@ class Signature(Intersection, tuple):
             if expr in index:
                 posn = index[expr]
                 old = output[posn]
-                if implies(old, new):
+                if old==new:
                     continue    # 'new' is irrelevant, skip it
-                new = output[index[expr]] = intersect(old, new)
+                new = output[posn] = intersect(old, new)
                 if new is False: return False
             else:
-                posn = index[expr] = len(output)
+                index[expr] = len(output)
                 output.append(new)
 
         if not output:
