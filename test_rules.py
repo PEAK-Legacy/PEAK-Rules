@@ -353,11 +353,11 @@ class MiscTests(unittest.TestCase):
         self.assertEqual(func(23),'nada')
         self.assertEqual(func(q),'~p')
         
-
-
-
-
-
+    def testTypeVsIsTypePrecedence(self):
+        def func(x): pass
+        when(func, (int,        ))(value(1))
+        when(func, (istype(int),))(value(2))
+        self.assertEqual(func(42), 2)
 
 
 

@@ -576,11 +576,12 @@ class TypeEngine(Engine):
         self.cache = cache = self.static_cache.copy()
         def callback(*args, **kw):
             types = tuple([getattr(arg,'__class__',type(arg)) for arg in args])
+            key = tuple(map(istype, types))
             self.__lock__.acquire()
             try:
                 action = self.rules.default_action
                 for sig in self.registry:
-                    if sig==types or implies(types, sig):
+                    if implies(key, sig):
                         action = combine_actions(action, self.registry[sig])
                 f = cache[types] = compile_method(action, self)
             finally:
@@ -593,7 +594,6 @@ class TypeEngine(Engine):
         target = Call(Const(cache.get), (tuple(types), Const(callback)))
         c.return_(call_thru(self.function, target))
         return c.code()
-
 
 
 
@@ -727,10 +727,10 @@ from types import ClassType, InstanceType
 when(implies, (type,      type)     )(issubclass)
 when(implies, (ClassType, ClassType))(issubclass)
 when(implies, (type,      ClassType))(issubclass)
-when(implies, (type,      istype)   )(lambda s1,s2: s2.match==(s1 is s2.type))
 when(implies, (istype,    istype)   )(lambda s1,s2:
     s1==s2 or (s1.type is not s2.type and s1.match and not s2.match))
-when(implies, (istype,type))(lambda s1,s2: s1.match and issubclass(s1.type,s2))
+when(implies, (istype,type))(lambda s1,s2: s1.match and implies(s1.type,s2))
+when(implies, (istype,ClassType))(lambda s1,s2: s1.match and issubclass(s1.type,s2))
 # A classic class only implies a new-style one if it's ``object``
 # or ``InstanceType``; this is an exception to the general rule that
 # isinstance(X,Y) implies issubclass(X.__class__,Y)
@@ -751,7 +751,6 @@ def value(value):
 def value_template(__func,__value):
     return "return __value"
 
-
 YES, NO = value(True), value(False)
 
 def always_overrides(a, b):
@@ -767,6 +766,9 @@ def always_overrides(a, b):
         if sig[0]==b: to_add.append((a, sig[1]))
         if sig[1]==a: to_add.append((sig[0], b))
     for (p1,p2) in to_add:
+        if (p2,p1) in pairs:
+            raise TypeError("%r already overrides %r" % (b.type, a.type))
+    for (p1,p2) in to_add:
         if (p1,p2) not in pairs:
             when(overrides, (p1, p2))(YES)
             when(overrides, (p2, p1))(NO)
@@ -774,8 +776,6 @@ def always_overrides(a, b):
 def merge_by_default(t):
     """instances of `t` never imply other instances of `t`"""
     when(overrides, (t, t))(NO)
-
-
 
 class MethodList(Method):
     """A list of related methods"""

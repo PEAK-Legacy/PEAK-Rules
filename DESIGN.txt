@@ -221,10 +221,68 @@ say that a classic class instance is an instance of both ``object`` and
 conform with ``isinstance()`` here::
 
     >>> class X: pass
+
     >>> implies(X, object)
     True
-    >>> implies(X, type(X()))   # InstanceType
+
+    >>> from types import InstanceType
+    >>> implies(X, InstanceType)
     True
+
+
+``istype()`` objects
+--------------------
+
+Type or class objects are used to represent "this class or a subclass", but
+``istype()`` objects are used to represent either "this exact type" (using
+``istype(aType, True)``), or "anything but this exact type" (``istype(aType,
+False)``).  So their implication rules are different.
+
+Internally, PEAK-Rules uses ``istype`` objects to represent a call signature
+being matched, because the argument being tested is of some exact type.  Then,
+any rule signatures that are implied by the calling signature are considered
+"applicable".
+
+So, ``istype(aType, True)`` (the default) must always imply the same type or
+class, or any parent class thereof::
+
+    >>> from peak.rules import istype
+
+    >>> implies(istype(int), int)
+    True
+    >>> implies(istype(int), object)
+    True
+    >>> implies(istype(X), InstanceType)
+    True
+    >>> implies(istype(X), object)
+    True
+
+But not the other way around::
+
+    >>> implies(int, istype(int))
+    False
+    >>> implies(object, istype(int))
+    False
+    >>> implies(InstanceType, istype(X))
+    False
+    >>> implies(object, istype(X))
+    False
+
+An exact type will also imply any exclusion of a *different* exact type::
+
+    >>> implies(istype(int), istype(str, False))
+    True
+
+In other words, if ``type(x) is int``, that implies ``type(x) is not str``.
+But of course, that doesn't work they other way around::
+
+    >>> implies(istype(str, False), istype(int))
+    False
+
+These implication rules are sufficient to bootstrap the basic types-only
+rules engine; additional rules for ``istype`` behavior are explained in
+Criteria.txt to show intersection of criteria such as ``istype``, and other
+more-advanced criteria manipulation used in the full predicate rules engine.
 
 
 Action Types
@@ -691,6 +749,30 @@ This will only work, however, if all the arguments passed to ``apply_template``
 are usable as dictionary keys.  So, it's best to use tuples instead of lists,
 frozensets instead of sets, etc.  (Also, this means you can't pass in keyword
 arguments.)
+
+
+Defining Method Precedence
+--------------------------
+
+You can define one method type's precedence relative to another using the
+``>>`` operator (which always returns its right-side operand)::
+
+    >>> NoisyMethod >> Method
+    <class 'peak.rules.core.Method'>
+
+You can also chain ``>>`` operators to define overall method precedence between
+multiple types, e.g.::
+
+    >>> Around >> NoisyMethod >> Method
+    <class 'peak.rules.core.Method'>
+
+As long as you don't try to introduce a precedence cycle::
+
+    >>> NoisyMethod >> MyMethod2 >> Around
+    Traceback (most recent call last):
+      ...
+    TypeError: <class 'peak.rules.core.Around'> already overrides <class 'MyMethod2'>
+
 
 
 Decorators
