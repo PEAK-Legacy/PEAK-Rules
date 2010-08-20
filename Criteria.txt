@@ -193,6 +193,31 @@ As a result, "or"-ing ``False`` with other conditions will simply remove the
 ``False`` from the resulting predicate, and conditions that can never be true
 are not used for indexing or dispatching.
 
+Another special case is tuples containing nested tuples::
+
+    >>> disjuncts( (float, (int, str)) )
+    [(<type 'float'>, <type 'int'>),
+     (<type 'float'>, <type 'str'>)] 
+
+    >>> disjuncts( ((int, str), object) )
+    [(<type 'int'>, <type 'object'>),
+     (<type 'str'>, <type 'object'>)] 
+
+    >>> disjuncts( (object, (int, str), float) )
+    [(<type 'object'>, <type 'int'>, <type 'float'>),
+     (<type 'object'>, <type 'str'>, <type 'float'>)] 
+
+    >>> disjuncts( ((int, str), (int, str)) )
+    [(<type 'int'>, <type 'int'>),
+     (<type 'str'>, <type 'int'>),
+     (<type 'int'>, <type 'str'>),
+     (<type 'str'>, <type 'str'>)] 
+
+This lets you avoid writing lots of decorators for the cases where you want
+more than one type (or ``istype()`` instance) to match in a given argument
+position.  (As you can see, it's equivalent to specifying all the individual
+combinations of specified types.)
+
 Finally, the ``negate()`` function inverts the truth of a condition, e.g.::
 
     >>> negate(True)

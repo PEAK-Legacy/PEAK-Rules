@@ -45,6 +45,7 @@ def disjuncts(ob):
     """Return a *list* of the logical disjunctions of `ob`"""
     # False == no condition is sufficient == no disjuncts
     if ob is False: return []
+    if type(ob) is tuple: return _tuple_disjuncts(ob)
     return [ob]
 
 def implies(s1,s2):
@@ -74,7 +75,6 @@ def rules_for(f):
         d = Dispatching(f)
         d.rules.add(Rule(clone_function(f)))
     return Dispatching(f).rules
-
 
 
 
@@ -596,18 +596,18 @@ class TypeEngine(Engine):
         return c.code()
 
 
-
-
-
-
-
-
-
-
-
-
-
-
+# Handle alternates in tuple signatures
+#
+# when(disjuncts, (istype(tuple),)) - this has to be hardcoded for bootstrap
+def _tuple_disjuncts(ob):
+    for posn, item in enumerate(ob):
+        if type(item) is tuple:
+            head = ob[:posn]
+            return [
+                head+(mid,)+tail
+                    for tail in _tuple_disjuncts(ob[posn+1:]) for mid in item
+            ]
+    return [ob]     # no alternates
 
 
 
@@ -724,13 +724,13 @@ def tuple_implies(s1,s2):
         return True
 
 from types import ClassType, InstanceType
-when(implies, (type,      type)     )(issubclass)
-when(implies, (ClassType, ClassType))(issubclass)
-when(implies, (type,      ClassType))(issubclass)
-when(implies, (istype,    istype)   )(lambda s1,s2:
+when(implies, (type,      (ClassType, type) ))(issubclass)
+when(implies, (ClassType,  ClassType        ))(issubclass)
+when(implies, (istype,     istype           ))(lambda s1,s2:
     s1==s2 or (s1.type is not s2.type and s1.match and not s2.match))
-when(implies, (istype,type))(lambda s1,s2: s1.match and implies(s1.type,s2))
-when(implies, (istype,ClassType))(lambda s1,s2: s1.match and issubclass(s1.type,s2))
+when(implies, (istype,    (ClassType, type) ))(lambda s1,s2:
+    s1.match and implies(s1.type,s2))
+
 # A classic class only implies a new-style one if it's ``object``
 # or ``InstanceType``; this is an exception to the general rule that
 # isinstance(X,Y) implies issubclass(X.__class__,Y)

@@ -114,12 +114,12 @@ def expressionSignature(expr):
     return Test(Truth(expr), Value(True))
 
 when(expressionSignature, (Const,))(lambda expr: bool(expr.value))
-when(expressionSignature, bool)
-when(expressionSignature, Test)
-when(expressionSignature, Signature)
-when(expressionSignature, Disjunction)
+
+when(expressionSignature, ((bool, Test, Signature, Disjunction),))
 def pass_through(expr):
     return expr
+
+
 
 class CriteriaBuilder(ExprBuilder):
     simplify_comparisons = True
@@ -347,14 +347,14 @@ def compileIn(expr, criterion):
         expr = Comparison(expr)
         return Test(expr, Disjunction([Value(v) for v in criterion]))
 
-when(compileIn, (object, type))
-when(compileIn, (object, ClassType))
+when(compileIn, (object, (type, ClassType)))
 def compileInClass(expr, criterion):
     return Test(IsInstance(expr), Class(criterion))
 
 when(compileIn, (object, istype))
 def compileInIsType(expr, criterion):
     return Test(IsInstance(expr), criterion)
+
 
 
 
@@ -490,13 +490,13 @@ try: frozenset
 except NameError: from core import frozenset
 
 
-when(bitmap_index_type,  (IndexedEngine, type(None)))(lambda en,ex:None)
+when(bitmap_index_type,  (IndexedEngine, type(None)))(value(None))
 
-when(bitmap_index_type,  (IndexedEngine, IsInstance))(lambda en,ex:TypeIndex)
-when(bitmap_index_type,  (IndexedEngine, IsSubclass))(lambda en,ex:TypeIndex)
+when(bitmap_index_type,  (IndexedEngine, (IsInstance, IsSubclass)))(
+    value(TypeIndex)
+)
 
-when(predicate_node_for, (IndexedEngine, IsInstance))
-when(predicate_node_for, (IndexedEngine, IsSubclass))
+when(predicate_node_for, (IndexedEngine, (IsInstance, IsSubclass)))
 def class_node(builder, expr, cases, remaining_exprs, memo):
     dontcares, seedmap = builder.seed_bits(expr, cases)
     cache = {}
@@ -540,16 +540,13 @@ def always_testable(expr):
     """Is `expr` safe to evaluate in any order?"""
     return False
 
-when(always_testable, (IsInstance,))
 #when(always_testable, (IsSubclass,))   XXX might not be a class!
-when(always_testable, (Identity,))
-when(always_testable, (Truth,))
-when(always_testable, (Comparison,))
+
+when(always_testable, ((Identity, Truth, Comparison, IsInstance),))
 def testable_criterion(expr):
     return always_testable(expr.expr)
 
-when(always_testable, (Local,))(lambda expr:True)
-when(always_testable, (Const,))(lambda expr:True)
+when(always_testable, ((Local, Const),))(value(True))
 
 
 when(parse_rule, (IndexedEngine, basestring))
@@ -567,6 +564,9 @@ def _parse_string(engine, predicate, ctx, cls):
     return Rule(
         maybe_bind(ctx.body, bindings), expr, ctx.actiontype, ctx.sequence
     )
+
+
+
 
 
 

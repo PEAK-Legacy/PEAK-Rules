@@ -268,8 +268,7 @@ class DisjunctionSet(Disjunction, frozenset):
             return output[0]
         return frozenset.__new__(cls, output)
 
-when(implies, (Disjunction, object))
-when(implies, (Disjunction, Disjunction))
+when(implies, (Disjunction, (object, Disjunction)))
 def union_implies(c1, c2):  # Or(...) implies x if all its disjuncts imply x
     for c in c1:
         if not implies(c, c2):
@@ -284,6 +283,7 @@ def ob_implies_union(c1, c2):   # x implies Or(...) if it implies any disjunct
             return True
     else:
         return False
+
 
 # We use @around for these conditions in order to avoid redundant implication
 # testing during intersection, as well as to avoid ambiguity with the
@@ -359,13 +359,13 @@ def set_implies(c1, c2):
     else:
         return False
 
-around(implies, (object, Intersection))
-around(implies, (Intersection, Intersection))
+around(implies, ((Intersection, object), Intersection))
 def ob_implies_set(c1, c2):
     for c in c2:
         if not implies(c1, c): return False
     else:
         return True
+
 
 when(negate, (Conjunction,))(lambda c: Disjunction(map(negate, c)))
 
