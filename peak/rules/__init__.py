@@ -119,5 +119,5 @@ __all__ = [_k for _k in list(globals()) if not _k.startswith('_') and _k!='core'
 # TEMPORARY BACKWARDS COMPATIBILITY - PLEASE IMPORT THIS DIRECTLY FROM CORE
 # (or better still, use the '>>' operator that method types now have)
 #
-from peak.rules.core import always_overrides
+from peak.rules.core import *  # always_overrides, Method, etc.
 
