@@ -264,25 +264,25 @@ class Method(object):
         def decorate(f, pred=(), depth=2, frame=None):
             def callback(frame, name, func, old_locals):
                 assert f is not func    # XXX
-                rules = rules_for(f)
                 kind, module, locals_, globals_ = frameinfo(frame)
                 context = ParseContext(func, maker, locals_, globals_)
-                def register_for_class(cls):
-                    rules.add(parse_rule(Dispatching(f).engine, pred, context, cls))
+                def register_for_class(cls, f=f):
+                    _register_rule(f, pred, context, cls)
                     return cls
-
                 if kind=='class':
                     # 'when()' in class body; defer adding the method
                     decorate_class(register_for_class, frame=frame)
                 else:
                     register_for_class(None)
-                if old_locals.get(name) in (f, rules):
+                if old_locals.get(name) is f:
                     return f    # prevent overwriting if name is the same
                 return func
             return decorate_assignment(callback, depth, frame)
         decorate = with_name(decorate, name)
         decorate.__doc__ = doc
         return decorate
+
+
 
 
     def compiled(self, engine):
@@ -388,24 +388,24 @@ class RuleSet(object):
         self.listeners.remove(listener)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+def _register_rule(gf, pred, context, cls):
+    """Register a rule for `gf` with possible import-deferring"""
+    if not isinstance(gf, basestring):
+        rules = rules_for(gf)
+        rules.add(parse_rule(Dispatching(gf).engine, pred, context, cls))
+        return
+    if len(gf.split(':'))<>2 or len(gf.split())>1:
+        raise TypeError(
+            "Function specifier %r is not in 'module.name:attrib.name' format"
+            % (gf,)
+        )
+    modname, attrname = gf.split(':')
+    from peak.util.imports import whenImported
+    def _delayed_register(module):
+        for attr in attrname.split('.'):
+            module = getattr(module, attr)
+        _register_rule(module, pred, context, cls)
+    whenImported(modname, _delayed_register)
 
 
 class Engine(object):

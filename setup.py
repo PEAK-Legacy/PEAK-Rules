@@ -35,7 +35,7 @@ setup(
     license="ZPL 2.1",
     url="http://pypi.python.org/pypi/PEAK-Rules",
     download_url = "http://peak.telecommunity.com/snapshots/",
-    test_suite = 'test_rules',
+    test_suite = 'test_rules', tests_require='Importing',
     packages = PACKAGES,
     namespace_packages = ['peak'],
 )

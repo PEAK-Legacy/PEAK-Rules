@@ -798,6 +798,43 @@ name is also the name of the generic function they're adding to::
     yo!
     after
 
+Decorators can accept an entry point string in place of an actual function,
+provided that the PEAK "Importing" package (``peak.util.imports``) is
+available.  In that case, the registration is deferred until the named module
+is imported::
+
+    >>> before('some.module:somefunc')(lambda: p("before"))
+    <function <lambda> at ...>
+
+If the named module is already imported, the registration takes place
+immediately, otherwise it is deferred until the named module is actually
+imported.
+
+This allows you to provide optional integration with modules that might or
+might not be used by a given application, without creating a dependency between
+your code and that package.
+
+Note, however, that if the named function doesn't exist when the module is
+imported, then an attribute error will occur at import time.  The syntax of
+the target name is lightly checked at call time, however::
+
+    >>> before('foo.bar')(lambda: p("before"))
+    Traceback (most recent call last):
+      ...
+    TypeError: Function specifier 'foo.bar' is not in
+               'module.name:attrib.name' format
+
+    >>> before('foo: bar')(lambda: p("before"))
+    Traceback (most recent call last):
+      ...
+    TypeError: Function specifier 'foo: bar' is not in
+               'module.name:attrib.name' format
+
+(This is just a sanity check, though, just to make sure you didn't accidentally
+put some other string first (like the criteria).  It won't detect a string
+that points to a non-existent module, or various other possible errors, so you
+should still verify that your code gets run when the target module is imported
+and the relevant conditions apply.)
 
 
 Creating Custom Combinations
