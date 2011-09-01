@@ -360,12 +360,12 @@ class MiscTests(unittest.TestCase):
         self.assertEqual(func(42), 2)
 
     def testNamedGFExtension(self):
-        global named_func
-        def named_func(x): pass
         p,q,r = object(),object(),object()
-        when(__name__+":named_func", "x is not p")(value('~p'))
-        self.assertEqual(named_func(q),'~p')
-        
+        when("%s:%s.named_func" % (__name__, self.__class__.__name__), "x is not p")(value('~p'))
+        self.assertEqual(self.named_func(q),'~p')
+
+    def named_func(x): pass
+    named_func = staticmethod(named_func)
 
 class RuleDispatchTests(unittest.TestCase):
 
