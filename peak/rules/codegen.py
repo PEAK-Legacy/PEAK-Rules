@@ -10,9 +10,10 @@ except NameError:
 
 __all__ = [
     'GetSlice', 'BuildSlice', 'Dict', 'ExprBuilder', 'IfElse', 'CSECode',
+    'UnaryOp', 'BinaryOp', 'ListOp',
 ]
 
-nodetype()
+nodetype(fmt='%s[%s:%s]')
 def GetSlice(expr, start=Pass, stop=Pass, code=None):
     if code is None:
         if expr is not Pass:
@@ -38,8 +39,7 @@ def GetSlice(expr, start=Pass, stop=Pass, code=None):
 
 
 
-
-nodetype()
+nodetype(fmt="%s:%s:%s")
 def BuildSlice(start=Pass, stop=Pass, stride=Pass, code=None):
     if code is None:
         return fold_args(BuildSlice, start, stop, stride)
@@ -61,7 +61,7 @@ def Dict(items, code=None):
         code.ROT_THREE()
         code.STORE_SUBSCR()
 
-nodetype()
+nodetype(fmt='%s if %s else %s')
 def IfElse(tval, cond, fval, code=None):
     if code is None:
         return fold_args(IfElse, tval, cond, fval)
@@ -80,8 +80,9 @@ def IfElse(tval, cond, fval, code=None):
         return code(else_clause, end_if)
 
 
-def unaryOp(name, opcode):
-    nodetype()
+def unaryOp(name, (fmt, opcode)):
+    if '%' not in fmt: fmt += '%s'
+    nodetype(UnaryOp, fmt=fmt)
     def tmp(expr, code=None):
         if code is None:
             return fold_args(tmp, expr)
@@ -89,8 +90,9 @@ def unaryOp(name, opcode):
     tmp.__name__ = name
     return tmp
 
-def binaryOp(name, opcode):
-    nodetype()
+def binaryOp(name, (fmt, opcode)):
+    if '%' not in fmt: fmt = '%s' + fmt + '%s'
+    nodetype(BinaryOp, fmt=fmt)
     def tmp(left, right, code=None):
         if code is None:
             return fold_args(tmp, left, right)
@@ -98,8 +100,8 @@ def binaryOp(name, opcode):
     tmp.__name__ = name
     return tmp
 
-def listOp(name, opcode):
-    nodetype()
+def listOp(name, (fmt, opcode)):
+    nodetype(ListOp, fmt=fmt)
     def tmp(items, code=None):
         if code is None:
             return fold_args(tmp, tuple(items))
@@ -119,46 +121,44 @@ def localOps(ns, optype, **ops):
     ns.update(mkOps(optype, **ops))
 
 
+class UnaryOp(object):
+    __slots__ = ()
 
+class BinaryOp(object):
+    __slots__ = ()
+
+class ListOp(object):
+    __slots__ = ()
 
 globalOps(
     unaryOp,
-    Not = Code.UNARY_NOT,
-    Plus = Code.UNARY_POSITIVE,
-    Minus = Code.UNARY_NEGATIVE,
-    Repr = Code.UNARY_CONVERT,
-    Invert = Code.UNARY_INVERT,
+    Not = ('not ', Code.UNARY_NOT),
+    Plus = ('+', Code.UNARY_POSITIVE),
+    Minus = ('-', Code.UNARY_NEGATIVE),
+    Repr = ('`%s`', Code.UNARY_CONVERT),
+    Invert = ('~', Code.UNARY_INVERT),
 )
 
 globalOps(
     binaryOp,
-    Add = Code.BINARY_ADD,
-    Sub = Code.BINARY_SUBTRACT,
-    Mul = Code.BINARY_MULTIPLY,
-    Div = Code.BINARY_DIVIDE,
-    Mod = Code.BINARY_MODULO,
-    FloorDiv = Code.BINARY_FLOOR_DIVIDE,
-    Power = Code.BINARY_POWER,
-    LeftShift = Code.BINARY_LSHIFT,
-    RightShift = Code.BINARY_RSHIFT,
-    Getitem = Code.BINARY_SUBSCR,
-    Bitor = Code.BINARY_OR,
-    Bitxor = Code.BINARY_XOR,
-    Bitand = Code.BINARY_AND,
+    Add = ('+', Code.BINARY_ADD),
+    Sub = ('-', Code.BINARY_SUBTRACT),
+    Mul = ('*', Code.BINARY_MULTIPLY),
+    Div = ('/', Code.BINARY_DIVIDE),
+    Mod = ('%s%%%s', Code.BINARY_MODULO),
+    FloorDiv = ('//', Code.BINARY_FLOOR_DIVIDE),
+    Power = ('**', Code.BINARY_POWER),
+    LeftShift = ('<<', Code.BINARY_LSHIFT),
+    RightShift = ('>>', Code.BINARY_RSHIFT),
+    Getitem = ('%s[%s]', Code.BINARY_SUBSCR),
+    Bitor = ('|', Code.BINARY_OR),
+    Bitxor = ('^', Code.BINARY_XOR),
+    Bitand = ('&', Code.BINARY_AND),
 )
 
 globalOps(
-    listOp, Tuple = Code.BUILD_TUPLE, List = Code.BUILD_LIST
+    listOp, Tuple = ('(%s)', Code.BUILD_TUPLE), List = ('[%s]', Code.BUILD_LIST)
 )
-
-
-
-
-
-
-
-
-
 
 
 
@@ -331,7 +331,7 @@ class ExprBuilder:
 
     def __init__(self,arguments,*namespaces):
         self.bindings = [
-            dict([(k,Const(v)) for k,v in ns.iteritems()]) for ns in namespaces
+            dict([(k,self.Const(v)) for k,v in ns.iteritems()]) for ns in namespaces
         ]
         self.push(arguments); self.push()
 

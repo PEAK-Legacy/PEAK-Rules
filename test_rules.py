@@ -654,6 +654,100 @@ class NodeBuildingTests(unittest.TestCase):
 
 
 
+class DecompilationTests(unittest.TestCase):
+
+    def setUp(self):
+        from peak.rules.ast_builder import parse_expr
+        from peak.rules.codegen import ExprBuilder        
+        from peak.util.assembler import Local, Const
+        from peak.rules.debug.decompile import decompile
+        class Const(Const): pass    # non-folding
+        class ExprBuilder(ExprBuilder):
+            def Const(self,value): return Const(value)
+        argmap = dict([(name,Local(name)) for name in 'abcdefgh'])
+        builder = ExprBuilder(argmap, locals(), globals(), __builtins__)
+        self.parse = builder.parse
+        self.decompile = decompile
+
+    def roundtrip(self, s1, s2=None):
+        if s2 is None:
+            s2 = s1
+        self.check(self.parse(s1), s2)
+
+    def check(self, expr, s):
+        self.assertEqual(self.decompile(expr), s)
+
+    def test_basics(self):
+        from peak.util.assembler import Pass, Getattr, Local
+        self.check(Pass, '')
+        self.check(Getattr(Local('a'), 'b'), 'a.b')
+        self.roundtrip('not -+~`a`')
+        self.roundtrip('a+b-c*d/e%f**g//h')
+        self.roundtrip('a and b or not c')
+        self.roundtrip('~a|b^c&d<<e>>f')
+        self.roundtrip('(a, b)')
+        self.roundtrip('[a, b]')
+        self.roundtrip('[a]')
+        self.roundtrip('[]')
+        self.roundtrip('()')
+        self.roundtrip('1')
+        self.roundtrip('a.b.c')
+        # TODO: Dict, ListComp, Compare, Call, lambda, genexpr, for, ...
+
+
+    def test_slices(self):
+        self.roundtrip('a[:]')
+        self.roundtrip('a[1:]')
+        self.roundtrip('a[:2]')
+        self.roundtrip('a[1:2]')
+        self.roundtrip('a[1:2:3]')
+        self.roundtrip('a[::]', 'a[:]')
+        self.roundtrip('a[b:c:d]')
+        self.roundtrip('a[::d]')
+        
+
+
+    def test_paren_precedence(self):
+        self.roundtrip('(1).__class__')
+        self.roundtrip('1.2.__class__')
+        self.roundtrip('`(a, b)`')
+        self.roundtrip('`a,b`', '`(a, b)`')
+        self.roundtrip('(a, [b, c])')
+        self.roundtrip('a,b', '(a, b)')
+        self.roundtrip('a+b*c')
+        self.roundtrip('c*(a+b)')
+        self.roundtrip('a*b*c')
+        self.roundtrip('(a*b)*c', 'a*b*c')
+        self.roundtrip('a*(b*c)')
+        self.roundtrip('(a*b).c')
+        self.roundtrip('(a, b, c)')
+        self.roundtrip('a**b**c')
+        self.roundtrip('a**(b**c)', 'a**b**c')
+        self.roundtrip('a and b or c and not d')
+        self.roundtrip('a and (b or c) and not d')
+
+        if sys.version>='2.5':
+            # if-else is right-associative
+            self.roundtrip('(a, b, c) if d else e')
+            self.roundtrip('(a if b else c) if d else e')
+            self.roundtrip('a if (b if c else d) else e')
+            self.roundtrip('a if b else (c if d else e)',
+                           'a if b else c if d else e')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def additional_tests():
     import doctest
     files = [
