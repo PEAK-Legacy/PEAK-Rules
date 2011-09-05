@@ -59,7 +59,7 @@ def expand_as(predicate_string):
     not be visible to the caller.
 
     To prevent needless code duplication, you do not need to provide a body for
-    your funtion, unless it is to behave differently than the supplied
+    your function, unless it is to behave differently than the supplied
     condition when it's called outside a rule.  If the decorated function has
     no body of its own (i.e. it's a ``pass`` or just a docstring), the supplied
     condition will be compiled to provide one automatically.  (That's why the

@@ -40,8 +40,8 @@ PEAK-Rules works with Python 2.3 and up -- just omit the ``@`` signs if your
 code needs to run under 2.3.  Also, note that with PEAK-Rules, *any* function
 can be generic: you don't have to predeclare a function as generic.  (The
 ``abstract`` decorator is used to declare a function with no *default* method;
-i.e., one that will give a ``NoApplicableMethods`` if no rules match the
-arguments it's invoked with, as opposed to executing a default implementation.)
+i.e., one that will raise ``NoApplicableMethods`` instead of executing a
+default implementation, if no rules match the arguments it's invoked with.)
 
 PEAK-Rules is still under development; it lacks much in the way of error
 checking, so if you mess up your rules, it may not be obvious where or how you
