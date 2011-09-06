@@ -692,7 +692,7 @@ class DecompilationTests(unittest.TestCase):
         self.roundtrip('()')
         self.roundtrip('1')
         self.roundtrip('a.b.c')
-        # TODO: Dict, ListComp, Compare, Call, lambda, genexpr, for, ...
+        # TODO: Compare
 
 
     def test_slices(self):
@@ -703,6 +703,8 @@ class DecompilationTests(unittest.TestCase):
         self.roundtrip('a[1:2:3]')
         self.roundtrip('a[::]', 'a[:]')
         self.roundtrip('a[b:c:d]')
+        self.roundtrip('a[b::d]')
+        self.roundtrip('a[-b:c+d:e*f]')
         self.roundtrip('a[::d]')
         
     def test_paren_precedence(self):
@@ -734,8 +736,6 @@ class DecompilationTests(unittest.TestCase):
 
 
 
-
-
     def test_powers(self):
         # Exponentiation operator binds less tightly than unary numeric/bitwise
         # on the right:
@@ -745,9 +745,25 @@ class DecompilationTests(unittest.TestCase):
         self.roundtrip('2**1*2')
         self.roundtrip('2**(1*2)')
         
+    def test_dicts(self):
+        self.roundtrip('{}')
+        self.roundtrip('{a: b}')
+        self.roundtrip('{a: b, c: d}')
 
-
-
+    def test_calls(self):
+        self.roundtrip('1()')
+        self.roundtrip('a()')
+        self.roundtrip('a(b)')
+        self.roundtrip('a(c=d)')
+        self.roundtrip('a(*e)')
+        self.roundtrip('a(**f)')
+        self.roundtrip('a(b, c=d, *e, **f)')
+        self.roundtrip('a.b(c)')
+        self.roundtrip('a+b(c)')
+        self.roundtrip('(a+b)(c)')
+        if sys.version>='2.5':
+            self.roundtrip('a if b(c) else d')
+            self.roundtrip('a(b if c else d, *e if f else g)')
 
 
 

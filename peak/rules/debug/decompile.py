@@ -43,7 +43,7 @@ prec_ops = (UnaryOp, BinaryOp, ListOp)
 
 for prec, group in enumerate([
     (Tuple, List, Dict, Repr, ListComp, BuildSlice),
-    (Getitem, GetSlice, Getattr),
+    (Getitem, GetSlice, Getattr, Call),
     (Power,), (Plus, Minus, Invert), (Mul, Div, FloorDiv, Mod), (Add, Sub),
     (LeftShift, RightShift), (Bitand,), (Bitxor,), (Bitor,),
     (Compare,), (Not,), (And,), (Or,), (IfElse,),    
@@ -80,12 +80,7 @@ def int_parens(parent, child, pons):
 
 
 
-
-
-
-
-
-when(decompile, ((UnaryOp, BinaryOp, GetSlice, BuildSlice, IfElse),))
+when(decompile, ((UnaryOp, BinaryOp, GetSlice, IfElse),))
 def decompile_fmt(expr):
     return expr.fmt % tuple(decompiled_children(expr, expr[1:]))
 
@@ -117,12 +112,68 @@ when(decompile, ((And, Or),))
 def decompile_sep(expr):
     return expr.separator.join(decompiled_children(expr, expr[1]))
     
-when(decompile, (slice,))
-def decompile_slice(expr):
+when(decompile, (slice,))(
+    lambda e: _decompile_slice(e.start, e.stop, e.step)
+)
+when(decompile, (BuildSlice,))(
+    lambda e: _decompile_slice(e.start, e.stop, e.stride)
+)
+
+
+
+def _decompile_slice(start, stop, step):
     slice = ''
-    if expr.start is not None: slice += decompile(expr.start)
+    if start is not None and start is not Pass: slice += decompile(start)
     slice +=':'
-    if expr.stop is not None: slice += decompile(expr.stop)
-    if expr.step is not None: slice += ':' + decompile(expr.step)
+    if stop is not None and stop is not Pass: slice += decompile(stop)
+    if step is not None and step is not Pass: slice += ':' + decompile(step)
     return slice
+
+when(decompile, (Dict,))
+def decompile_dict(expr):
+    return '{%s}' % ', '.join(
+        [('%s: %s' % tuple(map(decompile, args))) for args in expr[1]]
+    )
     
+when(decompile, (Call,))
+def decompile_dict(expr):
+    func = expr[1]
+    if needs_parens(expr, func, 0):
+        func = '(%s)' % (decompile(func),)
+    else:
+        func = decompile(func)
+    return '%s(%s)' % (func, ', '.join(_decompiled_call_args(expr)))
+
+def _decompiled_call_args(call):
+    ignore, ignore, posargs, kwargs, star, dstar, ignore = call
+    for arg in posargs:
+        yield decompile(arg)
+    for kw,arg in kwargs:
+        yield '%s=%s' % (kw.value, decompile(arg))
+    if star:
+        yield '*' + decompile(star)
+    if dstar:
+        yield '**' + decompile(dstar)
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
