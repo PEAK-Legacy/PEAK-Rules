@@ -6,7 +6,7 @@ The ``peak.rules.syntax`` module allows you to define pattern-matching
 predicates against snippets of parameterized Python code, such that a
 rule expression like::
 
-    syntax.match(expr, type(`x`) is `y`) and y in Const
+    syntax.match(expr, type(`x`) is `y`) and isinstance(y, Const)
 
 Will return true if ``expr`` is a PEAK-Rules AST of the form::
 

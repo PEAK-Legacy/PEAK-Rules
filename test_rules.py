@@ -291,13 +291,13 @@ class MiscTests(unittest.TestCase):
         x = Y()
         f = lambda x: "f"
         when(f, "isinstance(x, X)")(lambda x: "g")
-        when(f, "x in istype(X)")(lambda x: "h")
+        when(f, "type(x) is X")(lambda x: "h")
         self.assertEqual(f(x), 'g')
 
     def testNotInherited(self):
         f = abstract(lambda x: "f")
         when(f, "not isinstance(x, int)")(lambda x: "g")
-        when(f, "x in istype(object)")(lambda x: "h")
+        when(f, "type(x) is object")(lambda x: "h")
         self.assertEqual(f(None), 'g')
 
     def testTypeImplicationAndIsSubclassOrdering(self):

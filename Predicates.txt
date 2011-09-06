@@ -274,28 +274,6 @@ tests and signatures.  It's initialized using the same arguments as the
     Test(Comparison(Add(Local('x'), Const(42))), Range((46, 1), (Max, 1)))
 
 
-The ``in`` operator converts constant classes and ``istype()`` expressions into
-``IsInstance`` tests::
-
-    >>> pe('x in int')
-    Test(IsInstance(Local('x')), Class(<type 'int'>, True))
-
-    >>> pe('x not in int')
-    Test(IsInstance(Local('x')), Class(<type 'int'>, False))
-
-    >>> pe('x in istype(int)')
-    Test(IsInstance(Local('x')), istype(<type 'int'>, True))
-    
-    >>> pe('x not in istype(int)')
-    Test(IsInstance(Local('x')), istype(<type 'int'>, False))
-
-    >>> pe('x in istype(int, False)')
-    Test(IsInstance(Local('x')), istype(<type 'int'>, False))
-    
-    >>> pe('x not in istype(int, False)')
-    Test(IsInstance(Local('x')), istype(<type 'int'>, True))
-
-
 Iterable constants into or-ed equality tests::
 
     >>> pe('x in (1,2,3)') == Disjunction([
@@ -351,16 +329,16 @@ And plain expressions when neither side is constant::
 Complex logical expressions are always rendered in disjunctive normal form,
 with negations simplified away or reduced to match flags on criteria objects::
 
-    >>> pe('x in int and y in str')
+    >>> pe('isinstance(x, int) and isinstance(y, str)')
     Signature([Test(IsInstance(Local('x')), Class(<type 'int'>, True)),
                Test(IsInstance(Local('y')), Class(<type 'str'>, True))])
 
-    >>> pe('not(x not in int or y not in str)')
+    >>> pe('not(not isinstance(x, int) or not isinstance(y, str))')
     Signature([Test(IsInstance(Local('x')), Class(<type 'int'>, True)),
                Test(IsInstance(Local('y')), Class(<type 'str'>, True))])
 
 
-    >>> pe('x in int and (y in str or y in unicode)')
+    >>> pe('isinstance(x,int) and (isinstance(y, str) or isinstance(y, unicode))')
     OrElse([Signature([Test(IsInstance(Local('x')),
                             Class(<type 'int'>, True)),
                        Test(IsInstance(Local('y')),
@@ -370,17 +348,17 @@ with negations simplified away or reduced to match flags on criteria objects::
                        Test(IsInstance(Local('y')),
                             Class(<type 'unicode'>, True))])])
 
-    >>> pe('not (x in int or y in str)')
+    >>> pe('not (isinstance(x, int) or isinstance(y, str))')
     Signature([Test(IsInstance(Local('x')), Class(<type 'int'>, False)),
                Test(IsInstance(Local('y')), Class(<type 'str'>, False))])
 
-    >>> pe('not( x not in int and y not in str)') == OrElse([
+    >>> pe('not(not isinstance(x, int) and not isinstance(y, str))') == OrElse([
     ...     Test(IsInstance(Local('x')), Class(int)),
     ...     Test(IsInstance(Local('y')), Class(str))
     ... ])
     True
 
-    >>> pe('not( x in int and y in str)')
+    >>> pe('not( isinstance(x, int) and isinstance(y, str))')
     OrElse([Test(IsInstance(Local('x')), Class(<type 'int'>, False)),
             Test(IsInstance(Local('y')), Class(<type 'str'>, False))])
 
@@ -893,7 +871,7 @@ it simply returns an immediate boolean value::
 
 So, we need to register a method that handles priorities appropriately::
 
-    >>> when(expressionSignature, "expr in Const and expr.value in priority")(
+    >>> when(expressionSignature, "isinstance(expr, Const) and isinstance(expr.value, priority)")(
     ...     lambda expr: Test(None, expr.value)
     ... )
     <function <lambda> ...>    
@@ -994,7 +972,7 @@ upgrading::
     >>> demo('test')
     'str'
 
-    >>> tmp = when(demo, "ob in int and ob==42")(value('Ultimate answer'))
+    >>> tmp = when(demo, "isinstance(ob, int) and ob==42")(value('Ultimate answer'))
     >>> tmp = when(demo, (list,))(value('list'))
     >>> tmp = when(demo, Test(IsInstance(Local('ob')), Class(tuple)))(
     ...     value('tuple')

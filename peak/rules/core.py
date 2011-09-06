@@ -11,7 +11,7 @@ from peak.util.decorators import decorate_assignment, decorate, struct, \
 from peak.util.assembler import Code, Const, Call, Local, Getattr, TryExcept, \
             Suite, with_name
 from peak.util.addons import AddOn
-import inspect, new, itertools, operator
+import inspect, new, itertools, operator, sys
 try:
     set, frozenset = set, frozenset
 except NameError:
@@ -265,7 +265,7 @@ class Method(object):
             def callback(frame, name, func, old_locals):
                 assert f is not func    # XXX
                 kind, module, locals_, globals_ = frameinfo(frame)
-                context = ParseContext(func, maker, locals_, globals_)
+                context = ParseContext(func, maker, locals_, globals_, lineno)
                 def register_for_class(cls, f=f):
                     _register_rule(f, pred, context, cls)
                     return cls
@@ -277,13 +277,13 @@ class Method(object):
                 if old_locals.get(name) is f:
                     return f    # prevent overwriting if name is the same
                 return func
-            return decorate_assignment(callback, depth, frame)
+            rv = decorate_assignment(callback, depth, frame)
+            if frame is None: frame = sys._getframe(depth-1)
+            lineno = frame.f_lineno # this isn't valid w/out active trace!
+            return rv
         decorate = with_name(decorate, name)
         decorate.__doc__ = doc
         return decorate
-
-
-
 
     def compiled(self, engine):
         body = compile_method(self.body, engine)
@@ -675,12 +675,12 @@ def Rule(body, predicate=(), actiontype=None, sequence=None):
 
 struct()
 def ParseContext(
-    body, actiontype=None, localdict=(), globaldict=(), sequence=None
+    body, actiontype=None, localdict=(), globaldict=(), lineno=None, sequence=None
 ):
     """Hold information needed to parse a predicate"""
     if sequence is None:
         sequence = next_sequence()
-    return body, actiontype, dict(localdict), dict(globaldict), sequence
+    return body, actiontype, dict(localdict), dict(globaldict), lineno, sequence
 
 def parse_rule(engine, predicate, context, cls):
     """Hook for pre-processing predicates, e.g. parsing string expressions"""

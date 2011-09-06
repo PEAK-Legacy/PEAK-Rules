@@ -349,10 +349,12 @@ def compileIn(expr, criterion):
 
 when(compileIn, (object, (type, ClassType)))
 def compileInClass(expr, criterion):
+    warn_parse("'x in SomeClass' syntax is deprecated; use 'isinstance(x,SomeClass)'")
     return Test(IsInstance(expr), Class(criterion))
 
 when(compileIn, (object, istype))
 def compileInIsType(expr, criterion):
+    warn_parse("'x in istype(y)' syntax is deprecated; use 'type(x) is y'")
     return Test(IsInstance(expr), criterion)
 
 
@@ -362,6 +364,45 @@ def compileInIsType(expr, criterion):
 
 
 
+
+
+
+def warn_parse(message, category=DeprecationWarning):
+    """Issue a warning about a parsed string"""
+    from warnings import warn, warn_explicit
+
+    # Find the original call to _parse_string() to get its ParseContext
+    import sys
+    frame = sys._getframe(3)
+    code = _parse_string.func_code
+    ct = 2
+    while frame is not None and frame.f_code is not code:
+        frame = frame.f_back
+        ct += 1
+    if frame is None:
+        # XXX direct use of expressionSignature; can't pinpoint a location
+        return warn(message, category, ct)
+    ctx = frame.f_locals['ctx']
+
+    # Issue a warning against the method body
+    g = ctx.globaldict
+    #lineno = getattr(getattr(ctx.body, 'func_code', None), 'co_firstlineno', 2)
+    module = g.get('__name__', "<string>")
+    filename = g.get('__file__')
+    if filename:
+        fnl = filename.lower()
+        if fnl.endswith(".pyc") or fnl.endswith(".pyo"):
+            filename = filename[:-1]
+    else:
+        if module == "__main__":
+            filename = sys.argv[0]
+        if not filename:
+            filename = module
+
+    return warn_explicit(
+        message, category, filename, ctx.lineno,
+        g.setdefault("__warningregistry__", {})
+    )
 
 
 
@@ -644,13 +685,13 @@ def _yield_tuples(ob):
 
 when(compileIs,
     # matches 'type(x) is y'
-    "expr in Call and expr.func in Const and (expr.func.value is type)"
-    " and len(expr.args)==1"
+    "isinstance(expr,Call) and isinstance(expr.func, Const)"
+    " and (expr.func.value is type) and len(expr.args)==1"
 )
 def compileTypeIsX(expr, criterion):
     return Test(IsInstance(expr.args[0]), istype(criterion))
 
-when(expressionSignature, "expr in Const and expr.value in priority")
+when(expressionSignature, "isinstance(expr, Const) and isinstance(expr.value,priority)")
 def test_for_priority(expr):
     return Test(None, expr.value)
 
