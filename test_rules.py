@@ -705,8 +705,6 @@ class DecompilationTests(unittest.TestCase):
         self.roundtrip('a[b:c:d]')
         self.roundtrip('a[::d]')
         
-
-
     def test_paren_precedence(self):
         self.roundtrip('(1).__class__')
         self.roundtrip('1.2.__class__')
@@ -733,6 +731,37 @@ class DecompilationTests(unittest.TestCase):
             self.roundtrip('a if (b if c else d) else e')
             self.roundtrip('a if b else (c if d else e)',
                            'a if b else c if d else e')
+
+
+
+
+
+    def test_powers(self):
+        # Exponentiation operator binds less tightly than unary numeric/bitwise
+        # on the right:
+        self.roundtrip('2**-1')
+        self.roundtrip('2**+1')
+        self.roundtrip('2**~1')
+        self.roundtrip('2**1*2')
+        self.roundtrip('2**(1*2)')
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

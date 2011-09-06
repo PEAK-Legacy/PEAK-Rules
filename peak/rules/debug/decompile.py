@@ -61,7 +61,10 @@ def prec_parens(parent, child, posn):
     passoc = associativity(parent)
     return pprec==pchild and passoc is not None and posn != passoc 
 
-
+when(needs_parens, (Power, (Plus, Minus, Invert)))
+def prec_power(next_method, parent, child, posn):
+    if posn==1: return False
+    return next_method(parent, child, posn)
 
 def decompiled_children(parent, children):
     for posn, child in enumerate(children):
