@@ -395,6 +395,8 @@ Now that we have our expression type and the ability to build simple branch
 tables, we can define our tree builder, which assumes that each "case" is
 a tuple of name-value pairs, and that each "expr" is a ``DemoExpr`` instance::
 
+    >>> from peak.rules.core import sorted  # for older Pythons
+
     >>> class DemoBuilder(TreeBuilder):
     ...
     ...     def build_node(self, expr, cases, remaining_exprs, memo):
@@ -403,7 +405,7 @@ a tuple of name-value pairs, and that each "expr" is a ``DemoExpr`` instance::
     ...         enames = ", ".join(enames)
     ...
     ...         print "building switch for", expr,
-    ...         print "with", map(list,cases), "and (", enames, ")"
+    ...         print "with", map(sorted,cases), "and (", enames, ")"
     ...
     ...         branches = expr.branch_table(cases).items()
     ...         branches.sort()
@@ -413,8 +415,8 @@ a tuple of name-value pairs, and that each "expr" is a ``DemoExpr`` instance::
     ...         )
     ...
     ...     def build_leaf(self, cases, memo):
-    ...         print "building leaf node for", map(list,cases)
-    ...         return map(list,cases)
+    ...         print "building leaf node for", map(sorted,cases)
+    ...         return map(sorted,cases)
     ...
     ...     def selectivity(engine, expr, cases):
     ...         branches = expr.branch_table(cases)
@@ -505,21 +507,21 @@ As long as they have no constraints preventing them from being used::
     >>> db = DemoBuilder()
     >>> Ordering(db, x).requires([y])
     >>> db.build((r(x=1, y=2),), (x, y), {}) == {
-    ...     None: [], 2: {None: [], 1: [[('y', 2), ('x', 1)]]}
+    ...     None: [], 2: {None: [], 1: [[('x', 1), ('y', 2)]]}
     ... }
-    building switch for y with [[('y', 2), ('x', 1)]] and ( x )
+    building switch for y with [[('x', 1), ('y', 2)]] and ( x )
     building leaf node for []
-    building switch for x with [[('y', 2), ('x', 1)]] and (  )
-    building leaf node for [[('y', 2), ('x', 1)]]
+    building switch for x with [[('x', 1), ('y', 2)]] and (  )
+    building leaf node for [[('x', 1), ('y', 2)]]
     True
 
     >>> db.build((r(x=1, y=2),), (y, x), {}) == {
-    ...     None: [], 2: {None: [], 1: [[('y', 2), ('x', 1)]]}
+    ...     None: [], 2: {None: [], 1: [[('x', 1), ('y', 2)]]}
     ... }
-    building switch for y with [[('y', 2), ('x', 1)]] and ( x )
+    building switch for y with [[('x', 1), ('y', 2)]] and ( x )
     building leaf node for []
-    building switch for x with [[('y', 2), ('x', 1)]] and (  )
-    building leaf node for [[('y', 2), ('x', 1)]]
+    building switch for x with [[('x', 1), ('y', 2)]] and (  )
+    building leaf node for [[('x', 1), ('y', 2)]]
     True
 
 
@@ -536,15 +538,15 @@ chosen::
     ...     None: [],
     ...         3: {None: [],
     ...                2: {None: [],
-    ...                       1: [[('y', 2), ('x', 1), ('z', 3)]]}},
+    ...                       1: [[('x', 1), ('y', 2), ('z', 3)]]}},
     ...         4: [[('z', 4)]]
     ... }
     building switch for z with
-        [[('y', 2), ('x', 1), ('z', 3)], [('z', 4)]] and ( x, y )
+        [[('x', 1), ('y', 2), ('z', 3)], [('z', 4)]] and ( x, y )
     building leaf node for []
-    building switch for y with [[('y', 2), ('x', 1), ('z', 3)]] and ( x )
-    building switch for x with [[('y', 2), ('x', 1), ('z', 3)]] and (  )
-    building leaf node for [[('y', 2), ('x', 1), ('z', 3)]]
+    building switch for y with [[('x', 1), ('y', 2), ('z', 3)]] and ( x )
+    building switch for x with [[('x', 1), ('y', 2), ('z', 3)]] and (  )
+    building leaf node for [[('x', 1), ('y', 2), ('z', 3)]]
     building leaf node for [[('z', 4)]]
     True
 
@@ -552,15 +554,15 @@ chosen::
     ...     None: [],
     ...        3: {None: [],
     ...               2: {None: [],
-    ...                      1: [[('y', 2), ('x', 1), ('z', 3)]]}},
+    ...                      1: [[('x', 1), ('y', 2), ('z', 3)]]}},
     ...        4: [[('z', 4)]]
     ... }
     building switch for z with
-        [[('y', 2), ('x', 1), ('z', 3)], [('z', 4)]] and ( x, y )
+        [[('x', 1), ('y', 2), ('z', 3)], [('z', 4)]] and ( x, y )
     building leaf node for []
-    building switch for y with [[('y', 2), ('x', 1), ('z', 3)]] and ( x )
-    building switch for x with [[('y', 2), ('x', 1), ('z', 3)]] and (  )
-    building leaf node for [[('y', 2), ('x', 1), ('z', 3)]]
+    building switch for y with [[('x', 1), ('y', 2), ('z', 3)]] and ( x )
+    building switch for x with [[('x', 1), ('y', 2), ('z', 3)]] and (  )
+    building leaf node for [[('x', 1), ('y', 2), ('z', 3)]]
     building leaf node for [[('z', 4)]]
     True
 
