@@ -801,10 +801,10 @@ def additional_tests():
         'Predicates.txt', 
     ][sys.version<'2.4':]   # skip README.txt on 2.3 due to @ syntax
     return doctest.DocFileSuite(
-        optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE, *files
+        optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE,
+        globs=dict(__name__=None),   # workaround PyPy type repr() issue 1292
+         *files
     )
-
-
 
 
 
