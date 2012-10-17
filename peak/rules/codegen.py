@@ -2,6 +2,7 @@ from peak.util.assembler import *
 from peak.util.symbols import Symbol
 from peak.rules.core import gen_arg, clone_function
 from ast_builder import build, parse_expr
+from types import ModuleType
 import sys
 try:
     set
@@ -31,11 +32,10 @@ def GetSlice(expr, start=Pass, stop=Pass, code=None):
     return code.SLICE_0()
 
 
-
-
-
-
-
+def module_to_ns(ns):
+    if isinstance(ns, ModuleType):
+        return ns.__dict__
+    return ns
 
 
 
@@ -174,7 +174,7 @@ class SMIGenerator:
         self.code = code = CSECode.from_function(func) #, copy_lineno=True)
         self.actions = {}
         self.func = func
-        loop_top, exit, bad_action, fake = Label(), Label(), Label(), Label()
+        self.first_action, loop_top, exit, bad_action = Label(), Label(), Label(), Label()
         args, star, dstar, defaults = inspect.getargspec(func)
         actions, self.actions_const = self.make_const({})
         start_node, self.startnode_const = self.make_const(object())
@@ -188,8 +188,7 @@ class SMIGenerator:
             bad_action.JUMP_IF_FALSE_OR_POP,
             Code.ROT_TWO,   # argument, action
             self.SET_ARG,   # action
-            fake.SETUP_LOOP, self.WHY_CONTINUE, Code.END_FINALLY,
-            Code.POP_BLOCK, fake, Return(Pass),  # <- all dead code, never runs
+            self.dispatch_handler,
         exit,
             Code.POP_TOP,       # drop action, leaving argument
             Return(
@@ -197,7 +196,8 @@ class SMIGenerator:
             ),
         bad_action,
             Code.POP_TOP,
-            Return(Call(Const(self.bad_action),(Code.ROT_THREE, Code.ROT_TWO)))
+            Return(Call(Const(self.bad_action),(Code.ROT_THREE, Code.ROT_TWO))),
+        self.first_action,
         )
         self.NEXT_STATE = loop_top.JUMP_ABSOLUTE
         self.maybe_cache = code.maybe_cache
@@ -221,14 +221,55 @@ class SMIGenerator:
             return self.actions[expression]
         except KeyError:
             action = self.actions[expression] = self.code.here()
-            self.code.stack_size = 0
-            self.code(expression)
-            if self.code.stack_size is not None:
-                self.code(self.NEXT_STATE)
+            self.code_action(action, expression)
             return action
 
     def bad_action(self, action, argument):
         raise AssertionError("Invalid action: %s, %s" % (action, argument))
+
+    def next_state(self, code):
+        if code.stack_size is not None:
+            code(self.NEXT_STATE)
+
+    def dispatch_handler(self, code):
+        fake = Label()
+        code(
+            fake.SETUP_LOOP, self.WHY_CONTINUE, Code.END_FINALLY,
+            Code.POP_BLOCK, fake, Return(Pass),  # <- all dead code, never runs
+        )
+
+    def code_action(self, action, expression):
+        self.code.stack_size = 0
+        self.code(expression, self.next_state)
+
+
+
+    if '__pypy__' in sys.builtin_module_names:
+
+        # Use a linear search in place of computed goto - PyPy handles
+        # finally: blocks in a way that prevents computed goto from working
+
+        def dispatch_handler(self, code):
+            code(self.first_action.JUMP_FORWARD)
+    
+        def code_action(self, action, expression):
+            self.code.stack_size = 1
+            next_action = Label()
+            self.code(
+                Compare(Code.DUP_TOP, (('==', action),)),
+                next_action.JUMP_IF_FALSE_OR_POP,
+                Code.POP_TOP, expression,
+                self.next_state,next_action, Code.POP_TOP
+            )
+
+
+
+
+
+
+
+
+
 
 
 
@@ -331,7 +372,7 @@ class ExprBuilder:
 
     def __init__(self,arguments,*namespaces):
         self.bindings = [
-            dict([(k,self.Const(v)) for k,v in ns.iteritems()]) for ns in namespaces
+            dict([(k,self.Const(v)) for k,v in module_to_ns(ns).iteritems()]) for ns in namespaces
         ]
         self.push(arguments); self.push()
 
