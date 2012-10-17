@@ -84,6 +84,7 @@ class Dispatching(AddOn):
     """Manage a generic function's rules, engine, locking, and code"""
     engine = None
     def __init__(self, func):
+        func.__doc__    # workaround for PyPy issue #1293
         self.function = func
         self._regen   = self._regen_code()  # callback to regenerate code
         self.rules    = RuleSet(self.get_lock())
@@ -107,7 +108,6 @@ class Dispatching(AddOn):
         if self.backup is None:
             self.backup = self.function.func_code
             self.function.func_code = self._regen
-
     def _regen_code(self):
         c = Code.from_function(self.function, copy_lineno=True)
         c.return_(

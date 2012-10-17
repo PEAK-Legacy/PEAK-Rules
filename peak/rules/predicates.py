@@ -316,7 +316,7 @@ def _expand_as(func, predicate_string, *namespaces):
         return result
 
     meta_functions[func] = expand
-
+    func.__doc__    # workaround for PyPy issue #1293
     c = Code.from_function(func)
     c.return_()
     if func.func_code.co_code == c.code().co_code:  # function body is empty
