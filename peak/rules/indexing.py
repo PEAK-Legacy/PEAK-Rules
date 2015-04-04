@@ -6,7 +6,7 @@ from peak.rules.criteria import *
 from peak.rules.core import sorted, set, frozenset
 from peak.util.extremes import Min, Max, Extreme
 from peak.util.decorators import decorate
-from types import InstanceType
+
 
 __all__ = [
     'Ordering', 'BitmapIndex', 'TreeBuilder', 'split_ranges',
