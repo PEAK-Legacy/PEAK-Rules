@@ -617,13 +617,18 @@ class NodeBuildingTests(unittest.TestCase):
         from peak.rules.indexing import TypeIndex, to_bits
         from peak.rules.predicates import class_node
         from peak.rules.criteria import Class, Conjunction
-        from types import InstanceType
+        try:
+            from types import InstanceType
+        except ImportError:
+            class InstanceType(object): pass
+            class a(InstanceType): pass
+            class b(InstanceType): pass
+        else:
+            class a: pass
+            class b: pass
         ind = TypeIndex(self, 'expr')
-        class a: pass
-        class b: pass
         class c(a,b): pass
         class x(a,b,object): pass
-
         ind.add_case(0, Class(InstanceType))
         ind.add_case(1, Conjunction([Class(a), Class(b), Class(c,False)]))
         ind.add_case(2, Class(object))
@@ -644,16 +649,11 @@ class NodeBuildingTests(unittest.TestCase):
             (c, to_bits([0,2,3,4,5])),
             (x, to_bits([1,2,3,4,5]))
         ]
-        for k, v in data:
-            self.assertEqual(lookup(k), v)
+        if issubclass(a, InstanceType):
+            data.pop()
+        for k, v in data: self.assertEqual(lookup(k), v)
         self.assertEqual(cache, dict(data))
         
-        
-
-
-
-
-
 class DecompilationTests(unittest.TestCase):
 
     def setUp(self):
@@ -681,7 +681,7 @@ class DecompilationTests(unittest.TestCase):
         from peak.util.assembler import Pass, Getattr, Local
         self.check(Pass, '')
         self.check(Getattr(Local('a'), 'b'), 'a.b')
-        self.roundtrip('not -+~`a`')
+        self.roundtrip(no_backquotes('not -+~`a`'))
         self.roundtrip('a+b-c*d/e%f**g//h')
         self.roundtrip('a and b or not c')
         self.roundtrip('~a|b^c&d<<e>>f')
@@ -710,8 +710,8 @@ class DecompilationTests(unittest.TestCase):
     def test_paren_precedence(self):
         self.roundtrip('(1).__class__')
         self.roundtrip('1.2.__class__')
-        self.roundtrip('`(a, b)`')
-        self.roundtrip('`a,b`', '`(a, b)`')
+        self.roundtrip(no_backquotes('`(a, b)`'))
+        self.roundtrip(no_backquotes('`a,b`'), no_backquotes('`(a, b)`'))
         self.roundtrip('(a, [b, c])')
         self.roundtrip('a,b', '(a, b)')
         self.roundtrip('a+b*c')
@@ -795,10 +795,10 @@ try:
 except NameError:
     from functools import reduce
 
-
-
-
-
+def no_backquotes(s):
+    if sys.version >= "3":
+        return s.replace('`','')
+    return s
 
 
 
