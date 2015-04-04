@@ -4,25 +4,25 @@ import token, symbol, parser, sys
 try:
     from new import instancemethod
     list_for = symbol.list_for
-    backquotes = True
+    py3 = False
 except ImportError:
     from types import MethodType
     instancemethod = lambda f,i,t: MethodType(f, i)
     list_for = symbol.comp_for
-    backquotes = False
+    py3 = True
 
 __all__ = ['parse_expr', 'build']
 
 _name   = lambda builder,nodelist: builder.Name(nodelist[1])
 _const  = lambda builder,nodelist: builder.Const(eval(nodelist[1]))
 
-
 production = {
     NAME:   _name,
     NUMBER: _const,
     STRING: _const,
 }
-
+if py3:
+    production[token.ELLIPSIS] = lambda b,n: b.Const(Ellipsis)
 
 ops = {
     token.LEFTSHIFT: 'LeftShift',
@@ -226,7 +226,7 @@ def atom(builder, nodelist):
             dm = nodelist[2]
             items = [(dm[i],dm[i+2]) for i in range(1,len(dm),4)]
         return builder.Dict(items)
-    elif backquotes and t==token.BACKQUOTE:
+    elif not py3 and t==token.BACKQUOTE:
         return builder.Backquote(nodelist[2])
     elif t==token.STRING:
         return builder.Const(eval(' '.join([n[1] for n in nodelist[1:]])))
