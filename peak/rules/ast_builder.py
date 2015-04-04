@@ -1,6 +1,11 @@
-from token import tok_name, NAME, NUMBER, STRING, ISNONTERMINAL, EQUAL
+from token import tok_name, NAME, NUMBER, STRING, EQUAL
 from symbol import sym_name
-from new import instancemethod
+try:
+    from new import instancemethod
+except ImportError:
+    from types import MethodType
+    instancemethod = lambda f,i,t: MethodType(f, i)
+
 import token, symbol, parser, sys
 
 __all__ = [
@@ -31,11 +36,6 @@ ops = {
 
 def left_assoc(builder, nodelist):
     return getattr(builder,ops[nodelist[-2][0]])(nodelist[:-2],nodelist[-1])
-
-
-
-
-
 
 
 
@@ -279,7 +279,7 @@ def com_call_function(builder, primaryNode, nodelist):
         elif tok[0]==token.DOUBLESTAR:
             dstar_node = ch
         else:
-            raise AssertionError, 'unknown node type: %s' % (tok,)
+            raise AssertionError('unknown node type: %s' % (tok,))
 
     return builder.CallFunc(primaryNode, args, kw, star_node, dstar_node)
 
@@ -291,21 +291,21 @@ def com_call_function(builder, primaryNode, nodelist):
 def com_argument(nodelist, kw):
     if len(nodelist) == 2:
         if kw:
-            raise SyntaxError, "non-keyword arg after keyword arg"
+            raise SyntaxError("non-keyword arg after keyword arg")
         return 0, nodelist[1]
 
     if nodelist[2][0] != token.EQUAL and len(nodelist)==3:
         return 0, (testlist_gexp.symbol, nodelist[1], nodelist[2])
     elif len(nodelist) !=4:
-        raise AssertionError
+        raise AssertionError()
 
     n = nodelist[1]
     while len(n) == 2 and n[0] != token.NAME:
         n = n[1]
     if n[0] != token.NAME:
-        raise SyntaxError, "keyword can't be an expression (%r)" % (n,)
+        raise SyntaxError("keyword can't be an expression (%r)" % (n,))
 
-    return 1, ((token.STRING,`n[1]`,n[2]), nodelist[3])
+    return 1, ((token.STRING,repr(n[1]),n[2]), nodelist[3])
 
 # listmaker: test ( list_for | (',' test)* [','] )
 
