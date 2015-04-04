@@ -1,8 +1,7 @@
 from peak.rules.core import *
-from peak.rules.core import sorted, frozenset, set
+from peak.rules.core import sorted, frozenset, set, reduce, long
 from peak.util.decorators import struct
 from weakref import ref
-from sys import maxint
 from peak.util.extremes import Min, Max
 __all__ = [
     'Range', 'Value', 'IsObject', 'Class', 'tests_for',
@@ -38,6 +37,7 @@ def Range(lo=(Min,-1), hi=(Max,1)):
 struct()
 def Value(value, match=True):
     return value, match
+
 
 when(implies, (Value, Range))(
     # ==Value implies Range if Value is within range
@@ -205,11 +205,15 @@ when(negate, (Signature,))(lambda c: OrElse(map(negate, c)))
 
 class IsObject(int):
     """Criterion for 'is' comparisons"""
-
-    __slots__ = 'ref', 'match'
+    try:
+        from sys import maxint
+        __slots__ = 'ref', 'match'  # ok on Python 2   
+    except ImportError:
+        maxint = (1<<32)-1          # Need these for Python 3
+        __hash__ = int.__hash__
 
     def __new__(cls, ob, match=True):
-        self = IsObject.__base__.__new__(cls, id(ob)&maxint)
+        self = IsObject.__base__.__new__(cls, id(ob) & cls.maxint)
         self.match = match
         self.ref = ob
         return self
@@ -219,10 +223,8 @@ class IsObject(int):
             isinstance(other, IsObject) and self.match==other.match
             and self.ref is other.ref
         ) or (isinstance(other,(int,long)) and int(self)==other and self.match)
-
     def __ne__(self,other):
         return not (self==other)
-
     def __repr__(self):
         return "IsObject(%r, %r)" % (self.ref, self.match)
 
@@ -241,8 +243,6 @@ def intersect_objects(c1, c2):
     else:
         # "is not x and is not y"
         return Conjunction([c1,c2])
-
-
 
 class DisjunctionSet(Disjunction, frozenset):
     """Set of minimal or-ed conditions (i.e. no redundant/implying items)
