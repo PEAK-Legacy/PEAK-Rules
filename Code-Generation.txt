@@ -140,7 +140,7 @@ Unary operators::
 
     >>> import sys
     >>> if sys.version<"3":
-    ...     pe("not - + ~`x`")  # Python 3 doesn't have backquotes
+    ...     pe("not - + ~`a`")  # Python 3 doesn't have backquotes
     ... else:
     ...     print("    Not(Minus(Plus(Invert(Repr(Local('a'))))))")
     Not(Minus(Plus(Invert(Repr(Local('a'))))))
