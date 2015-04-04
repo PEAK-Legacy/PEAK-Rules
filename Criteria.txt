@@ -71,7 +71,7 @@ The basic logical functions we will use are ``implies()``, ``intersect()``,
 ``disjuncts()``, and ``negate()``, all of which are defined in
 ``peak.rules.core``::
 
-    >>> from peak.rules.core import implies, intersect, disjuncts, negate
+    >>> from peak.rules.core import implies, intersect, disjuncts, negate, long
 
 
 
@@ -196,22 +196,22 @@ are not used for indexing or dispatching.
 Another special case is tuples containing nested tuples::
 
     >>> disjuncts( (float, (int, str)) )
-    [(<type 'float'>, <type 'int'>),
-     (<type 'float'>, <type 'str'>)] 
+    [(<... 'float'>, <... 'int'>),
+     (<... 'float'>, <... 'str'>)] 
 
     >>> disjuncts( ((int, str), object) )
-    [(<type 'int'>, <type 'object'>),
-     (<type 'str'>, <type 'object'>)] 
+    [(<... 'int'>, <... 'object'>),
+     (<... 'str'>, <... 'object'>)] 
 
     >>> disjuncts( (object, (int, str), float) )
-    [(<type 'object'>, <type 'int'>, <type 'float'>),
-     (<type 'object'>, <type 'str'>, <type 'float'>)] 
+    [(<... 'object'>, <... 'int'>, <... 'float'>),
+     (<... 'object'>, <... 'str'>, <... 'float'>)] 
 
     >>> disjuncts( ((int, str), (int, str)) )
-    [(<type 'int'>, <type 'int'>),
-     (<type 'str'>, <type 'int'>),
-     (<type 'int'>, <type 'str'>),
-     (<type 'str'>, <type 'str'>)] 
+    [(<... 'int'>, <... 'int'>),
+     (<... 'str'>, <... 'int'>),
+     (<... 'int'>, <... 'str'>),
+     (<... 'str'>, <... 'str'>)] 
 
 This lets you avoid writing lots of decorators for the cases where you want
 more than one type (or ``istype()`` instance) to match in a given argument
@@ -260,10 +260,10 @@ For example, the conjunction of the classes ``object`` and ``int`` is ``int``,
 because ``int`` already implies ``object``::
 
     >>> Conjunction([int, object])
-    <type 'int'>
+    <... 'int'>
 
     >>> Conjunction([object, int])
-    <type 'int'>
+    <... 'int'>
 
 Notice also that instead of getting back a set with one member, we got back the
 item that would have been in the set.  This helps to simplify the expression
@@ -351,16 +351,16 @@ can never contain less than 2 entries.  For example, "or"-ing ``object`` and
 ``int`` always returns ``object``, because ``object`` is implied by ``int``::
 
     >>> DisjunctionSet([int, object])
-    <type 'object'>
+    <... 'object'>
 
     >>> DisjunctionSet([object, int])
-    <type 'object'>
+    <... 'object'>
 
     >>> OrElse([int, object])
-    <type 'object'>
+    <... 'object'>
 
     >>> OrElse([object, int])
-    <type 'object'>
+    <... 'object'>
 
 Notice that instead of getting back a set or sequence with one member, we got
 back the item that would have been in the set.  This helps to simplify the
@@ -802,10 +802,10 @@ non-match.  Implication, negation, and intersection are defined accordingly::
     True
 
     >>> negate(Class(int))
-    Class(<type 'int'>, False)
+    Class(<... 'int'>, False)
 
     >>> negate(Class(object, False))
-    Class(<type 'object'>, True)
+    Class(<... 'object'>, True)
     
     >>> implies(Class(int), Class(str))
     False
@@ -817,10 +817,10 @@ non-match.  Implication, negation, and intersection are defined accordingly::
     True
 
     >>> intersect(Class(int), Class(object))
-    Class(<type 'int'>, True)
+    Class(<... 'int'>, True)
 
     >>> intersect(Class(object), Class(int))
-    Class(<type 'int'>, True)
+    Class(<... 'int'>, True)
 
 The intersection of two or more unrelated ``Class`` criteria is represented by
 a ``Conjunction``::
@@ -842,10 +842,10 @@ are represented as ``istype(x, False)``::
     >>> from peak.rules import istype
 
     >>> negate(istype(int))
-    istype(<type 'int'>, False)
+    istype(<... 'int'>, False)
 
     >>> negate(istype(object, False))
-    istype(<type 'object'>, True)
+    istype(<... 'object'>, True)
 
 One ``istype()`` test implies another only if they're equal::
 
@@ -868,13 +868,13 @@ Thus, the intersection of two ``istype()`` tests will be either one of the
 input tests, or ``False`` (meaning no overlap)::
 
     >>> intersect(istype(int), istype(int))
-    istype(<type 'int'>, True)
+    istype(<... 'int'>, True)
 
     >>> intersect(istype(int), istype(str, False))
-    istype(<type 'int'>, True)
+    istype(<... 'int'>, True)
 
     >>> intersect(istype(int, False), istype(int, False))
-    istype(<type 'int'>, False)
+    istype(<... 'int'>, False)
 
     >>> intersect(istype(int), istype(str))
     False
@@ -938,10 +938,10 @@ When ``Class()`` is intersected with an exact type test, the result is either
 the exact type test, or ``False``::
 
     >>> intersect(Class(int), istype(int))
-    istype(<type 'int'>, True)
+    istype(<... 'int'>, True)
 
     >>> intersect(istype(int), Class(int))
-    istype(<type 'int'>, True)
+    istype(<... 'int'>, True)
 
     >>> intersect(Class(int), istype(object))
     False
@@ -950,10 +950,10 @@ the exact type test, or ``False``::
     False
 
     >>> intersect(Class(int, False), istype(object))
-    istype(<type 'object'>, True)
+    istype(<... 'object'>, True)
 
     >>> intersect(istype(object), Class(int, False))
-    istype(<type 'object'>, True)
+    istype(<... 'object'>, True)
 
 But when it's intersected with a type exclusion test, the result is a
 ``Conjunction``::
@@ -974,7 +974,7 @@ But when it's intersected with a type exclusion test, the result is a
     True
 
     >>> intersect(s, istype(str))
-    istype(<type 'str'>, True)
+    istype(<... 'str'>, True)
 
 
 --------------------
@@ -1003,13 +1003,13 @@ Creating a test with disjunct criteria actually returns a set of tests::
 So the ``disjuncts()`` of a test will always just be the test itself::
 
     >>> disjuncts(x_isa_int)
-    [Test('x', Class(<type 'int'>, True))]
+    [Test('x', Class(<... 'int'>, True))]
 
 Negating a test usually just negates its criterion, leaving the expression
 intact::
 
     >>> negate(x_isa_int)
-    Test('x', Class(<type 'int'>, False))
+    Test('x', Class(<... 'int'>, False))
 
 But if the test criterion is a conjunction or range, negating it can produce
 a disjunction of tests::
