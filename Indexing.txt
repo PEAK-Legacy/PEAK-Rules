@@ -404,10 +404,11 @@ a tuple of name-value pairs, and that each "expr" is a ``DemoExpr`` instance::
     ...         enames.sort()
     ...         enames = ", ".join(enames)
     ...
-    ...         print "building switch for", expr,
-    ...         print "with", map(sorted,cases), "and (", enames, ")"
+    ...         print("building switch for "+str(expr)+
+    ...               " with " +str(list(map(sorted,cases))) +
+    ...               " and ( " + str(enames) + " )")
     ...
-    ...         branches = expr.branch_table(cases).items()
+    ...         branches = list(expr.branch_table(cases).items())
     ...         branches.sort()
     ...         return dict(
     ...             [(key, self.build(tuple(values), remaining_exprs, memo))
@@ -415,8 +416,8 @@ a tuple of name-value pairs, and that each "expr" is a ``DemoExpr`` instance::
     ...         )
     ...
     ...     def build_leaf(self, cases, memo):
-    ...         print "building leaf node for", map(sorted,cases)
-    ...         return map(sorted,cases)
+    ...         print("building leaf node for " + str(list(map(sorted,cases))))
+    ...         return list(map(sorted,cases))
     ...
     ...     def selectivity(engine, expr, cases):
     ...         branches = expr.branch_table(cases)
@@ -660,7 +661,7 @@ bitmap (integer or long integer), and vice versa::
     >>> from peak.rules.indexing import to_bits, from_bits
 
     >>> odds = to_bits([9,11,13,1,3,5,7,15])
-    >>> print hex(odds)
+    >>> print(hex(odds))
     0xaaaa
 
     >>> list(from_bits(odds))
@@ -670,7 +671,7 @@ And to handle sets with more than 31 bits, we need these operations to handle
 long integers::
 
     >>> seven_long = to_bits([32,33,34])
-    >>> print hex(seven_long)
+    >>> print(hex(seven_long))
     0x700000000L
 
     >>> list(from_bits(seven_long))
@@ -810,7 +811,7 @@ type, and a suitable ``BitmapIndex`` subclass::
 
     >>> class DemoIndex(BitmapIndex):
     ...     def add_criterion(self, criterion):
-    ...         print "computing seeds for", criterion
+    ...         print("computing seeds for "+str(criterion))
     ...         self.include(criterion.val, criterion)
     ...         return [criterion.val]
 

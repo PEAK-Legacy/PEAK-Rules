@@ -278,7 +278,7 @@ Conditional Expressions::
     >>> if sys.version>='2.5':
     ...     pe("a if b else c")
     ... else:
-    ...     print "IfElse(Local('a'), Local('b'), Local('c'))"
+    ...     print("IfElse(Local('a'), Local('b'), Local('c'))")
     IfElse(Local('a'), Local('b'), Local('c'))
 
 Calls::

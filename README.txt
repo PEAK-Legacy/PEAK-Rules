@@ -19,11 +19,11 @@ Basic usage::
 
     >>> @when(pprint, (list,))
     ... def pprint_list(ob):
-    ...     print "pretty-printing a list"
+    ...     print("pretty-printing a list")
 
     >>> @when(pprint, "isinstance(ob,list) and len(ob)>50")
     ... def pprint_long_list(ob):
-    ...     print "pretty-printing a long list"
+    ...     print("pretty-printing a long list")
 
     >>> pprint([1,2,3])
     pretty-printing a list
@@ -188,7 +188,7 @@ before or after the "normal" or "primary" methods.  This is what "before",
     ...
     ...     @after(withdraw, "amount>self.balance")
     ...     def automatic_overdraft(self, amount):
-    ...         print "Transferring",-self.balance,"from overdraft protection"
+    ...         print("Transferring "+str(-self.balance)+" from overdraft protection")
     ...         self.protection += self.balance
     ...         self.balance = 0
 
@@ -268,7 +268,7 @@ the sequence described in the previous section.  For example::
 
     >>> @around(BankAccount.withdraw, "amount > self.balance")
     ... def overdraft_fee(next_method,self,amount):
-    ...     print "Adding overdraft fee of $25"
+    ...     print("Adding overdraft fee of $25")
     ...     return next_method(self,amount+25)
 
     >>> acct.withdraw(20)
@@ -432,12 +432,12 @@ after the result is returned::
 
     >>> from peak.rules import before, after, around
 
-    >>> def b(ob): print "before"
-    >>> def a(ob): print "after"
+    >>> def b(ob): print("before")
+    >>> def a(ob): print("after")
     >>> def ar(next_method, ob):
-    ...     print "entering around"
-    ...     print next_method(ob)
-    ...     print "leaving around"
+    ...     print("entering around")
+    ...     print(next_method(ob))
+    ...     print("leaving around")
 
     >>> b = before(func, ())(b)
     >>> a = after(func, ())(a)
@@ -554,7 +554,7 @@ decorators similar to ``when()``, that we can now use to add a discount::
     >>> getPrice(shoes)
     42
 
-    >>> print getPrice(shoes, 'Elvis', options=['blue suede'])
+    >>> print(getPrice(shoes, 'Elvis', options=['blue suede']))
     59.4
 
     >>> getPrice(shoes, 'Elvis')     # no suede, no discount!
@@ -677,7 +677,7 @@ To use the emulation API, simply import ``dispatch`` from ``peak.rules``::
 
     >>> @a_function.when((int, str))
     ... def a_when_int_str(an_arg, other_arg):
-    ...     print "int and str"
+    ...     print("int and str")
 
     >>> a_function(42, "blue")
     int and str
@@ -693,7 +693,7 @@ immediately::
 
     >>> @when(a_function, (str, int))
     ... def a_when_str_int(an_arg, other_arg):
-    ...     print "str and int"
+    ...     print("str and int")
 
     >>> a_function("blue", 42)
     str and int
