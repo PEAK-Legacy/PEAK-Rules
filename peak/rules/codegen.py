@@ -1,7 +1,7 @@
 from peak.util.assembler import *
 from peak.util.symbols import Symbol
 from peak.rules.core import gen_arg, clone_function
-from ast_builder import build, parse_expr
+from peak.rules.ast_builder import build, parse_expr
 from types import ModuleType
 import sys
 try:
@@ -80,7 +80,8 @@ def IfElse(tval, cond, fval, code=None):
         return code(else_clause, end_if)
 
 
-def unaryOp(name, (fmt, opcode)):
+def unaryOp(name, _fo):
+    (fmt, opcode) = _fo
     if '%' not in fmt: fmt += '%s'
     nodetype(UnaryOp, fmt=fmt)
     def tmp(expr, code=None):
@@ -90,7 +91,8 @@ def unaryOp(name, (fmt, opcode)):
     tmp.__name__ = name
     return tmp
 
-def binaryOp(name, (fmt, opcode)):
+def binaryOp(name, _fo):
+    (fmt, opcode) = _fo
     if '%' not in fmt: fmt = '%s' + fmt + '%s'
     nodetype(BinaryOp, fmt=fmt)
     def tmp(left, right, code=None):
@@ -100,7 +102,8 @@ def binaryOp(name, (fmt, opcode)):
     tmp.__name__ = name
     return tmp
 
-def listOp(name, (fmt, opcode)):
+def listOp(name, _fo):
+    (fmt, opcode) = _fo
     nodetype(ListOp, fmt=fmt)
     def tmp(items, code=None):
         if code is None:
@@ -117,9 +120,9 @@ def globalOps(optype, **ops):
     __all__.extend(ops)
     localOps(globals(), optype, **ops)
 
+
 def localOps(ns, optype, **ops):
     ns.update(mkOps(optype, **ops))
-
 
 class UnaryOp(object):
     __slots__ = ()
@@ -138,7 +141,6 @@ globalOps(
     Repr = ('`%s`', Code.UNARY_CONVERT),
     Invert = ('~', Code.UNARY_INVERT),
 )
-
 globalOps(
     binaryOp,
     Add = ('+', Code.BINARY_ADD),
@@ -155,11 +157,9 @@ globalOps(
     Bitxor = ('^', Code.BINARY_XOR),
     Bitand = ('&', Code.BINARY_AND),
 )
-
 globalOps(
     listOp, Tuple = ('(%s)', Code.BUILD_TUPLE), List = ('[%s]', Code.BUILD_LIST)
 )
-
 
 
 class SMIGenerator:
@@ -317,7 +317,7 @@ class CSETracker(Code):
             finally:
                 count = ts.pop()
                 ts.pop()
-            if count and callable(ob) and self.stack_size==before+1:
+            if count and hasattr(ob,'__call__') and self.stack_size==before+1:
                 # Only consider non-leaf callables for caching
                 top = tuple(ts[-2:])
                 if self.cse_depends.setdefault(ob, top) != top:
@@ -348,7 +348,7 @@ class CSECode(Code):
     def __call__(self, *args):
         scall = super(CSECode, self).__call__
         for ob in args:
-            if callable(ob) and ob in self.expr_cache:
+            if hasattr(ob,'__call__') and ob in self.expr_cache:
                 key = self.expr_cache[ob]
                 def calculate(code):
                     scall(ob, Code.DUP_TOP, CACHE, Const(key), Code.STORE_SUBSCR)
@@ -372,7 +372,7 @@ class ExprBuilder:
 
     def __init__(self,arguments,*namespaces):
         self.bindings = [
-            dict([(k,self.Const(v)) for k,v in module_to_ns(ns).iteritems()]) for ns in namespaces
+            dict([(k,self.Const(v)) for k,v in module_to_ns(ns).items()]) for ns in namespaces
         ]
         self.push(arguments); self.push()
 
