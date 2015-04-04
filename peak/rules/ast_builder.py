@@ -1,16 +1,17 @@
 from token import tok_name, NAME, NUMBER, STRING, EQUAL
 from symbol import sym_name
+import token, symbol, parser, sys
 try:
     from new import instancemethod
+    list_for = symbol.list_for
+    backquotes = True
 except ImportError:
     from types import MethodType
     instancemethod = lambda f,i,t: MethodType(f, i)
+    list_for = symbol.comp_for
+    backquotes = False
 
-import token, symbol, parser, sys
-
-__all__ = [
-    'parse_expr', 'build'
-]
+__all__ = ['parse_expr', 'build']
 
 _name   = lambda builder,nodelist: builder.Name(nodelist[1])
 _const  = lambda builder,nodelist: builder.Const(eval(nodelist[1]))
@@ -36,7 +37,6 @@ ops = {
 
 def left_assoc(builder, nodelist):
     return getattr(builder,ops[nodelist[-2][0]])(nodelist[:-2],nodelist[-1])
-
 
 
 def curry(f,*args):
@@ -226,7 +226,7 @@ def atom(builder, nodelist):
             dm = nodelist[2]
             items = [(dm[i],dm[i+2]) for i in range(1,len(dm),4)]
         return builder.Dict(items)
-    elif t==token.BACKQUOTE:
+    elif backquotes and t==token.BACKQUOTE:
         return builder.Backquote(nodelist[2])
     elif t==token.STRING:
         return builder.Const(eval(' '.join([n[1] for n in nodelist[1:]])))
@@ -315,7 +315,7 @@ def listmaker(builder, nodelist):
 
     for i in range(1, len(nodelist)):
 
-        if nodelist[i][0] == symbol.list_for:
+        if nodelist[i][0] == list_for:
             assert i==2 and len(nodelist)==3 and len(values)==1
             return com_iterator(builder.ListComp,values[0],nodelist[i])
 
