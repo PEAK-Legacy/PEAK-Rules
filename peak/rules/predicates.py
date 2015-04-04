@@ -1,24 +1,24 @@
 from peak.util.assembler import *
-from core import *
-from core import class_or_type_of, call_thru, flatten
-from criteria import *
-from indexing import *
-from codegen import SMIGenerator, ExprBuilder, Getitem, IfElse, Tuple
+from peak.rules.core import *
+from peak.rules.core import class_or_type_of, call_thru, flatten, any_type, \
+    CODE, NAME, GLOBALS, CLOSURE, DEFAULTS, NAME, FUNC, basestring, reduce
+from peak.rules.criteria import *
+from peak.rules.indexing import *
+from peak.rules.codegen import SMIGenerator, ExprBuilder, Getitem, IfElse, Tuple
 from peak.util.decorators import decorate, synchronized, decorate_assignment
-from types import InstanceType, ClassType
-from ast_builder import build, parse_expr
-import inspect, new, codegen, parser
+from peak.rules.ast_builder import build, parse_expr
+import inspect, peak.rules.codegen as codegen, parser, types, sys
 
 __all__ = [
     'IsInstance', 'IsSubclass', 'Truth', 'Identity', 'Comparison', 'priority',
     'IndexedEngine', 'predicate_node_for', 'meta_function', 'expressionSignature',
 ]
-
 abstract()
 def predicate_node_for(builder, expr, cases, remaining_exprs, memo):
     """Return a dispatch tree node argument appropriate for the expr"""
 
-def value_check(val, (exact, ranges)):
+def value_check(val, _er):
+    (exact, ranges) = _er
     if val in exact:
         return exact[val]
     lo = 0
@@ -96,7 +96,7 @@ def meta_function(*stub, **parsers):
     """Declare a meta-function and its argument parsers"""
     stub, = stub
     def callback(frame, name, func, old_locals):
-        for name in inspect.getargs(func.func_code)[0]:
+        for name in inspect.getargs(getattr(func, CODE))[0]:
             if not isinstance(name, basestring):
                 raise TypeError(
                     "Meta-functions cannot have packed-tuple arguments"
@@ -135,7 +135,7 @@ class CriteriaBuilder(ExprBuilder):
         return codegen.Not(self.build_with(expr))
 
     def Or(self, items):
-        return codegen.Or(map(self.build_with, items))
+        return codegen.Or(list(map(self.build_with, items)))
 
     def CallFunc(self, func, args, kw, star_node, dstar_node):
         b = build.__get__(self)
@@ -145,7 +145,7 @@ class CriteriaBuilder(ExprBuilder):
                 self, args, kw, star_node, dstar_node
             )
         return Call(
-            target, map(b,args), [(b(k),b(v)) for k,v in kw],
+            target, list(map(b,args)), [(b(k),b(v)) for k,v in kw],
             star_node and b(star_node), dstar_node and b(dstar_node)
         )
 
@@ -159,7 +159,7 @@ def do_intersect(expr):
 
 when(expressionSignature, codegen.Or)
 def do_union(expr):
-    return OrElse(map(expressionSignature, expr.values))
+    return OrElse(list(map(expressionSignature, expr.values)))
 
 
 when(expressionSignature, codegen.Not)
@@ -203,9 +203,9 @@ def do_compare(expr):
 
 
 
-def apply_meta(builder,
-    (func, parsers, (argnames, varargs, varkw, defaults)), args, kw, star, dstar
-):
+def apply_meta(builder, __nested, args, kw, star, dstar):
+    (func, parsers, (argnames, varargs, varkw, defaults)) = __nested
+
     # NB: tuple-args not allowed!
     def parse(arg, node):
         if not node:
@@ -255,8 +255,9 @@ def apply_meta(builder,
             data.setdefault(k, v)
 
     try:
-        args = map(data.pop, argnames)+extra
-    except KeyError, e:
+        args = list(map(data.pop, argnames))+extra
+    except KeyError:
+        e = sys.exc_info()[1]
         raise TypeError(
             "Missing positional argument %s for %r"%(e.args[0], func)
         )
@@ -284,7 +285,6 @@ meta_functions[let] = compile_let
 
 
 
-
 def _expand_as(func, predicate_string, *namespaces):
     """Pre-parse predicate string and register meta function"""
 
@@ -301,9 +301,9 @@ def _expand_as(func, predicate_string, *namespaces):
     # Make a function that just gets the arguments we want
     c = Code.from_function(func)
     c.return_(Call(Const(locals),fold=False))
-    getargs = new.function(
-        c.code(), func.func_globals, func.func_name, func.func_defaults,
-        func.func_closure
+    getargs = types.FunctionType(
+        c.code(), getattr(func, GLOBALS), getattr(func, NAME), getattr(func, DEFAULTS),
+        getattr(func, CLOSURE)
     )
 
     def expand(builder, *args):        
@@ -319,10 +319,10 @@ def _expand_as(func, predicate_string, *namespaces):
     func.__doc__    # workaround for PyPy issue #1293
     c = Code.from_function(func)
     c.return_()
-    if func.func_code.co_code == c.code().co_code:  # function body is empty
+    if getattr(func, CODE).co_code == c.code().co_code:  # function body is empty
         c = Code.from_function(func)
         c.return_(build(builder, parsed))
-        func.func_code = c.code()
+        setattr(func, CODE, c.code())
 
     return func
 
@@ -347,7 +347,7 @@ def compileIn(expr, criterion):
         expr = Comparison(expr)
         return Test(expr, Disjunction([Value(v) for v in criterion]))
 
-when(compileIn, (object, (type, ClassType)))
+when(compileIn, (object, any_type))
 def compileInClass(expr, criterion):
     warn_parse("'x in SomeClass' syntax is deprecated; use 'isinstance(x,SomeClass)'")
     return Test(IsInstance(expr), Class(criterion))
@@ -374,7 +374,7 @@ def warn_parse(message, category=DeprecationWarning):
     # Find the original call to _parse_string() to get its ParseContext
     import sys
     frame = sys._getframe(3)
-    code = _parse_string.func_code
+    code = getattr(_parse_string, CODE)
     ct = 2
     while frame is not None and frame.f_code is not code:
         frame = frame.f_back
@@ -400,7 +400,7 @@ def warn_parse(message, category=DeprecationWarning):
             filename = module
 
     return warn_explicit(
-        message, category, filename, ctx.lineno,
+        message, category, filename, ctx.lineno, module,
         g.setdefault("__warningregistry__", {})
     )
 
@@ -438,12 +438,12 @@ class IndexedEngine(Engine, TreeBuilder):
 
     def _generate_code(self):
         smig = SMIGenerator(self.function)
-        all_exprs = map(self.to_expression, self.all_exprs)
+        all_exprs = list(map(self.to_expression, self.all_exprs))
         for expr in all_exprs:
             smig.maybe_cache(expr)
 
         memo = dict([(expr, smig.action_id(expr)) for expr in all_exprs])
-        return smig.generate(self.build_root(memo)).func_code
+        return getattr(smig.generate(self.build_root(memo)), CODE)
 
     def _full_reset(self):
         # Replace the entire engine with a new one
@@ -458,7 +458,7 @@ class IndexedEngine(Engine, TreeBuilder):
         return BitmapIndex(self, expr).reseed(criterion)
 
     # Make build() a synchronized method
-    build = synchronized(TreeBuilder.build.im_func)
+    build = synchronized(getattr(TreeBuilder.build, 'im_func', TreeBuilder.build))
 
     def build_root(self, memo):
         return self.build(
@@ -516,7 +516,7 @@ def identity_node(builder, expr, cases, remaining_exprs, memo):
     dont_cares, seedmap = builder.seed_bits(expr, cases)
     return dict(
         [(seed, builder.build(inc|dont_cares, remaining_exprs, memo))
-            for seed, (inc, exc) in seedmap.iteritems()]
+            for seed, (inc, exc) in seedmap.items()]
     )
 
 when(bitmap_index_type,  (IndexedEngine, Comparison))(lambda en,ex:RangeIndex)
@@ -559,14 +559,14 @@ abstract()
 def type_to_test(typ, expr, engine):
     """Convert `typ` to a ``Test()`` of `expr` for `engine`"""
 
-when(type_to_test, (type,))
-when(type_to_test, (ClassType,))
+when(type_to_test, (any_type,))
 def std_type_to_test(typ, expr, engine):
     return Test(IsInstance(expr), Class(typ))
 
 when(type_to_test, (istype,))
 def istype_to_test(typ, expr, engine):
     return Test(IsInstance(expr), typ)
+
 
 
 
@@ -616,7 +616,7 @@ def _parse_string(engine, predicate, ctx, cls):
 def maybe_bind(func, bindings):
     """Apply expression bindings to arguments, if applicable"""
 
-    if not bindings or not hasattr(func, 'func_code'):
+    if not bindings or not hasattr(func, CODE):
         return func     # no bindings or not a function
 
     args, varargs, varkw, defaults = inspect.getargspec(func) 
@@ -638,13 +638,13 @@ def maybe_bind(func, bindings):
 
     argtuple = Tuple([bindings[arg] for arg in args[0]])
 
-    c = Code.from_spec(func.func_name, args[1:], varargs, varkw)
-    f = new.function(
-        c.code(), func.func_globals, func.func_name, func.func_defaults
+    c = Code.from_spec(getattr(func, NAME), args[1:], varargs, varkw)
+    f = types.FunctionType(
+        c.code(), getattr(func, GLOBALS), getattr(func, NAME), getattr(func, DEFAULTS)
     )
-    f.func_code = c.code()  # make f's signature match func w/out tuple
+    setattr(f, CODE, c.code())  # make f's signature match func w/out tuple
     c.return_(call_thru(f, Const(func), [argtuple]))    # call to match that
-    f.func_code = c.code()  # now include the actual body
+    setattr(f, CODE, c.code())  # now include the actual body
     f.__predicate_bindings__ = bindings, func   # mark for later optimization
 
     return f
@@ -673,7 +673,7 @@ def compileIsXCall(func, test, args, kw, star, dstar):
             Call(Const(func), args, tuple(kw.items()), star, dstar)
         )
     expr, seq = args
-    return Test(test(expr), Disjunction(map(Class, _yield_tuples(seq.value))))
+    return Test(test(expr), Disjunction(list(map(Class, _yield_tuples(seq.value)))))
 
 def _yield_tuples(ob):
     if type(ob) is tuple:

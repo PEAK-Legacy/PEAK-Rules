@@ -1,6 +1,6 @@
 from peak.util.assembler import *
 from peak.util.symbols import Symbol
-from peak.rules.core import gen_arg, clone_function
+from peak.rules.core import gen_arg, clone_function, CODE
 from peak.rules.ast_builder import build, parse_expr
 from types import ModuleType
 import sys
@@ -192,7 +192,7 @@ class SMIGenerator:
         exit,
             Code.POP_TOP,       # drop action, leaving argument
             Return(
-                Call(Pass, map(gen_arg, args),(),gen_arg(star), gen_arg(dstar))
+                Call(Pass, list(map(gen_arg, args)),(),gen_arg(star), gen_arg(dstar))
             ),
         bad_action,
             Code.POP_TOP,
@@ -209,7 +209,7 @@ class SMIGenerator:
         self.code.co_consts[self.actions_const] = dict.fromkeys(
             self.actions.values()
         )
-        func.func_code = self.code.code()
+        setattr(func, CODE, self.code.code())
         return func
 
     def make_const(self, value):
@@ -343,7 +343,7 @@ class CSECode(Code):
         )
 
     def maybe_cache(self, expr):
-        map(self.cache, self.tracker.track(expr))
+        list(map(self.cache, self.tracker.track(expr)))
 
     def __call__(self, *args):
         scall = super(CSECode, self).__call__
@@ -466,7 +466,7 @@ class ExprBuilder:
 
     def _listOp(name, op):
         def method(self,items):
-            return op(map(build.__get__(self), items))
+            return op(list(map(build.__get__(self), items)))
         return method
 
     localOps(locals(), _listOp,
@@ -483,7 +483,7 @@ class ExprBuilder:
     def CallFunc(self, func, args, kw, star_node, dstar_node):
         b = build.__get__(self)
         return Call(
-            b(func), map(b,args), [(b(k),b(v)) for k,v in kw],
+            b(func), list(map(b,args)), [(b(k),b(v)) for k,v in kw],
             star_node and b(star_node), dstar_node and b(dstar_node)
         )
 

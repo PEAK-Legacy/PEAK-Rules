@@ -6,12 +6,17 @@ __all__ = [
     'implies', 'dominant_signatures', 'combine_actions', 'overrides',
     'always_overrides', 'merge_by_default', 'intersect', 'disjuncts', 'negate'
 ]
+
 from peak.util.decorators import decorate_assignment, decorate, struct, \
-            synchronized, frameinfo, decorate_class, classy, apply_template
+            synchronized, frameinfo, decorate_class, classy, apply_template, \
+            with_metaclass
+
 from peak.util.assembler import Code, Const, Call, Local, Getattr, TryExcept, \
             Suite, with_name
+
 from peak.util.addons import AddOn
-import inspect, new, itertools, operator, sys
+import inspect, types, itertools, operator, sys
+
 try:
     set, frozenset = set, frozenset
 except NameError:
@@ -25,7 +30,15 @@ except NameError:
             return self
         def __init__(self, iterable=None):
             pass    # all immutable initialization should be done by __new__!
+
 empty = frozenset()
+
+
+
+
+
+
+
 try:
     sorted = sorted
 except NameError:
@@ -38,6 +51,34 @@ except NameError:
         if key:
             return [v[1] for v in d]
         return d
+
+if hasattr(with_name, 'func_globals'):
+    CODE, GLOBALS, CLOSURE, DEFAULTS, NAME, FUNC, NEXT = (
+        'func_code', 'func_globals', 'func_closure', 'func_defaults',
+        'func_name', 'im_func', 'next'
+    )
+    reduce = reduce
+    long = long
+    basestring = basestring
+else:
+    CODE, GLOBALS, CLOSURE, DEFAULTS, NAME, FUNC, NEXT = (
+        '__code__', '__globals__', '__closure__', '__defaults__',
+        '__name__', '__func__', '__next__'
+    )
+    basestring = str
+    long = int
+    from functools import reduce
+
+
+
+
+
+
+
+
+
+
+
 
 # Core logic -- many of these are generics to be specialized w/"when" later
 
@@ -106,8 +147,8 @@ class Dispatching(AddOn):
     def request_regeneration(self):
         """Ensure code regeneration occurs on next call of the function"""
         if self.backup is None:
-            self.backup = self.function.func_code
-            self.function.func_code = self._regen
+            self.backup = getattr(self.function, CODE)
+            setattr(self.function, CODE, self._regen)
     def _regen_code(self):
         c = Code.from_function(self.function, copy_lineno=True)
         c.return_(
@@ -130,7 +171,7 @@ class Dispatching(AddOn):
         c.return_(call_thru(self.function, Const(self.rules.default_action)))
 
         if self.backup is None:
-            self.function.func_code = c.code()
+            setattr(self.function, CODE, c.code())
         else:
             self.backup = c.code()
         return self.function
@@ -139,14 +180,14 @@ class Dispatching(AddOn):
     def _regenerate(self):
         func = self.function
         assert self.backup is not None
-        func.func_code = self.backup    # ensure re-entrant calls work
+        setattr(func, CODE, self.backup)    # ensure re-entrant calls work
 
         try:
             # try to replace the code with new code
-            func.func_code = self.engine._generate_code()
+            setattr(func, CODE, self.engine._generate_code())
         except:
             # failure: we'll try to regen again, next time we're called
-            func.func_code = self._regen
+            setattr(func, CODE, self._regen)
             raise
         else:
             # success!  get rid of the old backup code and return the function
@@ -203,11 +244,9 @@ class MethodType(type):
             always_overrides(other, self)
         return self
 
-class Method(object):
+class Method(with_metaclass(MethodType)):
     """A simple method w/optional chaining"""
 
-    __metaclass__ = MethodType
-    
     def __init__(self, body, signature=(), serial=0, tail=None):
         self.body = body
         self.signature = signature
@@ -242,6 +281,8 @@ class Method(object):
 
     def tail_with(self, tail):
         return self.__class__(self.body, self.signature, self.serial, tail)
+
+
 
 
     def merge(self, other):
@@ -290,7 +331,7 @@ class Method(object):
         if not self.can_tail:
             return body
         else:
-            return new.instancemethod(body, compile_method(self.tail, engine))
+            return types.MethodType(body, compile_method(self.tail, engine))
 
 when = Method.make_decorator(
     "when", "Extend a generic function with a new action"
@@ -372,7 +413,8 @@ class RuleSet(object):
         ad = self.actiondefs
         return iter([a for rule in self.rules for a in ad[rule]])
 
-    def _actions_for(self, (na, body, predicate, actiontype, seq)):
+    def _actions_for(self, _x):
+        (na, body, predicate, actiontype, seq) = _x
         actiontype = actiontype or self.default_actiontype
         for signature in disjuncts(predicate):
             yield Rule(body, signature, actiontype, seq)
@@ -394,7 +436,7 @@ def _register_rule(gf, pred, context, cls):
         rules = rules_for(gf)
         rules.add(parse_rule(Dispatching(gf).engine, pred, context, cls))
         return
-    if len(gf.split(':'))<>2 or len(gf.split())>1:
+    if len(gf.split(':'))!=2 or len(gf.split())>1:
         raise TypeError(
             "Function specifier %r is not in 'module.name:attrib.name' format"
             % (gf,)
@@ -406,7 +448,6 @@ def _register_rule(gf, pred, context, cls):
             module = getattr(module, attr)
         _register_rule(module, pred, context, cls)
     whenImported(modname, _delayed_register)
-
 
 class Engine(object):
     """Abstract base for dispatching engines"""
@@ -460,23 +501,23 @@ class Engine(object):
         try:
             closure = self.closures[template]
         except KeyError:
-            if template.func_closure:
+            if getattr(template, CLOSURE):
                 raise TypeError("Templates cannot use outer-scope variables")
             import linecache; from peak.util.decorators import cache_source
             tmp = apply_template(template, self.function, *args)
-            body = ''.join(linecache.getlines(tmp.func_code.co_filename))
+            body = ''.join(linecache.getlines(getattr(tmp, CODE).co_filename))
             filename = "<%s at 0x%08X wrapping %s at 0x%08X>" % (
                 template.__name__, id(template),
                 self.function.__name__, id(self)
             )
             d ={}
-            exec compile(body, filename, "exec") in template.func_globals, d
+            exec(compile(body, filename, "exec"), getattr(template, GLOBALS), d)
             tmp, closure = d.popitem()
-            closure.func_defaults = template.func_defaults
+            setattr(closure, DEFAULTS, getattr(template, DEFAULTS))
             cache_source(filename, body, closure)
             self.closures[template] = closure
         f = closure(self.function, *args)
-        f.func_defaults = self.function.func_defaults
+        setattr(f, DEFAULTS, getattr(self.function, DEFAULTS))
 
         try:
             hash(args)
@@ -626,7 +667,7 @@ def gen_arg(v):
 
 def call_thru(sigfunc, target, prefix=()):
     args, star, dstar, defaults = inspect.getargspec(sigfunc)
-    return Call(target, list(prefix)+map(gen_arg,args), (), gen_arg(star), gen_arg(dstar), fold=False)
+    return Call(target, list(prefix)+list(map(gen_arg,args)), (), gen_arg(star), gen_arg(dstar), fold=False)
 
 def class_or_type_of(expr):
     return Suite([expr, TryExcept(
@@ -635,8 +676,8 @@ def class_or_type_of(expr):
     )])
 
 def clone_function(f):
-    return new.function(
-      f.func_code, f.func_globals, f.func_name, f.func_defaults, f.func_closure
+    return types.FunctionType(
+      getattr(f, CODE), getattr(f, GLOBALS), getattr(f, NAME), getattr(f, DEFAULTS), getattr(f, CLOSURE)
     )
 
 _default_engine = None
@@ -665,7 +706,7 @@ def abstract(func=None):
     else:
         return Dispatching(func).as_abstract()
 
-next_sequence = itertools.count().next
+next_sequence = getattr(itertools.count(), NEXT)
 
 struct()
 def Rule(body, predicate=(), actiontype=None, sequence=None):
@@ -723,18 +764,59 @@ def tuple_implies(s1,s2):
     else:
         return True
 
-from types import ClassType, InstanceType
-when(implies, (type,      (ClassType, type) ))(issubclass)
-when(implies, (ClassType,  ClassType        ))(issubclass)
-when(implies, (istype,     istype           ))(lambda s1,s2:
-    s1==s2 or (s1.type is not s2.type and s1.match and not s2.match))
-when(implies, (istype,    (ClassType, type) ))(lambda s1,s2:
-    s1.match and implies(s1.type,s2))
 
-# A classic class only implies a new-style one if it's ``object``
-# or ``InstanceType``; this is an exception to the general rule that
-# isinstance(X,Y) implies issubclass(X.__class__,Y)
-when(implies, (ClassType, type))(lambda s1,s2: s2 is object or s2 is InstanceType)
+
+
+
+
+
+
+
+
+
+
+
+
+try:
+    from types import ClassType, InstanceType
+    any_type = (ClassType, type)
+
+except ImportError:
+    ClassType = type
+    any_type = type
+    when(implies, (type,type))(issubclass)
+else:
+    when(implies, (type,      any_type   ))(issubclass)
+    when(implies, (ClassType, ClassType  ))(issubclass)
+    # A classic class only implies a new-style one if it's ``object``
+    # or ``InstanceType``; this is an exception to the general rule that
+    # isinstance(X,Y) implies issubclass(X.__class__,Y)
+    when(implies, (ClassType, type))(lambda s1,s2:
+        s2 is object or s2 is InstanceType)
+
+when(implies, (istype,     istype  ))(lambda s1,s2:
+    s1==s2 or (s1.type is not s2.type and s1.match and not s2.match))
+when(implies, (istype,    any_type ))(lambda s1,s2:
+    s1.match and implies(s1.type, s2))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Rule precedence
 
@@ -829,7 +911,7 @@ class MethodList(Method):
         seen = set()
         while rest:
             best = dominant_signatures(rest)
-            map(rest.remove, best)
+            list(map(rest.remove, best))
             for s,b in best:
                 if b not in seen:
                     seen.add(b)
@@ -953,7 +1035,7 @@ def parse_upgrade(engine, predicate, context, cls):
         predicate, context, cls
     )
 
-when(rules_for, type(After.sorted))(lambda f: rules_for(f.im_func))
+when(rules_for, types.MethodType)(lambda f: rules_for(getattr(f, FUNC)))
 
 
 # Logical functions needed for extensions to the core, but that should be
