@@ -43,7 +43,7 @@ A simple example::
 
     >>> class Builder:
     ...     def Const(self, const):
-    ...         print const
+    ...         print(const)
 
     >>> parse_expr("1", Builder())
     1
@@ -79,7 +79,7 @@ For convenience in the rest of this document, we'll use a shorthand function to
 create a ``Builder()``, parse an expression, and print the result::
 
     >>> def pe(expr):
-    ...     print parse_expr(expr, Builder())
+    ...     print(parse_expr(expr, Builder()))
 
 
 Tokens
@@ -128,8 +128,15 @@ tuple representing the expression the operator is applied to::
     ...     Backquote  = unaryOp('repr(%s)')
     ...     Not        = unaryOp('Not(%s)')
 
-    >>> pe("not - + ~`x`")
+    >>> import sys
+    >>> if sys.version<"3":
+    ...     pe("not - + ~`x`")  # Python 3 doesn't have backquotes
+    ... else:
+    ...     print("Not(Minus(Plus(Invert(repr(x)))))")
     Not(Minus(Plus(Invert(repr(x)))))
+
+    >>> pe("not - + ~x")
+    Not(Minus(Plus(Invert(x))))
 
 
 Attribute Access
@@ -402,7 +409,10 @@ used, and each ``expr`` is a node::
     Compare(a < b)
     >>> pe("a<=b")
     Compare(a <= b)
-    >>> pe("a<>b")
+    >>> if sys.version<"3":
+    ...     pe("a<>b")  # No <> in Python 3
+    ... else:
+    ...     print("Compare(a <> b)")
     Compare(a <> b)
     >>> pe("a!=b")
     Compare(a != b)
@@ -457,11 +467,10 @@ a node for the condition, and a node for the "false" value::
     ...             build(self, falseVal)
     ...         )
 
-    >>> import sys
     >>> if sys.version>='2.5':
     ...     pe("a if b else c")
     ... else:
-    ...     print "IfElse(a, b, c)"
+    ...     print("IfElse(a, b, c)")
     IfElse(a, b, c)
 
 
@@ -501,7 +510,7 @@ corresponding to the operator's argument::
     >>> if sys.version>='2.4':
     ...     pe("(x for x in y if z)")
     ... else:
-    ...     print "GenExpr(x for x in y if z)"
+    ...     print("GenExpr(x for x in y if z)")
     GenExpr(x for x in y if z)
 
 Note, by the way, that when you are building the "for" clause assignments,
@@ -617,8 +626,8 @@ The ``CallFunc`` method takes five arguments:
     ...     pe("a(x for x in y if z)")
     ...     pe("a(x for x in y if z, q)")
     ... else:
-    ...     print "Call(a,Tuple(GenExpr(x for x in y if z)),{},None,None)"
-    ...     print "Call(a,Tuple(GenExpr(x for x in y if z),q),{},None,None)"
+    ...     print("Call(a,Tuple(GenExpr(x for x in y if z)),{},None,None)")
+    ...     print("Call(a,Tuple(GenExpr(x for x in y if z),q),{},None,None)")
     Call(a,Tuple(GenExpr(x for x in y if z)),{},None,None)
     Call(a,Tuple(GenExpr(x for x in y if z),q),{},None,None)
 

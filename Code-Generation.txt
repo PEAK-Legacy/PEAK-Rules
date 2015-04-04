@@ -138,8 +138,15 @@ Operators
 
 Unary operators::
 
-    >>> pe("not - + ~ `a`")
+    >>> import sys
+    >>> if sys.version<"3":
+    ...     pe("not - + ~`x`")  # Python 3 doesn't have backquotes
+    ... else:
+    ...     print("    Not(Minus(Plus(Invert(Repr(Local('a'))))))")
     Not(Minus(Plus(Invert(Repr(Local('a'))))))
+
+    >>> pe("not - + ~a")
+    Not(Minus(Plus(Invert(Local('a')))))
 
 
 Attribute access::
@@ -248,7 +255,10 @@ Comparisons::
     Compare(Local('a'), (('<', Local('b')),))
     >>> pe("a<=b")
     Compare(Local('a'), (('<=', Local('b')),))
-    >>> pe("a<>b")
+    >>> if sys.version < "3":
+    ...     pe("a<>b")  # No <> in Python 3
+    ... else:
+    ...     print("Compare(Local('a'), (('!=', Local('b')),))")
     Compare(Local('a'), (('!=', Local('b')),))
     >>> pe("a!=b")
     Compare(Local('a'), (('!=', Local('b')),))
@@ -274,7 +284,6 @@ Dictionaries::
 
 Conditional Expressions::
 
-    >>> import sys
     >>> if sys.version>='2.5':
     ...     pe("a if b else c")
     ... else:

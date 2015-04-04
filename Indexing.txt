@@ -408,8 +408,9 @@ a tuple of name-value pairs, and that each "expr" is a ``DemoExpr`` instance::
     ...               " with " +str(list(map(sorted,cases))) +
     ...               " and ( " + str(enames) + " )")
     ...
-    ...         branches = list(expr.branch_table(cases).items())
-    ...         branches.sort()
+    ...         branches = sorted(
+    ...             expr.branch_table(cases).items(),
+    ...             key = lambda i: [i, (0, i[1])][i[0] is None]) # Python 3
     ...         return dict(
     ...             [(key, self.build(tuple(values), remaining_exprs, memo))
     ...                 for key,values in branches]
@@ -671,7 +672,8 @@ And to handle sets with more than 31 bits, we need these operations to handle
 long integers::
 
     >>> seven_long = to_bits([32,33,34])
-    >>> print(hex(seven_long))
+    >>> import sys
+    >>> print(hex(seven_long)+"L"[:type(seven_long) is int])  # No 'L' on Py3
     0x700000000L
 
     >>> list(from_bits(seven_long))
