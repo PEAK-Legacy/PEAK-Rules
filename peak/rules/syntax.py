@@ -1,10 +1,10 @@
 from peak.util.assembler import *
-from codegen import *
-from criteria import *
-from predicates import *
-from core import *
+from peak.rules.codegen import *
+from peak.rules.criteria import *
+from peak.rules.predicates import *
+from peak.rules.core import *
 from token import NAME
-from ast_builder import build
+from peak.rules.ast_builder import build
 
 __all__ = ['match', 'Bind', 'match_predicate', 'match_sequence']
 
