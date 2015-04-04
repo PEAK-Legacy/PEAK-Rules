@@ -2,7 +2,7 @@
 from peak.util.decorators import decorate_assignment
 from peak.rules import core
 from warnings import warn
-import new, sys
+import types, sys
 
 __all__ = [
     'on', 'as', 'generic', 'as_'
@@ -41,7 +41,7 @@ globals()['as'] = as_
 
 def make_module():
     def callback(frm, name, value, old_locals):
-        m = new.module('dispatch.'+name)
+        m = types.ModuleType('dispatch.'+name)
         v = value()
         m.__dict__.update(v)
         m.__all__ = list(v)
