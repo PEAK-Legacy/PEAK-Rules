@@ -1,5 +1,6 @@
 import unittest, sys
 from peak.rules.core import *
+from peak.rules.core import CODE
 
 x2 = lambda a: a*2
 x3 = lambda next_method, a: next_method(a)*3
@@ -38,12 +39,11 @@ class TypeEngineTests(unittest.TestCase):
         self.assertEqual(f(1), 42)
         self.assertEqual(f('x'), 'x')
 
-
 class MiscTests(unittest.TestCase):
-
     def testPointers(self):
         from peak.rules.indexing import IsObject
-        from sys import maxint
+        try: from sys import maxint
+        except ImportError: maxint = (2<<32)-1
         anOb = object()
         ptr = IsObject(anOb)
         self.assertEqual(id(anOb)&maxint,ptr)
@@ -100,9 +100,9 @@ class MiscTests(unittest.TestCase):
         d.rules.default_action = lambda *args: log.append(args)
         d.request_regeneration()
         f1 = abstract(f1)
-        self.assertNotEqual(d.backup, f1.func_code)
-        self.assertEqual(f1.func_code, d._regen)
-        f1.func_code = d.backup
+        self.assertNotEqual(d.backup, getattr(f1, CODE))
+        self.assertEqual(getattr(f1, CODE), d._regen)
+        setattr(f1, CODE, d.backup)
         f1(27,42)
         self.assertEqual(log, [(27,42)])
         
@@ -122,11 +122,12 @@ class MiscTests(unittest.TestCase):
 
 
     def testIndexClassicMRO(self):
+        try: from types import InstanceType
+        except ImportError: return  # No classic types on Python 3
         class MyEngine: pass
         eng = MyEngine()
         from peak.rules.indexing import TypeIndex
         from peak.rules.criteria import Class
-        from types import InstanceType
         ind = TypeIndex(eng, 'classes')
         ind.add_case(0, Class(MyEngine))
         ind.add_case(1, Class(object))
@@ -150,17 +151,16 @@ class MiscTests(unittest.TestCase):
         self.assertEqual(
             argnames(lambda a,b,c=None: None), list('abc')
         )
-        self.assertEqual(
-            argnames(lambda a,(b,(c,d)), e: None), list('abcde')
-        )
+        if sys.version<"3":
+            self.assertEqual(
+                argnames(eval("lambda a,(b,(c,d)), e: None")), list('abcde')
+            )
 
     def test_istype_implies(self):
         self.failUnless(implies(istype(object), object))
         self.failUnless(implies(istype(int), object))
         self.failIf(implies(istype(object, False), object))
         self.failIf(implies(istype(int, False), object))
-
-
 
     def testIndexedEngine(self):
         from peak.rules.predicates import IndexedEngine, Comparison
@@ -207,6 +207,8 @@ class MiscTests(unittest.TestCase):
         from peak.rules.core import Local, Rule
         from peak.rules.criteria import Signature, Test, Class, Value
         from peak.rules.predicates import IsInstance, Truth
+        from peak.util.decorators import enclosing_frame
+        im_func = lambda x: getattr(x, 'im_func', x)
 
         abstract()
         def f1(a): pass
@@ -219,27 +221,25 @@ class MiscTests(unittest.TestCase):
         num = Rule(None).sequence
         
         class T:
-            f1=sys._getframe(1).f_locals['f1']  # ugh
+            f1 = enclosing_frame(level=2).f_locals['f1']  # ugh
             when(f1)
             def f1_(a): pass
 
-            f2=sys._getframe(1).f_locals['f2']
+            f2 = enclosing_frame(level=2).f_locals['f2']
             when(f2, 'b')
             def f2_(b): pass
 
         self.assertEqual(
-            list(rules_for(f1)), [Rule(T.f1_.im_func, (T,), Method, num+1)]
+            list(rules_for(f1)), [Rule(im_func(T.f1_), (T,), Method, num+1)]
         )
         self.assertEqual(
             list(rules_for(f2)), [Rule(
-                T.f2_.im_func, Signature([
+                im_func(T.f2_), Signature([
                     Test(IsInstance(Local('b')), Class(T)),
                     Test(Truth(Local('b')), Value(True))
                 ]), Method, num+2)
             ]
         )
-
-
 
 
 
@@ -265,6 +265,8 @@ class MiscTests(unittest.TestCase):
             ('==','==','!=','==','!='),
             ('<>','<>','==','!=','=='),
         ]:
+            if op=='<>' and sys.version>="3":
+                continue
             fwd_sig = Test(x, Inequality(op, 1))
             self.assertEqual(pe('x %s 1' % op), fwd_sig)
             self.assertEqual(pe('1 %s x' % mirror_op), fwd_sig)
@@ -282,8 +284,6 @@ class MiscTests(unittest.TestCase):
 
             self.assertEqual(pe('not x %s y' % op),x_cmp_y(stdop,False))
             self.assertEqual(pe('not x %s y' % not_op),x_cmp_y(not_stdop,False))
-
-
 
     def testInheritance(self):
         class X: pass
@@ -777,22 +777,6 @@ class DecompilationTests(unittest.TestCase):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def additional_tests():
     import doctest
     files = [
@@ -806,10 +790,10 @@ def additional_tests():
          *files
     )
 
-
-
-
-
+try:
+    reduce
+except NameError:
+    from functools import reduce
 
 
 
