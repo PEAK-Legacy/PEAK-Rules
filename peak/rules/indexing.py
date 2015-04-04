@@ -261,7 +261,7 @@ class BitmapIndex(AddOn):
     def selectivity(self, cases):
         if cases and cases[-1] >= len(self.case_seeds):
             self._extend_cases(cases[-1])
-        cases = map(self.case_seeds.__getitem__, cases)
+        cases = list(map(self.case_seeds.__getitem__, cases))
         return (len(self.all_seeds), sum(map(len, cases)))
 
     def seed_bits(self, cases):
@@ -337,7 +337,7 @@ def split_ranges(dont_cares, bitmap, node=lambda b:b):
     ranges = []
     exact = {}
     current = dont_cares
-    for (val,d), (inc, exc) in bitmap.iteritems():
+    for (val,d), (inc, exc) in bitmap.items():
         if d and not (val is Min and d==-1 and not inc):
             break     # something other than == was used; use full algorithm
         exact[val] = node(current | inc)
@@ -346,7 +346,7 @@ def split_ranges(dont_cares, bitmap, node=lambda b:b):
 
     low = Min
 
-    for (val,d), (inc, exc) in sorted(bitmap.iteritems()):
+    for (val,d), (inc, exc) in sorted(bitmap.items()):
         if val != low:
             if ranges and ranges[-1][-1]==current:
                 low = ranges.pop()[0][0]
@@ -429,14 +429,14 @@ class TypeIndex(BitmapIndex):
 
     def add_class(self, cls):        
         t = istype(cls)
-        for criterion, seeds in self.criteria_seeds.iteritems():
+        for criterion, seeds in self.criteria_seeds.items():
             if implies(t, criterion):
                 self.include(cls, criterion)
                 seeds.add(cls)
         self.include(cls, t)    # ensure it's in all_seeds
 
     def reseed(self, criterion):
-        map(self.add_class, class_seeds_for(criterion))
+        list(map(self.add_class, class_seeds_for(criterion)))
         if object not in self.all_seeds:
             self.include(object, istype(object))
 
@@ -507,7 +507,7 @@ class RangeIndex(BitmapIndex):
                 else:
                     extras[lo,hi,inc] = offsets[hi] - offsets[lo]
 
-        cases = map(case_seeds.__getitem__, cases)
+        cases = list(map(case_seeds.__getitem__, cases))
         return (len(self.all_seeds), sum(map(extras.__getitem__, cases)))
 
 
