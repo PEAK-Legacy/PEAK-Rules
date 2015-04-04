@@ -120,7 +120,7 @@ a range match if no exact match is found::
     >>> ranges = [((Min,'x'),42), (('x','y'),99), (('y',Max),88)]
 
     >>> for letter in 'wxyz':
-    ...     print value_check(letter, (exact, ranges))
+    ...     print(value_check(letter, (exact, ranges)))
     42
     1
     2
@@ -140,7 +140,7 @@ cache::
     >>> c = Code()
     >>> c(IsSubclass(Const(int)))
     >>> dump(c.code())
-                    LOAD_CONST               1 (<type 'int'>)
+                    LOAD_CONST               1 (<... 'int'>)
                     SETUP_EXCEPT            L1
                     DUP_TOP
                     LOAD_FAST                0 ($Arg)
@@ -195,7 +195,7 @@ that it first obtains the ``__class__`` or ``type()`` of its target::
                     POP_TOP
                     POP_TOP
                     POP_TOP
-                    LOAD_CONST               3 (<type 'type'>)
+                    LOAD_CONST               3 (<... 'type'>)
                     ROT_TWO
                     CALL_FUNCTION            1
                     JUMP_FORWARD            L3
@@ -265,9 +265,15 @@ tests and signatures.  It's initialized using the same arguments as the
     >>> from peak.rules.criteria import Disjunction, Value, Test, Range, Class, OrElse
     >>> from peak.util.assembler import Local
 
+    >>> try:
+    ...     unicode = unicode
+    ... except NameError:
+    ...     class unicode: """Python 3 placeholder"""
+
     >>> builder = CriteriaBuilder(
     ...     dict(x=Local('x'), y=Local('y')), locals(), globals(), __builtins__
     ... )
+
     >>> pe = builder.parse
 
     >>> pe('x+42 > 23*2')
@@ -330,27 +336,27 @@ Complex logical expressions are always rendered in disjunctive normal form,
 with negations simplified away or reduced to match flags on criteria objects::
 
     >>> pe('isinstance(x, int) and isinstance(y, str)')
-    Signature([Test(IsInstance(Local('x')), Class(<type 'int'>, True)),
-               Test(IsInstance(Local('y')), Class(<type 'str'>, True))])
+    Signature([Test(IsInstance(Local('x')), Class(<... 'int'>, True)),
+               Test(IsInstance(Local('y')), Class(<... 'str'>, True))])
 
     >>> pe('not(not isinstance(x, int) or not isinstance(y, str))')
-    Signature([Test(IsInstance(Local('x')), Class(<type 'int'>, True)),
-               Test(IsInstance(Local('y')), Class(<type 'str'>, True))])
+    Signature([Test(IsInstance(Local('x')), Class(<... 'int'>, True)),
+               Test(IsInstance(Local('y')), Class(<... 'str'>, True))])
 
 
     >>> pe('isinstance(x,int) and (isinstance(y, str) or isinstance(y, unicode))')
     OrElse([Signature([Test(IsInstance(Local('x')),
-                            Class(<type 'int'>, True)),
+                            Class(<... 'int'>, True)),
                        Test(IsInstance(Local('y')),
-                            Class(<type 'str'>, True))]),
+                            Class(<... 'str'>, True))]),
             Signature([Test(IsInstance(Local('x')),
-                            Class(<type 'int'>, True)),
+                            Class(<... 'int'>, True)),
                        Test(IsInstance(Local('y')),
-                            Class(<type 'unicode'>, True))])])
+                            Class(<... 'unicode'>, True))])])
 
     >>> pe('not (isinstance(x, int) or isinstance(y, str))')
-    Signature([Test(IsInstance(Local('x')), Class(<type 'int'>, False)),
-               Test(IsInstance(Local('y')), Class(<type 'str'>, False))])
+    Signature([Test(IsInstance(Local('x')), Class(<... 'int'>, False)),
+               Test(IsInstance(Local('y')), Class(<... 'str'>, False))])
 
     >>> pe('not(not isinstance(x, int) and not isinstance(y, str))') == OrElse([
     ...     Test(IsInstance(Local('x')), Class(int)),
@@ -359,8 +365,8 @@ with negations simplified away or reduced to match flags on criteria objects::
     True
 
     >>> pe('not( isinstance(x, int) and isinstance(y, str))')
-    OrElse([Test(IsInstance(Local('x')), Class(<type 'int'>, False)),
-            Test(IsInstance(Local('y')), Class(<type 'str'>, False))])
+    OrElse([Test(IsInstance(Local('x')), Class(<... 'int'>, False)),
+            Test(IsInstance(Local('y')), Class(<... 'str'>, False))])
 
 
 And arbitrary expressions are handled as truth tests::
@@ -394,7 +400,7 @@ where `y` is a constant::
     >>> from peak.rules.criteria import Test, Signature, Conjunction
 
     >>> pe('isinstance(x,int)')
-    Test(IsInstance(Local('x')), Class(<type 'int'>, True))
+    Test(IsInstance(Local('x')), Class(<... 'int'>, True))
 
     >>> pe('isinstance(x,(str,unicode))') == Disjunction([
     ...     Test(IsInstance(Local('x')), Class(str)),
@@ -403,10 +409,10 @@ where `y` is a constant::
     True
 
     >>> pe('type(x) is int')
-    Test(IsInstance(Local('x')), istype(<type 'int'>, True))
+    Test(IsInstance(Local('x')), istype(<... 'int'>, True))
 
     >>> pe('str is not type(x)')
-    Test(IsInstance(Local('x')), istype(<type 'str'>, False))
+    Test(IsInstance(Local('x')), istype(<... 'str'>, False))
 
     >>> pe('not isinstance(x,(int,(str,unicode)))') == Test(
     ...     IsInstance(Local('x')), Conjunction([
@@ -422,7 +428,7 @@ where `y` is a constant::
     True
 
     >>> pe('issubclass(x,int)')
-    Test(IsSubclass(Local('x')), Class(<type 'int'>, True))
+    Test(IsSubclass(Local('x')), Class(<... 'int'>, True))
 
     >>> pe('issubclass(x,(str,unicode))') == Disjunction([
     ...     Test(IsSubclass(Local('x')), Class(str)),
@@ -528,12 +534,12 @@ keyword arguments used by the caller.  For example::
     ...     """Just a dummy"""
 
     >>> def compile_dummy(__star__, __dstar__, p1, p2=None, *args, **kw):
-    ...     print "p1        =", p1
-    ...     print "p2        =", p2
-    ...     print "args      =", args
-    ...     print "kw        =", kw
-    ...     print "__star__  =", __star__
-    ...     print "__dstar__ =", __dstar__
+    ...     print("p1        = "+str(p1))
+    ...     print("p2        = "+str(p2))
+    ...     print("args      = "+str(args))
+    ...     print("kw        = "+str(kw))
+    ...     print("__star__  = "+str(__star__))
+    ...     print("__dstar__ = "+str(__dstar__))
     ...     return True
 
     >>> compile_dummy = meta_function(dummy)(compile_dummy)
@@ -692,8 +698,8 @@ first positional argument be a named argument tuple::
     >>> f = abstract(f)
 
     >>> def dummy((q,z), x):
-    ...     print "Got q =", q, "and z =", z
-    ...     print "x was", x
+    ...     print("Got q = "+str(q,)+" and z = "+str(z))
+    ...     print("x was "+str(x))
 
     >>> when(f, "let(q=x*2, z='whatever') and True")(dummy)
     <function dummy ...>
@@ -707,8 +713,8 @@ even if your method is defined inside a closure::
 
     >>> def closure(y):
     ...     def dummy2((a,b,c), next_method, x):
-    ...         print "a, b, c =", (a,b,c)
-    ...         print "y was", y
+    ...         print("a, b, c = "+str((a,b,c)))
+    ...         print("y was "+str(y))
     ...         return next_method(x)
     ...     return dummy2
 
@@ -777,7 +783,7 @@ Of course, if you decorate, say, an already-existing function that you want
 to replace, then nothing happens to that function::
 
     >>> def isint(ob):
-    ...     print "called!"
+    ...     print("called!")
     ...     return isinstance(ob, int)
 
     >>> expand_as("isinstance(x, int)")(isint)
@@ -933,11 +939,11 @@ names will be used to accomplish the conversion::
     >>> engine = Dispatching(implies).engine
 
     >>> list(tests_for((int,str), engine))
-    [Test(IsInstance(Local('s1')), Class(<type 'int'>, True)),
-     Test(IsInstance(Local('s2')), Class(<type 'str'>, True))]
+    [Test(IsInstance(Local('s1')), Class(<... 'int'>, True)),
+     Test(IsInstance(Local('s2')), Class(<... 'str'>, True))]
 
     >>> list(tests_for((istype(tuple),), engine))
-    [Test(IsInstance(Local('s1')), istype(<type 'tuple'>, True))]
+    [Test(IsInstance(Local('s1')), istype(<... 'tuple'>, True))]
 
 Each element of the type tuple is converted using a second generic function,
 ``type_to_test``::
@@ -945,10 +951,10 @@ Each element of the type tuple is converted using a second generic function,
     >>> from peak.rules.predicates import type_to_test
 
     >>> type_to_test(int, Local('x'), engine)
-    Test(IsInstance(Local('x')), Class(<type 'int'>, True))
+    Test(IsInstance(Local('x')), Class(<... 'int'>, True))
 
     >>> type_to_test(istype(str), Local('x'), engine)
-    Test(IsInstance(Local('x')), istype(<type 'str'>, True))
+    Test(IsInstance(Local('x')), istype(<... 'str'>, True))
 
     >>> class x: pass
     >>> type_to_test(x, Local('x'), engine)

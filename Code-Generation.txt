@@ -649,7 +649,7 @@ passed to ``maybe_cache()`` twice -- once by itself, and once as a child of
                     LOAD_FAST                3 (c)
                     LOAD_FAST                4 (d)
                     BINARY_MULTIPLY
-                    BINARY_DIVIDE
+                    BINARY_...DIVIDE
                     DUP_TOP
                     LOAD_FAST                0 ($CSECache)
                     LOAD_CONST               1 ("Div(Add(Local('a'), Local('b')), Mul(Local('c'), Local('d'))) #1")
