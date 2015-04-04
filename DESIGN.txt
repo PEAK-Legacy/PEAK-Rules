@@ -300,11 +300,11 @@ of these values are optional, except for the body::
     >>> from peak.rules.core import Method, overrides
 
     >>> def dummy(*args, **kw):
-    ...     print "called with", args, kw
+    ...     print("called with "+str(args)+" "+str(kw))
 
     >>> meth = Method.make(dummy, (object,), 1)
     >>> meth
-    Method(<...dummy...>, (<type 'object'>,), 1, None)
+    Method(<...dummy...>, (<... 'object'>,), 1, None)
 
 Calling a ``Method`` invokes the wrapped body::
 
@@ -324,14 +324,14 @@ other's::
 When a method overrides another, you get the overriding method::
 
     >>> meth.override(Method.make(dummy))
-    Method(<...dummy...>, (<type 'object'>,), 1, None)
+    Method(<...dummy...>, (<... 'object'>,), 1, None)
 
 Unless the overriding method's body is a function whose first parameter is
 named ``next_method``, in which case a chain of methods is created via the
 "tail" of a copy of the overriding method::
 
     >>> def overriding_fn(next_method, etc):
-    ...     print "calling", next_method
+    ...     print("calling "+str(next_method))
     ...     return next_method(etc)
 
     >>> chain = Method.make(overriding_fn).override(Method.make(dummy))
@@ -414,7 +414,7 @@ are invoked afterward::
     >>> from peak.rules.core import Before, After
 
     >>> def primary(*args,**kw):
-    ...     print "primary method called"
+    ...     print("primary method called")
     ...     return 99
 
     >>> b = Before.make(dummy).override(Method.make(primary))
@@ -460,13 +460,13 @@ and then by definition order within groups of ambiguous signatures::
     >>> b3 = Before.make("b3", (int,), 3)
 
     >>> combine_actions(b2, b3).sorted()
-    [((<type 'int'>,), 'b3'), ((), 'b2')]
+    [((<... 'int'>,), 'b3'), ((), 'b2')]
 
     >>> combine_actions(b2, b1).sorted()
     [((), 'b1'), ((), 'b2')]
 
     >>> combine_actions(b3, combine_actions(b1,b2)).sorted()
-    [((<type 'int'>,), 'b3'), ((), 'b1'), ((), 'b2')]
+    [((<... 'int'>,), 'b3'), ((), 'b1'), ((), 'b2')]
 
 ``After`` methods sort the opposite way::
 
@@ -475,13 +475,13 @@ and then by definition order within groups of ambiguous signatures::
     >>> a3 = After.make("a3", (int,), 3)
 
     >>> combine_actions(a2, a3).sorted()
-    [((), 'a2'), ((<type 'int'>,), 'a3')]
+    [((), 'a2'), ((<... 'int'>,), 'a3')]
 
     >>> combine_actions(a2, a1).sorted()
     [((), 'a2'), ((), 'a1')]
 
     >>> combine_actions(a3, combine_actions(a1,a2)).sorted()
-    [((), 'a2'), ((), 'a1'), ((<type 'int'>,), 'a3')]
+    [((), 'a2'), ((), 'a1'), ((<... 'int'>,), 'a3')]
 
 And lower-precedence duplicate bodies are automatically eliminated from the
 results::
@@ -493,7 +493,7 @@ results::
     [((), 'b1')]
 
     >>> combine_actions(b1, Before.make("b1", (int,), 1)).sorted()
-    [((<type 'int'>,), 'b1')]
+    [((<... 'int'>,), 'b1')]
 
 
 AmbiguousMethods
@@ -521,10 +521,10 @@ overriding method::
 
     >>> m2 = Method.make(overriding_fn, (str,))
     >>> combine_actions(am, m2)
-    Method(<...overriding_fn...>, (<type 'str'>,), 0, AmbiguousMethods(...))
+    Method(<...overriding_fn...>, (<... 'str'>,), 0, AmbiguousMethods(...))
 
     >>> combine_actions(m2, am)
-    Method(<...overriding_fn...>, (<type 'str'>,), 0, AmbiguousMethods(...))
+    Method(<...overriding_fn...>, (<... 'str'>,), 0, AmbiguousMethods(...))
 
 Ambiguous methods override and ignore anything that would be overridden by
 any of their members::
@@ -560,7 +560,7 @@ generic function's default method type by setting the functions' rules'
 
     >>> class MyMethod(Method):
     ...     def __call__(self, *args, **kw):
-    ...         print "calling!"
+    ...         print("calling!")
     ...         return self.body(*args, **kw)
 
     >>> from peak.rules import when, abstract
@@ -610,7 +610,7 @@ ensure that those objects are also compiled::
 
     >>> class MyMethod2(Method):
     ...     def compiled(self, engine):
-    ...         print "compiling"
+    ...         print("compiling")
     ...         return compile_method(self.body, engine)
 
     >>> m = MyMethod2(tmp)
@@ -652,7 +652,7 @@ you redefine ``__call__()``, but forget to redefine ``compiled()``::
 
     >>> class MyMethod3(MyMethod2):
     ...     def __call__(self, *args, **kw):
-    ...         print "calling!"
+    ...         print("calling!")
     ...         return self.body(*args, **kw)
 
     >>> f = func_with(MyMethod3)
@@ -675,7 +675,7 @@ compiled using a template::
 
     >>> class NoisyMethod(Method):
     ...     def compiled(self, engine):
-    ...         print "compiling"
+    ...         print("compiling")
     ...         body = compile_method(self.body, engine)
     ...         return engine.apply_template(noisy_template, body)
 
@@ -688,7 +688,7 @@ our compiled function.  Let's go ahead and define ``noisy_template`` now::
 
     >>> def noisy_template(__func, __body):
     ...     return """
-    ...         print "calling!"
+    ...         print("calling!")
     ...         return __body($args)
     ...     """
 
@@ -781,7 +781,7 @@ Decorators
 XXX decorators and how to create them: when, around, before, after::
 
     >>> from peak.rules import before, after
-    >>> def p(x): print x
+    >>> def p(x): print(x)
     >>> def f(): p("yo!")
 
 Rule decorators return the function they are decorating, unless the function's
@@ -903,8 +903,8 @@ be used to create action objects.)
 
     >>> class DummyObserver:
     ...     def actions_changed(self, added, removed):
-    ...         for a in added: print "Add:", a
-    ...         for a in removed: print "Remove:", a
+    ...         for a in added: print("Add: " + str(a))
+    ...         for a in removed: print("Remove: " + str(a))
     >>> do = DummyObserver()
 
     >>> rs.subscribe(do)
