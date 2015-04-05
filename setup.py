@@ -9,7 +9,7 @@ PACKAGES = ['peak', 'peak.rules']
 
 def get_description():
     # Get our long description from the documentation
-    f = file('README.txt')
+    f = open('README.txt')
     lines = []
     for line in f:
         if not line.strip():
@@ -27,7 +27,7 @@ setup(
     description="Generic functions and business rules support systems",
     long_description = get_description(),
     install_requires=[
-        'BytecodeAssembler>=0.6','DecoratorTools>=1.7dev-r2450',
+        'BytecodeAssembler>=0.6-r2756','DecoratorTools>=1.9dev-r2727',
         'AddOns>=0.6', 'Extremes>=1.1',
     ],
     author="Phillip J. Eby",
