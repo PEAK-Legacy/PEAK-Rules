@@ -446,7 +446,7 @@ The combination of before, after, primary, and around methods is as shown::
     >>> p = Method.make(primary)
     >>> o = Around.make(overriding_fn)
     >>> combine_actions(b, combine_actions(a, combine_actions(p, o)))(17)
-    calling <function before_template at ...>
+    calling <function before_template...>
     called with (17,) {}
     primary method called
     called with (17,) {}
