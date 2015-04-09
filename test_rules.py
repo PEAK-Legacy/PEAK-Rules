@@ -309,10 +309,10 @@ class MiscTests(unittest.TestCase):
         when(whats_this, "isclass(obj) and issubclass(obj, B)")(lambda o:"B")
         when(whats_this, (B,))(lambda o:"B()")
         when(whats_this, (A,))(lambda o:"A()")
-        self.failUnlessEqual(whats_this(B), "B")
-        self.failUnlessEqual(whats_this(A), "A")
-        self.failUnlessEqual(whats_this(B()), "B()")
-        self.failUnlessEqual(whats_this(A()), "A()")
+        self.assertEqual(whats_this(B), "B")
+        self.assertEqual(whats_this(A), "A")
+        self.assertEqual(whats_this(B()), "B()")
+        self.assertEqual(whats_this(A()), "A()")
 
     def testRuleSetClear(self):
         from peak.rules.core import Rule, RuleSet
@@ -831,6 +831,11 @@ def additional_tests():
             # Make errors have Python 3.x reprs under 2.x, to unify doctests
             if '.' not in e.__name__:
                 e.__name__ = ".".join([e.__module__, e.__name__])
+    else:
+        # 2.3 doesn't have these, so there's no one name we can use across
+        # both 2.x and 3.x that won't be either missing or deprecated.
+        unittest.TestCase.failUnless = unittest.TestCase.assertTrue
+        unittest.TestCase.failIf = unittest.TestCase.assertFalse
 
     return doctest.DocFileSuite(
         optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE,
@@ -847,11 +852,6 @@ def no_backquotes(s):
     if sys.version >= "3":
         return s.replace('`','')
     return s
-
-
-
-
-
 
 
 
