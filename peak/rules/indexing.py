@@ -7,6 +7,12 @@ from peak.rules.core import sorted, set, frozenset
 from peak.util.extremes import Min, Max, Extreme
 from peak.util.decorators import decorate
 
+if sys.version>'3':
+    class frozenset(frozenset):
+        __slots__ = ()
+        def __repr__(self):
+            return "%s(%r)" % (self.__class__.__name__, list(self))
+
 
 __all__ = [
     'Ordering', 'BitmapIndex', 'TreeBuilder', 'split_ranges',
@@ -19,12 +25,6 @@ def define_ordering(ob, seq):
     for key in seq:
         Ordering(ob, key).requires(items)
         items.append(key)
-
-
-
-
-
-
 
 
 
