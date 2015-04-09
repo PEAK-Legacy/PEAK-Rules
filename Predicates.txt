@@ -597,7 +597,7 @@ to runtime ``*`` or ``**`` problems), are detected at compile time::
 
 Also, note that meta functions cannot have packed-tuple arguments::
 
-    >>> meta_function(lambda x,y:None)(lambda x,(y,z): True)
+    >>> meta_function(lambda x,y:None)(lambda x,(y,z): True)    # EXPECTED FAIL on 3.x
     Traceback (most recent call last):
       ...
     TypeError: Meta-functions cannot have packed-tuple arguments
@@ -697,14 +697,14 @@ first positional argument be a named argument tuple::
     >>> def f(x): pass
     >>> f = abstract(f)
 
-    >>> def dummy((q,z), x):
+    >>> def dummy((q,z), x):    # EXPECTED FAIL on 3.x
     ...     print("Got q = "+str(q,)+" and z = "+str(z))
     ...     print("x was "+str(x))
 
     >>> when(f, "let(q=x*2, z='whatever') and True")(dummy)
     <function dummy ...>
 
-    >>> f(42)
+    >>> f(42)       # EXPECTED FAIL on 3.x
     Got q = 84 and z = whatever
     x was 42
 
@@ -713,16 +713,16 @@ even if your method is defined inside a closure::
 
     >>> closure = lambda x: None    # Prevent a cascading error in Python 3.x
     >>> def closure(y):
-    ...     def dummy2((a,b,c), next_method, x):
+    ...     def dummy2((a,b,c), next_method, x):    # EXPECTED FAIL on 3.x
     ...         print("a, b, c = "+str((a,b,c)))
     ...         print("y was "+str(y))
     ...         return next_method(x)
     ...     return dummy2
 
-    >>> around(f, "let(a='a', b=x*3, c=b+23)")(closure(99))
+    >>> around(f, "let(a='a', b=x*3, c=b+23)")(closure(99))  # EXPECTED FAIL on 3.x
     <function dummy2 ...>
 
-    >>> f(42)
+    >>> f(42)       # EXPECTED FAIL on 3.x
     a, b, c = ('a', 126, 149)
     y was 99
     Got q = 84 and z = whatever
