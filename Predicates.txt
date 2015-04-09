@@ -102,11 +102,11 @@ function::
 
     >>> c = Code()
     >>> c(Comparison(555))
-    >>> dis(c.code())
-      0           0 LOAD_CONST               1 (<function value_check at ...>)
-                  3 LOAD_CONST               2 (555)
-                  6 LOAD_FAST                0 ($Arg)
-                  9 CALL_FUNCTION            2
+    >>> dump(c.code())
+                    LOAD_CONST               1 (<function value_check at ...>)
+                    LOAD_CONST               2 (555)
+                    LOAD_FAST                0 ($Arg)
+                    CALL_FUNCTION            2
 
 The generated code simply calls a helper function, ``value_check``, with its
 expression and argument.  The helper function looks up and returns the

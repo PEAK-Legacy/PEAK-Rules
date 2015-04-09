@@ -43,10 +43,10 @@ class MiscTests(unittest.TestCase):
     def testPointers(self):
         from peak.rules.indexing import IsObject
         try: from sys import maxint
-        except ImportError: maxint = (2<<32)-1
+        except ImportError: maxint = (1<<32)-1
         anOb = object()
         ptr = IsObject(anOb)
-        self.assertEqual(id(anOb)&maxint,ptr)
+        self.assertEqual(id(anOb)&maxint, int(ptr))
         self.assertEqual(hash(id(anOb)&maxint),hash(ptr))
 
         self.assertEqual(ptr.match, True)
