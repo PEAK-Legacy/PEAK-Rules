@@ -157,12 +157,12 @@ inequalities['<>'] = inequalities['!=']
 def Inequality(op, value):
     return inequalities[op](value)
 
+class ListRepr(object):
+    __slots__ = ()
+    def __repr__(self): return "%s(%r)" % (self.__class__.__name__, list(self))
 
 
-
-
-
-class Signature(Intersection, tuple):
+class Signature(Intersection, ListRepr, tuple):
     """Represent and-ed Tests, in sequence"""
 
     __slots__ = ()
@@ -196,10 +196,10 @@ class Signature(Intersection, tuple):
             return output[0]
         return tuple.__new__(cls, output)
 
-    def __repr__(self):
-        return "Signature("+repr(list(self))+")"
-
 when(negate, (Signature,))(lambda c: OrElse(map(negate, c)))
+
+
+
 
 
 
@@ -244,7 +244,7 @@ def intersect_objects(c1, c2):
         # "is not x and is not y"
         return Conjunction([c1,c2])
 
-class DisjunctionSet(Disjunction, frozenset):
+class DisjunctionSet(Disjunction, ListRepr, frozenset):
     """Set of minimal or-ed conditions (i.e. no redundant/implying items)
 
     Note that a Disjunction can never have less than 2 members, as creating a
@@ -326,7 +326,7 @@ when(tests_for, (Signature,))(lambda ob, e: iter(ob))
 when(tests_for, (bool,     ))(lambda ob, e: iter([]))
 
 
-class Conjunction(Intersection, frozenset):
+class Conjunction(Intersection, ListRepr, frozenset):
     """Set of minimal and-ed conditions (i.e. no redundant/implied items)
 
     Note that a Conjunction can never have less than 2 members, as
@@ -367,7 +367,7 @@ def ob_implies_set(c1, c2):
         return True
 
 
-when(negate, (Conjunction,))(lambda c: Disjunction(map(negate, c)))
+when(negate, (Conjunction,))(lambda c: Disjunction(list(map(negate, c))))
 
 when(intersect, (istype,Class))
 def intersect_type_class(c1, c2):

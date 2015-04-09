@@ -338,7 +338,10 @@ you can see what happens when we pass different arguments to ``combine_using``::
 
     >>> class A: pass
     >>> class B(A): pass
-    >>> class C(A, B): pass
+    >>> try:
+    ...     class C(A, B): pass
+    ... except TypeError:   # 3.x doesn't do classic class MROs
+    ...     class C(B): pass
     >>> class D(B, A): pass
 
     >>> def demo(*args):

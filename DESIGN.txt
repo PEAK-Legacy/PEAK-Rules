@@ -225,7 +225,11 @@ conform with ``isinstance()`` here::
     >>> implies(X, object)
     True
 
-    >>> from types import InstanceType
+    >>> try:
+    ...     from types import InstanceType
+    ... except ImportError:
+    ...     InstanceType = object   # Python 3.x
+
     >>> implies(X, InstanceType)
     True
 
