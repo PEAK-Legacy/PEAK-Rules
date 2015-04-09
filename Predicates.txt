@@ -159,7 +159,7 @@ cache::
                     POP_TOP
                     POP_TOP
                     POP_TOP
-                    POP_TOP
+                    POP_TOP...
                     LOAD_FAST                0 ($Arg)
                     UNPACK_SEQUENCE          2
                     POP_TOP
@@ -194,7 +194,7 @@ that it first obtains the ``__class__`` or ``type()`` of its target::
                     POP_TOP
                     POP_TOP
                     POP_TOP
-                    POP_TOP
+                    POP_TOP...
                     LOAD_CONST               3 (<... 'type'>)
                     ROT_TWO
                     CALL_FUNCTION            1
@@ -219,7 +219,7 @@ that it first obtains the ``__class__`` or ``type()`` of its target::
                     POP_TOP
                     POP_TOP
                     POP_TOP
-                    POP_TOP
+                    POP_TOP...
                     LOAD_FAST                0 ($Arg)
                     UNPACK_SEQUENCE          2
                     POP_TOP
@@ -385,7 +385,7 @@ syntax::
     >>> pe('`x`')
     Traceback (most recent call last):
       ...
-    SyntaxError: backquotes are not allowed in predicates
+    SyntaxError: ...
 
 
 
@@ -958,7 +958,7 @@ Each element of the type tuple is converted using a second generic function,
 
     >>> class x: pass
     >>> type_to_test(x, Local('x'), engine)
-    Test(IsInstance(Local('x')), Class(<class ...x at ...>, True))
+    Test(IsInstance(Local('x')), Class(<class ...x...>, True))
 
 If you implement a new kind of class test for use in type tuples, you'll need
 to add the appropriate method(s) to ``type_to_test`` if you want it to also
