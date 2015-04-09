@@ -34,7 +34,7 @@ Basic usage::
     >>> pprint(42)
     Traceback (most recent call last):
       ...
-    NoApplicableMethods: ...
+    peak.rules.NoApplicableMethods: ...
 
 PEAK-Rules works with Python 2.3 and up -- just omit the ``@`` signs if your
 code needs to run under 2.3.  Also, note that with PEAK-Rules, *any* function
@@ -136,7 +136,7 @@ after it, and so on, down through all the applicable methods.  For example::
       File ... combiners.txt... in foo_spam
         return 22 + next_method(self,bar,baz)
     ...
-    NoApplicableMethods: ...
+    peak.rules.NoApplicableMethods: ...
 
 Notice that ``next_method`` comes *before* ``self`` in the arguments if the
 generic function is an instance method.  (If used, it must be the *very first*
@@ -685,7 +685,7 @@ To use the emulation API, simply import ``dispatch`` from ``peak.rules``::
     >>> a_function("blue", 42)
     Traceback (most recent call last):
       ...
-    NoApplicableMethods: (('blue', 42), {})
+    peak.rules.NoApplicableMethods: (('blue', 42), {})
     
 Whether you use ``dispatch.generic`` or ``dispatch.on`` to define a generic
 function, you can begin using ``peak.rules.when`` to declare methods

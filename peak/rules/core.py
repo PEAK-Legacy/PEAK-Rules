@@ -205,13 +205,13 @@ class Dispatching(AddOn):
 
 class DispatchError(Exception):
     """A dispatch error has occurred"""
-
+    __module__ = 'peak.rules'
     def __call__(self,*args,**kw):
         raise self.__class__(*self.args+(args,kw))  # XXX
 
     def __repr__(self):
         # This method is needed so doctests for 2.3/2.4 match 2.5
-        return self.__class__.__name__+repr(self.args)
+        return self.__class__.__name__.split('.')[-1]+repr(self.args)
 
 
 class MethodType(type):
@@ -340,14 +340,14 @@ when = Method.make_decorator(
 
 class NoApplicableMethods(DispatchError):
     """No applicable action has been defined for the given arguments"""
-
+    __module__ = 'peak.rules'
     def merge(self, other):
         return AmbiguousMethods([self,other])
 
 
 class AmbiguousMethods(DispatchError):
     """More than one choice of action is possible"""
-
+    __module__ = 'peak.rules'
     def __init__(self, methods, *args):
         DispatchError.__init__(self, methods, *args)
         mine = self.methods = []

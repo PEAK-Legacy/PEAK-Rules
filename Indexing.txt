@@ -825,7 +825,7 @@ and expression::
     >>> ind = BitmapIndex(eng, "some expression")
     Traceback (most recent call last):
       ...
-    NoApplicableMethods: ((<...DemoEngine ...>, 'some expression'), {})
+    peak.rules.NoApplicableMethods: ((<...DemoEngine ...>, 'some expression'), {})
 
 Well, it will as long as you register an appropriate method for the
 ``bitmap_index_type`` generic function::

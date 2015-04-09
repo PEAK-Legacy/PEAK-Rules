@@ -391,7 +391,7 @@ called with::
     >>> naf(1,2,x="y")
     Traceback (most recent call last):
       ...
-    NoApplicableMethods: ((1, 2), {'x': 'y'})
+    peak.rules.NoApplicableMethods: ((1, 2), {'x': 'y'})
 
 
 
@@ -548,7 +548,7 @@ And invoking an ``AmbiguousMethods`` instance just outputs diagnostic info::
     >>> am(1,2,x="y")
     Traceback (most recent call last):
       ...
-    AmbiguousMethods: ([Method(...), Method(...)], (1, 2), {'x': 'y'})
+    peak.rules.AmbiguousMethods: ([Method(...), Method(...)], (1, 2), {'x': 'y'})
 
 
 Custom Method Types and Compilation

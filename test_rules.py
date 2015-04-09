@@ -784,6 +784,13 @@ def additional_tests():
         'Code-Generation.txt', 'Syntax-Matching.txt', 'Criteria.txt',
         'Predicates.txt', 
     ][sys.version<'2.4':]   # skip README.txt on 2.3 due to @ syntax
+    if sys.version<'3':
+        from peak.rules.core import DispatchError, NoApplicableMethods, AmbiguousMethods
+        for e in (DispatchError, NoApplicableMethods, AmbiguousMethods):
+            # Make errors have Python 3.x reprs under 2.x, to unify doctests
+            if '.' not in e.__name__:
+                e.__name__ = ".".join([e.__module__, e.__name__])
+
     return doctest.DocFileSuite(
         optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE,
         globs=dict(__name__=None),   # workaround PyPy type repr() issue 1292
@@ -799,13 +806,6 @@ def no_backquotes(s):
     if sys.version >= "3":
         return s.replace('`','')
     return s
-
-
-
-
-
-
-
 
 
 
