@@ -3,7 +3,7 @@ from peak.rules.codegen import *
 from peak.rules.criteria import *
 from peak.rules.predicates import *
 from peak.rules.core import *
-from token import NAME
+from token import NAME, TILDE; from symbol import power, factor
 from peak.rules.ast_builder import build
 
 __all__ = ['match', 'Bind', 'match_predicate', 'match_sequence']
@@ -39,6 +39,18 @@ class SyntaxBuilder(ExprBuilder):
             return Bind(expr[1])
         raise SyntaxError("backquotes may only be used around an indentifier")
 
+    def Invert(self, expr):
+        old = expr
+        while len(expr)==2: expr, expr = expr
+
+        if expr[0] in (power, factor) and expr[1][0]==TILDE:
+            expr = expr[2]
+            while len(expr)==2: expr, expr = expr
+            if expr[0]==NAME:
+                return Bind(expr[1])
+        return ExprBuilder.Invert(self, old)
+
+
 def match(expr, pattern):
     """Match `expr` against inline pattern `pattern`
 
@@ -63,18 +75,6 @@ def compile_match(__builder__, expr, pattern):
     pred = match_predicate(pattern, expr, binds)
     __builder__.bind(dict([(k, list(v)[0]) for k, v in binds.items()]))
     return pred
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

@@ -777,6 +777,47 @@ class DecompilationTests(unittest.TestCase):
 
 
 
+if sys.version<"3":
+
+    class LegacySyntaxTests(unittest.TestCase):
+        """Test the old `x`-style syntax matching"""
+
+        def setUp(self):
+            from peak.rules.syntax import SyntaxBuilder
+            builder = SyntaxBuilder({}, locals(), globals(), __builtins__)
+            self.parse = builder.parse
+
+        def testBackquoteParsing(self):
+           from peak.rules.predicates import Compare, Call, Const
+           from peak.rules.syntax import Bind
+           self.assertEqual(
+               self.parse('type(`x`) is `y`'),
+               Compare(Call(Const(type), (Bind('x'),), (), (), (), True),
+                      (('is', Bind('y')),))
+          )
+
+        def testRejectOtherBackquotes(self):
+            try:
+                self.parse('`type(x)`')
+            except SyntaxError:
+                e = sys.exc_info()[1]
+                self.assertEqual(str(e),
+                    "backquotes may only be used around an indentifier"
+                )
+            else:
+                raise AssertionError(
+                    "Backquotes around non-identifiers should be rejected"
+                )
+            
+
+
+
+
+
+
+
+
+
 def additional_tests():
     import doctest
     files = [
