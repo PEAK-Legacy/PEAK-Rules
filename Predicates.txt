@@ -597,10 +597,10 @@ to runtime ``*`` or ``**`` problems), are detected at compile time::
 
 Also, note that meta functions cannot have packed-tuple arguments::
 
-    >>> meta_function(lambda x,y:None)(lambda x,(y,z): True)    # EXPECTED FAIL on 3.x
+    >>> meta_function(lambda x,y:None)(lambda x,(y,z): True)
     Traceback (most recent call last):
       ...
-    TypeError: Meta-functions cannot have packed-tuple arguments
+    SyntaxError: ...
 
 
 Custom Argument Compiling
@@ -690,39 +690,41 @@ Method Argument Binding
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 Any bindings defined in an expression can be converted into arguments for the
-function associated with the rule that defined the bindings., by having its
-first positional argument be a named argument tuple::
+function associated with the rule that defined the bindings, by having its
+first positional argument be a named argument tuple (Python 2.x only) or
+an ``__args__`` argument that's unpacked to a tuple (Python 2.x and 3.x)::
 
     >>> from peak.rules import abstract, when, around, let
     >>> def f(x): pass
     >>> f = abstract(f)
 
-    >>> def dummy((q,z), x):    # EXPECTED FAIL on 3.x
+    >>> def dummy(__args__, x):
+    ...     (q,z) = __args__
     ...     print("Got q = "+str(q,)+" and z = "+str(z))
     ...     print("x was "+str(x))
 
     >>> when(f, "let(q=x*2, z='whatever') and True")(dummy)
     <function dummy ...>
 
-    >>> f(42)       # EXPECTED FAIL on 3.x
+    >>> f(42)
     Got q = 84 and z = whatever
     x was 42
 
 This even works when you have a ``next_method`` argument after the tuple, and
 even if your method is defined inside a closure::
 
-    >>> closure = lambda x: None    # Prevent a cascading error in Python 3.x
     >>> def closure(y):
-    ...     def dummy2((a,b,c), next_method, x):    # EXPECTED FAIL on 3.x
+    ...     def dummy2(__args__, next_method, x):
+    ...         (a,b,c) = __args__
     ...         print("a, b, c = "+str((a,b,c)))
     ...         print("y was "+str(y))
     ...         return next_method(x)
     ...     return dummy2
 
-    >>> around(f, "let(a='a', b=x*3, c=b+23)")(closure(99))  # EXPECTED FAIL on 3.x
+    >>> around(f, "let(a='a', b=x*3, c=b+23)")(closure(99))
     <function dummy2 ...>
 
-    >>> f(42)       # EXPECTED FAIL on 3.x
+    >>> f(42)
     a, b, c = ('a', 126, 149)
     y was 99
     Got q = 84 and z = whatever

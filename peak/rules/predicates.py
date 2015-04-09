@@ -98,7 +98,7 @@ def meta_function(*stub, **parsers):
     def callback(frame, name, func, old_locals):
         for name in inspect.getargs(getattr(func, CODE))[0]:
             if not isinstance(name, basestring):
-                raise TypeError(
+                raise SyntaxError(
                     "Meta-functions cannot have packed-tuple arguments"
                 )
         what = func, parsers, inspect.getargspec(func)
@@ -620,12 +620,15 @@ def maybe_bind(func, bindings):
         return func     # no bindings or not a function
 
     args, varargs, varkw, defaults = inspect.getargspec(func) 
-    if not args or isinstance(args[0], basestring):
+    if not args or isinstance(args[0], basestring) and args[0]!='__args__':
         return func # no args or first arg isn't a tuple
 
-    for arg in args[0]:
-        if not isinstance(arg, basestring):  # nested tuple arg, not a binding
-            return func
+    if args[0]=='__args__':
+        args[0] = _get_nested_args(getattr(func, CODE))
+    else:
+        for arg in args[0]:
+            if not isinstance(arg, basestring):  # nested tuple arg, not a binding
+                return func
 
     for arg in args[0]:
         if arg in bindings:
@@ -648,6 +651,44 @@ def maybe_bind(func, bindings):
     f.__predicate_bindings__ = bindings, func   # mark for later optimization
 
     return f
+
+
+
+def _get_nested_args(co):
+
+    from peak.util.assembler import ord, HAVE_ARGUMENT, UNPACK_SEQUENCE, \
+        STORE_FAST, LOAD_FAST
+
+    code = co.co_code
+    step = left = 0
+    args = []
+
+    while step < len(code):
+        op = ord(code[step])
+        step += 1
+        if op < HAVE_ARGUMENT:
+            break
+        value = ord(code[step]) + ord(code[step+1])*256
+        step += 2
+
+        if op == UNPACK_SEQUENCE:
+            if args or left:
+               break
+            left = value
+        elif op == STORE_FAST:
+            args.append(co.co_varnames[value])
+            left -= 1
+            if not left:
+                return args
+        elif op != LOAD_FAST or value != 0:
+            break
+
+    raise AssertionError("You must unpack __args__ at the start of the function")
+
+
+
+
+
 
 
 
