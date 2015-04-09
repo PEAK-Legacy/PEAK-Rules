@@ -84,9 +84,14 @@ Namespaces and Binding
 An ``ExprBuilder`` object's ``bindings`` attribute is a list of dictionaries,
 mapping names to the desired outputs::
 
-    >>> builder.bindings
-    [{}, {'a': Local('a'), 'c': Local('c'), 'b': Local('b'), 'e': Local('e'),
-          'd': Local('d'), 'g': Local('g'), 'f': Local('f')},
+    >>> def dumps(dicts):
+    ...     print('[%s]' % ', '.join(['{%s}' % ', '.join([
+    ...         '%r: %r' % item for item in sorted(d.items())
+    ...     ]) for d in dicts ]))
+    
+    >>> dumps(builder.bindings)
+    [{}, {'a': Local('a'), 'b': Local('b'), 'c': Local('c'), 'd': Local('d'),
+          'e': Local('e'), 'f': Local('f'), 'g': Local('g')},
           {...}, {...}, {...}]
 
 You can add more bindings temporarily with the ``.push()`` method, then
@@ -109,27 +114,27 @@ If you omit the argument to ``.push()``, it just adds an empty namespace to
 the bindings::
 
     >>> builder.push()
-    >>> builder.bindings
-    [{}, {}, {'a': Local('a'), 'c': Local('c'), 'b': Local('b'),
-              'e': Local('e'), 'd': Local('d'), 'g': Local('g'),
-              'f': Local('f')}, {...}, {...}, {...}]
+    >>> dumps(builder.bindings)
+    [{}, {}, {'a': Local('a'), 'b': Local('b'), 'c': Local('c'),
+              'd': Local('d'), 'e': Local('e'), 'f': Local('f'),
+              'g': Local('g')}, {...}, {...}, {...}]
 
 Which you can then modify using ``.bind()``::
 
     >>> builder.bind({'x': pe('99')})
-    >>> builder.bindings
-    [{'x': Const(99)}, {}, {'a': Local('a'), 'c': Local('c'), 'b': Local('b'),
-                            'e': Local('e'), 'd': Local('d'), 'g': Local('g'),
-                            'f': Local('f')}, {...}, {...}, {...}]
+    >>> dumps(builder.bindings)
+    [{'x': Const(99)}, {}, {'a': Local('a'), 'b': Local('b'), 'c': Local('c'),
+                            'd': Local('d'), 'e': Local('e'), 'f': Local('f'),
+                            'g': Local('g')}, {...}, {...}, {...}]
 
 And finally remove with ``.pop()``::
 
     >>> builder.pop()
     {'x': Const(99)}
 
-    >>> builder.bindings
-    [{}, {'a': Local('a'), 'c': Local('c'), 'b': Local('b'), 'e': Local('e'),
-          'd': Local('d'), 'g': Local('g'), 'f': Local('f')},
+    >>> dumps(builder.bindings)
+    [{}, {'a': Local('a'), 'b': Local('b'), 'c': Local('c'), 'd': Local('d'),
+          'e': Local('e'), 'f': Local('f'), 'g': Local('g')},
           {...}, {...}, {...}]
 
 
