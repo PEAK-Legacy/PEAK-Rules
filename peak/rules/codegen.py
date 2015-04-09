@@ -88,7 +88,7 @@ def unaryOp(name, _fo):
         if code is None:
             return fold_args(tmp, expr)
         return code(expr, opcode)
-    tmp.__name__ = name
+    tmp.__name__ = tmp.__qualname__ = name
     return tmp
 
 def binaryOp(name, _fo):
@@ -99,7 +99,7 @@ def binaryOp(name, _fo):
         if code is None:
             return fold_args(tmp, left, right)
         return code(left, right, opcode)
-    tmp.__name__ = name
+    tmp.__name__ = tmp.__qualname__ = name
     return tmp
 
 def listOp(name, _fo):
@@ -110,7 +110,7 @@ def listOp(name, _fo):
             return fold_args(tmp, tuple(items))
         code(*items)
         return opcode(code, len(items))
-    tmp.__name__ = name
+    tmp.__name__ = tmp.__qualname__ = name
     return tmp
 
 def mkOps(optype, **ops):
