@@ -332,8 +332,8 @@ module, but instead are imported from ``peak.util.assembler``::
     >>> Minus(1), Plus(2), Not(True), Invert(-1), Repr(4)
     (Const(-1), Const(2), Const(False), Const(0), Const('4'))
 
-    >>> Add(1,2), Sub(3,2), Mul(4,5), Div(10,2), Mod(7,3), FloorDiv(7,3)
-    (Const(3), Const(1), Const(20), Const(5), Const(1), Const(2))
+    >>> Add(1,2), Sub(3,2), Mul(4,5), Power(10,2), Mod(7,3), FloorDiv(7,3)
+    (Const(3), Const(1), Const(20), Const(100), Const(1), Const(2))
 
     >>> Power(2,3), LeftShift(1,4), RightShift(12,2)
     (Const(8), Const(16), Const(3))

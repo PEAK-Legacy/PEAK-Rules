@@ -711,6 +711,7 @@ first positional argument be a named argument tuple::
 This even works when you have a ``next_method`` argument after the tuple, and
 even if your method is defined inside a closure::
 
+    >>> closure = lambda x: None    # Prevent a cascading error in Python 3.x
     >>> def closure(y):
     ...     def dummy2((a,b,c), next_method, x):
     ...         print("a, b, c = "+str((a,b,c)))
