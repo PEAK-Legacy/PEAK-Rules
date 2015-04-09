@@ -537,7 +537,7 @@ keyword arguments used by the caller.  For example::
     ...     print("p1        = "+str(p1))
     ...     print("p2        = "+str(p2))
     ...     print("args      = "+str(args))
-    ...     print("kw        = "+str(kw))
+    ...     print("kw        = "+str(sorted(kw.items())))
     ...     print("__star__  = "+str(__star__))
     ...     print("__dstar__ = "+str(__dstar__))
     ...     return True
@@ -553,7 +553,7 @@ keyword arguments used by the caller.  For example::
     p1        = Local('x')
     p2        = Local('y')
     args      = (Mul(Local('x'), Local('x')), Mul(Local('y'), Local('y')))
-    kw        = {'k2': Local('y'), 'k1': Local('x')}
+    kw        = [('k1', Local('x')), ('k2', Local('y'))]
     __star__  = Add(Local('x'), Const(1))
     __dstar__ = Mul(Local('y'), Const(2))
     True
@@ -562,7 +562,7 @@ keyword arguments used by the caller.  For example::
     p1        = Local('x')
     p2        = None
     args      = ()
-    kw        = {}
+    kw        = []
     __star__  = None
     __dstar__ = None
     True
@@ -643,7 +643,7 @@ For example::
     p1        = p1
     p2        = p2
     args      = ('args', 'args')
-    kw        = {'k2': 'k2', 'k1': 'kw'}
+    kw        = [('k1', 'kw'), ('k2', 'k2')]
     __star__  = *
     __dstar__ = **
     True
