@@ -722,7 +722,7 @@ even if your method is defined inside a closure::
     ...     return dummy2
 
     >>> around(f, "let(a='a', b=x*3, c=b+23)")(closure(99))
-    <function dummy2 ...>
+    <function ...dummy2...>
 
     >>> f(42)
     a, b, c = ('a', 126, 149)
