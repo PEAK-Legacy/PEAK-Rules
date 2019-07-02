@@ -815,3 +815,4 @@ stack size by exactly 1 are considered for caching::
                  22 POP_TOP
                  23 POP_TOP
 
+.. ex: set ft=rst :

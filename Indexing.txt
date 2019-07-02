@@ -1045,7 +1045,9 @@ Ranges and Value Comparisons
 -----------------
 
 The ``Range()`` criterion type represents an inequality such as ``lo < x < hi``
-or ``x >= lo``.  (For more details on their semantics, see Criteria.txt).
+or ``x >= lo``.  (For more details on their semantics, see `Criteria.txt`_).
+
+.. _Criteria.txt: Criteria.txt
 
 The bitmap index seeds for ``Range`` objects are edge tuples, and the
 selectivity of a ``Range`` is the distance between the low and high edges in
@@ -1467,3 +1469,4 @@ Truth
     >>> dict(ind.expanded_sets())
     {False: [[1], []], True: [[0], []]}
 
+.. ex: set ft=rst :

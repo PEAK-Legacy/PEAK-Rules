@@ -69,7 +69,9 @@ Design Concepts
 ===============
 
 (Note: Criteria, signatures, and predicates are described and tested in detail
-by the ``Criteria.txt`` document.)
+by the `Criteria.txt`_ document.)
+
+.. _Criteria.txt: Criteria.txt
 
 Criterion
     A criterion is a symbolic representation of a test that returns a boolean
@@ -285,7 +287,7 @@ But of course, that doesn't work they other way around::
 
 These implication rules are sufficient to bootstrap the basic types-only
 rules engine; additional rules for ``istype`` behavior are explained in
-Criteria.txt to show intersection of criteria such as ``istype``, and other
+`Criteria.txt`_ to show intersection of criteria such as ``istype``, and other
 more-advanced criteria manipulation used in the full predicate rules engine.
 
 
@@ -1014,3 +1016,4 @@ Criteria/Indexing
          | (cases - known_cases)
 
 
+.. ex: set ft=rst :

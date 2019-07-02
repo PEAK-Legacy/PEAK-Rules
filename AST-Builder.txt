@@ -677,3 +677,4 @@ to make sure that associativity is correct::
     >>> pe("5*x**2 + 4*x + -1")
     Add(Add(Mul(5,Power(x,2)),Mul(4,x)),Minus(1))
 
+.. ex: set ft=rst :

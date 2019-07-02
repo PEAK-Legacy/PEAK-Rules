@@ -57,19 +57,15 @@ describing and testing most of its internals, including:
 (Please note that these documents are still in a state of flux and some may
 still be incomplete or disorganized, prior to the first official release.)
 
-Source distribution snapshots are generated daily, but you can also update
-directly from the `development version`_ in SVN.
-
-.. _development version: svn://svn.eby-sarna.com/svnroot/PEAK-Rules#egg=PEAK_Rules-dev
-.. _Introduction: http://peak.telecommunity.com/DevCenter/PEAK-Rules#toc
-.. _Core Design Overview: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Design
-.. _Predicates: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Predicates
-.. _Basic AST Builder: http://peak.telecommunity.com/DevCenter/PEAK-Rules/AST-Builder
-.. _Code Generation: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Code-Generation
-.. _Criteria: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Criteria
-.. _Indexing: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Indexing
-.. _Predicates: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Predicates
-.. _Syntax pattern matching: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Syntax-Matching
+.. _Introduction: https://github.com/PEAK-Legacy/PEAK-Rules#table-of-contents
+.. _Core Design Overview: https://github.com/PEAK-Legacy/PEAK-Rules/blob/master/DESIGN.txt
+.. _Predicates: https://github.com/PEAK-Legacy/PEAK-Rules/blob/master/Predicates.txt
+.. _Basic AST Builder: https://github.com/PEAK-Legacy/PEAK-Rules/blob/master/AST-Builder.txt
+.. _Code Generation: https://github.com/PEAK-Legacy/PEAK-Rules/blob/master/Code-Generation.txt
+.. _Criteria: https://github.com/PEAK-Legacy/PEAK-Rules/blob/master/Criteria.txt
+.. _Indexing: https://github.com/PEAK-Legacy/PEAK-Rules/blob/master/Indexing.txt
+.. _Predicates: https://github.com/PEAK-Legacy/PEAK-Rules/blob/master/Predicates.txt
+.. _Syntax pattern matching: https://github.com/PEAK-Legacy/PEAK-Rules/blob/master/Syntax-Matching.txt
 
 .. _toc:
 
@@ -644,7 +640,7 @@ RuleDispatch Emulation
 If your code doesn't use much of the RuleDispatch API, you may be able to use
 PEAK-Rules' "emulation API", which supports the following RuleDispatch APIs:
 
-* ``dispatch.on``, ``dispatch.generic``, and dispatch.as``
+* ``dispatch.on``, ``dispatch.generic``, and ``dispatch.as``
 
 * ``strategy.default``, ``strategy.Min``, ``strategy.Max``
 
@@ -711,3 +707,5 @@ Mailing List
 
 Please direct questions regarding this package to the PEAK mailing list; see
 http://www.eby-sarna.com/mailman/listinfo/PEAK/ for details.
+
+.. ex: set ft=rst :

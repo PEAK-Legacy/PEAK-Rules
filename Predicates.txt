@@ -1126,3 +1126,4 @@ predicate's target expression.  If you don't do this, then your predicate
 type will always be treated as order-dependent, even if its target expression
 is a local or constant.
 
+.. ex: set ft=rst :

@@ -37,7 +37,7 @@ like this, than they are to be in disjunctive normal form.  Therefore, we must
 convert them in order to implement the Chambers & Chen dispatch algorithm
 correctly (see `Indexing.txt`_).
 
-.. _Indexing.txt: http://peak.telecommunity.com/DevCenter/PEAK-Rules/Indexing
+.. _Indexing.txt: Indexing.txt
 
 We do this using the ``DisjunctionSet`` and ``OrElse`` classes to represent
 overall expressions (sets or sequences of "ors"), and the ``Signature`` and
@@ -1236,3 +1236,4 @@ per this expansion logic (using ``|`` for "symmetric or")::
         (not a and int) | (not a and str) | (not b and int) | (not b and str)
     )
 
+.. ex: set ft=rst :
